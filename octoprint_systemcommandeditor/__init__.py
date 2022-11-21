@@ -7,11 +7,16 @@ __license__ = 'GNU Affero General Public License http://www.gnu.org/licenses/agp
 import octoprint.plugin
 
 class SystemCommandEditorPlugin(octoprint.plugin.SettingsPlugin,
+								octoprint.plugin.StartupPlugin,
 								octoprint.plugin.TemplatePlugin,
 								octoprint.plugin.BlueprintPlugin,
 								octoprint.plugin.AssetPlugin):
 	def get_settings_defaults(self):
 		return dict(actions=[])
+
+	def on_settings_save(self, data):
+		self._settings.global_set(["system"], data)
+		octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
 
 	def get_template_configs(self):
 		if "editorcollection" in self._plugin_manager.enabled_plugins:
@@ -23,9 +28,6 @@ class SystemCommandEditorPlugin(octoprint.plugin.SettingsPlugin,
 				dict(type="settings", template="systemcommandeditor_hookedsettings.jinja2", custom_bindings=True)
 			]
 
-	def on_settings_save(self, data):
-		pass
-
 	def get_assets(self):
 		return dict(
 			js=["js/jquery.ui.sortable.js",
@@ -33,6 +35,14 @@ class SystemCommandEditorPlugin(octoprint.plugin.SettingsPlugin,
 				"js/systemcommandeditorDialog.js"],
 			css=["css/systemcommandeditor.css"]
 		)
+
+	def is_blueprint_csrf_protected(self):
+		return True
+
+	def on_after_startup(self):
+		self.actions = self._settings.get(["actions"])
+		self._settings.global_set(["system", "actions"], actions)
+
 
 	def get_update_information(self):
 		return dict(

@@ -1,9 +1,11 @@
-﻿$(function() {
+$(function() {
     function SystemCommandEditorViewModel(parameters) {
         var self = this;
 
         self.settingsViewModel = parameters[0];
         self.systemCommandEditorDialogViewModel = parameters[1];
+
+	self.settings = undefined;
 
         self.actionsFromServer = [];
         self.systemActions = ko.observableArray([]);
@@ -28,7 +30,7 @@
         };
 
         self.fromResponse = function (response) {
-            self.actionsFromServer = response.system.actions || [];
+            self.actionsFromServer = response.plugins.systemcommandeditor.actions || [];
             self.rerenderActions();
 
             $("#systemActions").sortable({
@@ -61,7 +63,6 @@
                     $statics.each(function(){
                         var $this = $(this);
                         var target = $this.data('pos');
-
                         $this.insertAfter($('li', $sortable).eq(target));
                     });
                     $helper.remove();
@@ -203,7 +204,7 @@
                     e.action = "divider";
                 }
             });
-            self.settingsViewModel.system_actions(self.actionsFromServer);
+            self.settings.plugins.systemcommandeditor.actions(self.actionsFromServer);
         }
 
         self.onEventSettingsUpdated = function (payload) {
