@@ -41,7 +41,8 @@ class SystemCommandEditorPlugin(octoprint.plugin.SettingsPlugin,
 
 	def on_after_startup(self):
 		self.actions = self._settings.get(["actions"])
-		self._settings.global_set(["system", "actions"], self.actions)
+		if not self.actions is None:
+			self._settings.global_set(["system", "actions"], self.actions)
 
 
 	def get_update_information(self):
