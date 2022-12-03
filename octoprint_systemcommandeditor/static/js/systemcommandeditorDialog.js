@@ -1,6 +1,8 @@
 $(function () {
     function systemCommandEditorDialogViewModel(parameters) {
         var self = this;
+        
+        self.valuesChanged = false;
 
         self.element = ko.observable();
 
@@ -58,6 +60,7 @@ $(function () {
                     delete obj.confirm;
 
                 f(obj);
+                self.valuesChanged = true;
             });
 
             dialog.modal({

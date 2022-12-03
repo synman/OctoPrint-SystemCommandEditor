@@ -1,13 +1,14 @@
 $(function() {
     function SystemCommandEditorViewModel(parameters) {
         var self = this;
+        var valuesChanged = false;
 
         self.settingsViewModel = parameters[0];
         self.systemCommandEditorDialogViewModel = parameters[1];
 
-	self.settings = undefined;
+    	self.settings = undefined;
 
-        self.actionsFromServer = [];
+        self.actionsFromServer = null;
         self.systemActions = ko.observableArray([]);
 
         self.popup = undefined;
@@ -46,6 +47,7 @@ $(function() {
                     if (position >= 0) {
                         self.actionsFromServer = _.without(self.actionsFromServer, item);
                         self.actionsFromServer.splice(position, 0, item);
+                        valuesChanged = true;
                     }
                     ui.item.remove();
                     self.rerenderActions();
@@ -135,6 +137,7 @@ $(function() {
 
             showConfirmationDialog("", function (e) {
                 self.actionsFromServer = _.without(self.actionsFromServer, element);
+                valuesChanged = true;
                 self.rerenderActions();
             });
         }
@@ -188,6 +191,7 @@ $(function() {
                 }
                 case "createDivider": {
                     self.actionsFromServer.push({ action: "divider" });
+                    valuesChanged = true;
                     self.rerenderActions();
                     break;
                 }
@@ -204,7 +208,12 @@ $(function() {
                     e.action = "divider";
                 }
             });
-            self.settings.plugins.systemcommandeditor.actions(self.actionsFromServer);
+            if (valuesChanged == true || self.systemCommandEditorDialogViewModel.valuesChanged == true) {
+                console.log("saved");
+                self.settings.plugins.systemcommandeditor.actions(self.actionsFromServer);
+                valuesChanged = false;
+                self.systemCommandEditorDialogViewModel.valuesChanged = false;
+            }
         }
 
         self.onEventSettingsUpdated = function (payload) {
