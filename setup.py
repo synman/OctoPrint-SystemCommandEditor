@@ -21,10 +21,10 @@ plugin_version = "1.0.0"
 plugin_description = "Makes System Commands editable over the Web UI"
 
 # The plugin's author. Can be overwritten within OctoPrint's internal data via __plugin_author__ in the plugin module
-plugin_author = "Marc Hannappel"
+plugin_author = "Shell M Shrader (maintainer)"
 
 # The plugin's author's mail address.
-plugin_author_email = "salandora@gmail.com"
+plugin_author_email = "shell@shellware.com"
 
 # The plugin's homepage URL. Can be overwritten within OctoPrint's internal data via __plugin_url__ in the plugin module
 plugin_url = "https://github.com/synman/OctoPrint-SystemCommandEditor"
