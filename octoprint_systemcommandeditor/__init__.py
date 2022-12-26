@@ -53,12 +53,12 @@ class SystemCommandEditorPlugin(octoprint.plugin.SettingsPlugin,
 
 				# version check: github repository
 				type="github_release",
-				user="Salandora",
+				user="synman",
 				repo="OctoPrint-SystemCommandEditor",
 				current=self._plugin_version,
 
 				# update method: pip
-				pip="https://github.com/Salandora/OctoPrint-SystemCommandEditor/archive/{target_version}.zip"
+				pip="https://github.com/synman/OctoPrint-SystemCommandEditor/archive/{target_version}.zip"
 			)
 		)
 
