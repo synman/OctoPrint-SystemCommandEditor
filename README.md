@@ -31,6 +31,24 @@ from **Settings → Plugins → System Command Editor**.
 Changes take effect when you click **Save** in the settings dialog. On OctoPrint 2.0 you are asked for your
 password, because OctoPrint requires a recent login to change system commands.
 
+## Examples
+
+Any shell command the OctoPrint user can run works. Some common ones for a printer setup:
+
+| Section | Command | What it runs |
+|---|---|---|
+| Printer | Turn printer on / off | `curl -s "http://printer-plug.local/cm?cmnd=Power%20On"` on a Tasmota smart plug (`Power%20Off` to turn it off) |
+| Chamber | Chamber heater on / off | the same `curl` against the heater's smart plug |
+| Chamber | Chamber light on / off | `pinctrl set 17 op dh` / `pinctrl set 17 op dl` for a relay on a Raspberry Pi GPIO pin |
+| Camera | Restart camera stream | `sudo systemctl restart camera-streamer` |
+| Laser module | Laser power on / off | the same `curl` against the laser's smart plug |
+| Maintenance | Back up OctoPrint | `~/oprint/bin/octoprint plugins backup:backup`, run in the background |
+| Maintenance | Delete old timelapses | `find ~/.octoprint/timelapse -name '*.mp4' -mtime +30 -delete` |
+
+Turn on **Ask for confirmation** for anything you would not want to click by mistake, like turning the printer off
+while the hotend is still hot. A command that uses `sudo` needs a sudoers rule that lets the OctoPrint user run it
+without a password. Host names, GPIO pins and paths depend on your setup.
+
 ## Where your commands are kept
 
 Commands are stored where OctoPrint keeps them, under `system.actions` in `config.yaml`. The plugin keeps no
