@@ -1,0 +1,180 @@
+<h3>{{ _('System Commands') }}</h3>
+
+<p class="muted">
+    {{ _('These commands appear in the System menu, the power icon in the navigation bar. Changes take effect when you click Save.') }}
+</p>
+
+<!-- ko if: coreEntries().length -->
+<div class="sce-list sce-core-list">
+    <!-- ko foreach: coreEntries -->
+    <!-- ko if: $data.heading -->
+    <div class="sce-row sce-section"><span class="sce-section-label" data-bind="text: $data.heading"></span></div>
+    <!-- /ko -->
+    <div class="sce-row sce-command">
+        <span class="sce-icon"><i data-bind="css: $data.icon || ''"></i></span>
+        <span class="sce-text"><span class="sce-name" data-bind="text: $data.name"></span></span>
+        <span class="btn-group sce-buttons">
+            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit icon and heading')|edq }}" data-bind="click: $root.editCore"><i class="fa-solid fa-pencil"></i></button>
+        </span>
+    </div>
+    <!-- /ko -->
+    <div class="sce-core-note muted">
+        {{ _('OctoPrint\'s built-in commands. You can change their icons and headings here; what they run is set under') }}
+        <a href="javascript:void(0)" data-bind="click: showServerSettings">{{ _('Server') }}</a>.
+    </div>
+</div>
+<!-- /ko -->
+
+<div class="sce-list" data-bind="css: { 'sce-list-empty': entries().length === 0 }">
+    <div class="sce-empty muted" data-bind="visible: entries().length === 0">
+        {{ _('You have no system commands yet. Add one with the buttons below.') }}
+    </div>
+
+    <!-- ko foreach: entries -->
+    <div class="sce-row" draggable="true"
+         data-bind="css: { 'sce-section': $root.isSection($data), 'sce-command': !$root.isSection($data), 'sce-drag-over': $root.dragOver() === $index() },
+                    event: { dragstart: $root.dragStart, dragenter: $root.dragEnterRow, dragover: $root.dragOverRow, dragleave: $root.dragLeave, drop: $root.dropRow, dragend: $root.dragEnd }">
+        <span class="sce-handle" title="{{ _('Drag to move')|edq }}"><i class="fa-solid fa-grip-vertical"></i></span>
+
+        <!-- ko if: $root.isSection($data) -->
+        <span class="sce-section-label">
+            <!-- ko if: $data.name --><span data-bind="text: $data.name"></span><!-- /ko -->
+            <!-- ko ifnot: $data.name --><span class="muted">{{ _('Divider') }}</span><!-- /ko -->
+        </span>
+        <!-- /ko -->
+
+        <!-- ko ifnot: $root.isSection($data) -->
+        <span class="sce-icon"><i data-bind="css: $data.icon || ''"></i></span>
+        <span class="sce-text">
+            <span class="sce-name" data-bind="text: $data.name"></span>
+            <code class="sce-cmd" data-bind="text: $data.command, attr: { title: $data.command }"></code>
+        </span>
+        <span class="sce-badges">
+            <span class="label" data-bind="visible: $data.confirm" title="{{ _('Asks for confirmation')|edq }}"><i class="fa-solid fa-circle-question"></i></span>
+            <span class="label" data-bind="visible: $data.async" title="{{ _('Runs in the background')|edq }}"><i class="fa-solid fa-hourglass-half"></i></span>
+            <span class="label" data-bind="visible: $data.fresh_credentials" title="{{ _('Requires a recent login')|edq }}"><i class="fa-solid fa-key"></i></span>
+            <span class="label" data-bind="visible: $data.ignore" title="{{ _('Ignores errors')|edq }}"><i class="fa-solid fa-eye-slash"></i></span>
+        </span>
+        <!-- /ko -->
+
+        <span class="btn-group sce-buttons">
+            <button type="button" class="btn btn-mini" title="{{ _('Move up')|edq }}" data-bind="click: $root.moveUp, enable: $index() > 0"><i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" class="btn btn-mini" title="{{ _('Move down')|edq }}" data-bind="click: $root.moveDown, enable: $index() < $root.entries().length - 1"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit')|edq }}" data-bind="click: $root.edit"><i class="fa-solid fa-pencil"></i></button>
+            <!-- ko ifnot: $root.isSection($data) -->
+            <button type="button" class="btn btn-mini" title="{{ _('Duplicate')|edq }}" data-bind="click: $root.duplicate"><i class="fa-solid fa-copy"></i></button>
+            <!-- /ko -->
+            <button type="button" class="btn btn-mini btn-danger" title="{{ _('Delete')|edq }}" data-bind="click: $root.remove"><i class="fa-solid fa-trash"></i></button>
+        </span>
+    </div>
+    <!-- /ko -->
+</div>
+
+<div class="sce-add-buttons">
+    <button type="button" class="btn" data-bind="click: addCommand"><i class="fa-regular fa-square-plus"></i> {{ _('Add command') }}</button>
+    <button type="button" class="btn" data-bind="click: addSection"><i class="fa-solid fa-grip-lines"></i> {{ _('Add section') }}</button>
+</div>
+
+<!-- Editor -->
+<div id="sce-editor" class="modal hide" data-bind="with: editor">
+    <div class="modal-header">
+        <a href="javascript:void(0)" class="close" data-bind="click: cancel">&times;</a>
+        <h3 data-bind="text: title"></h3>
+    </div>
+    <div class="modal-body">
+        <form class="form-horizontal" data-bind="submit: done">
+            <!-- ko if: isSection() -->
+            <div class="control-group">
+                <label class="control-label" for="sce-editor-section-name">{{ _('Section name') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-editor-section-name" class="input-block-level" data-bind="textInput: name" placeholder="{{ _('Optional, e.g. Printer')|edq }}">
+                    <span class="help-block">{{ _('Shown as a heading in the System menu. Leave empty for a plain divider line.') }}</span>
+                </div>
+            </div>
+            <!-- /ko -->
+
+            <!-- ko if: isCore() -->
+            <div class="control-group">
+                <label class="control-label">{{ _('Command') }}</label>
+                <div class="controls"><span class="sce-core-name" data-bind="text: name"></span></div>
+            </div>
+            <div class="control-group">
+                <label class="control-label" for="sce-editor-heading">{{ _('Heading above') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-editor-heading" class="input-block-level" data-bind="textInput: heading" placeholder="{{ _('Optional, e.g. System')|edq }}">
+                    <span class="help-block">{{ _('Shown in the System menu above this command. Leave empty for none.') }}</span>
+                </div>
+            </div>
+            <!-- /ko -->
+
+            <!-- ko if: !isSection() && !isCore() -->
+            <div class="control-group" data-bind="css: { error: nameError() }">
+                <label class="control-label" for="sce-editor-name">{{ _('Name') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-editor-name" class="input-block-level" data-bind="textInput: name" placeholder="{{ _('e.g. Restart webcam')|edq }}">
+                    <span class="help-block" data-bind="text: nameError, visible: nameError"></span>
+                </div>
+            </div>
+
+            <div class="control-group" data-bind="css: { error: actionError() }">
+                <label class="control-label" for="sce-editor-action">{{ _('Identifier') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-editor-action" class="input-block-level" data-bind="textInput: action, event: { input: actionEdited }">
+                    <span class="help-block" data-bind="visible: !actionError()">{{ _('Used by OctoPrint to run the command. Lowercase letters, digits, - and _ only.') }}</span>
+                    <span class="help-block" data-bind="text: actionError, visible: actionError"></span>
+                </div>
+            </div>
+
+            <div class="control-group" data-bind="css: { error: commandError() }">
+                <label class="control-label" for="sce-editor-command">{{ _('Command') }}</label>
+                <div class="controls">
+                    <textarea id="sce-editor-command" class="input-block-level sce-mono" rows="3" data-bind="textInput: command" placeholder="{{ _('e.g. sudo systemctl restart webcamd')|edq }}"></textarea>
+                    <span class="help-block" data-bind="visible: !commandError()">{{ _('Runs in a shell as the user OctoPrint runs as.') }}</span>
+                    <span class="help-block" data-bind="text: commandError, visible: commandError"></span>
+                </div>
+            </div>
+
+            <!-- /ko -->
+
+            <!-- ko ifnot: isSection() -->
+            <div class="control-group">
+                <label class="control-label" for="sce-editor-icon">{{ _('Icon') }}</label>
+                <div class="controls">
+                    <div class="input-prepend sce-icon-input">
+                        <span class="add-on"><i data-bind="css: icon() || 'fa-solid fa-terminal'"></i></span>
+                        <input type="text" id="sce-editor-icon" data-bind="textInput: icon" placeholder="fa-solid fa-terminal">
+                    </div>
+                    <div class="sce-icon-picks" data-bind="foreach: $root.iconChoices">
+                        <button type="button" class="btn btn-mini" data-bind="click: function() { $parent.icon($data) }, attr: { title: $data }, css: { active: $parent.icon() === $data }"><i data-bind="css: $data"></i></button>
+                    </div>
+                    <span class="help-block">{{ _('Any Font Awesome 6 icon class.') }}</span>
+                </div>
+            </div>
+
+            <!-- /ko -->
+
+            <!-- ko if: !isSection() && !isCore() -->
+            <div class="control-group">
+                <div class="controls">
+                    <label class="checkbox"><input type="checkbox" data-bind="checked: useConfirm"> {{ _('Ask for confirmation before running') }}</label>
+                    <!-- ko if: useConfirm -->
+                    <input type="text" class="input-block-level sce-confirm-message" data-bind="textInput: confirmMessage" placeholder="{{ _('e.g. You are about to restart the webcam.')|edq }}">
+                    <!-- /ko -->
+                    <label class="checkbox"><input type="checkbox" data-bind="checked: async"> {{ _('Run in the background') }}</label>
+                    <span class="help-block sce-indent">{{ _('The menu does not wait for the command to finish. Use this for commands that stop or restart OctoPrint.') }}</span>
+                    <label class="checkbox"><input type="checkbox" data-bind="checked: freshCredentials"> {{ _('Require a recent login') }}</label>
+                    <label class="checkbox"><input type="checkbox" data-bind="checked: ignore"> {{ _('Ignore errors') }}</label>
+                </div>
+            </div>
+            <!-- /ko -->
+            <button type="submit" class="hide"></button>
+        </form>
+    </div>
+    <div class="modal-footer">
+        <!-- ko if: !isSection() && !isCore() -->
+        <button type="button" class="btn pull-left" data-bind="click: runNow, enable: canRun, attr: { title: runTitle }"><i class="fa-solid fa-play"></i> {{ _('Run now') }}</button>
+        <!-- /ko -->
+        <button type="button" class="btn" data-bind="click: cancel">{{ _('Cancel') }}</button>
+        <button type="button" class="btn btn-primary" data-bind="click: done, enable: valid">{{ _('Done') }}</button>
+    </div>
+</div>

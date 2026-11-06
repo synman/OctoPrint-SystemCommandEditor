@@ -1,3 +1,160 @@
-#settings_plugin_systemcommandeditor {
-  min-height: 600px;
+/* Settings pane */
+
+#settings_plugin_systemcommandeditor .sce-list,
+#settings_plugin_systemcommandeditor .sce-add-buttons {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#settings_plugin_systemcommandeditor .sce-list {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 6px;
+}
+
+#settings_plugin_systemcommandeditor .sce-empty {
+  padding: 12px;
+  text-align: center;
+}
+
+#settings_plugin_systemcommandeditor .sce-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+#settings_plugin_systemcommandeditor .sce-row:hover {
+  border-color: #ddd;
+}
+
+#settings_plugin_systemcommandeditor .sce-row.sce-drag-over {
+  border-top: 2px solid #08c;
+}
+
+#settings_plugin_systemcommandeditor .sce-section {
+  margin-top: 8px;
+  border-bottom: 1px solid #ccc;
+  font-weight: bold;
+}
+
+#settings_plugin_systemcommandeditor .sce-section:first-child {
+  margin-top: 0;
+}
+
+#settings_plugin_systemcommandeditor .sce-section-label {
+  flex: 1 1 auto;
+}
+
+#settings_plugin_systemcommandeditor .sce-handle {
+  cursor: move;
+  opacity: 0.5;
+}
+
+#settings_plugin_systemcommandeditor .sce-icon {
+  width: 1.4em;
+  text-align: center;
+}
+
+#settings_plugin_systemcommandeditor .sce-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#settings_plugin_systemcommandeditor .sce-cmd {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 85%;
+  /* follow the theme's text colour rather than bootstrap's red for code */
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  opacity: 0.65;
+}
+
+#settings_plugin_systemcommandeditor .sce-badges {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+#settings_plugin_systemcommandeditor .sce-buttons {
+  flex: 0 0 auto;
+}
+
+#settings_plugin_systemcommandeditor .sce-add-buttons {
+  text-align: center;
+  margin-top: 10px;
+}
+
+/* Editor */
+
+#sce-editor .sce-mono {
+  font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
+#sce-editor .sce-icon-input input {
+  width: 220px;
+}
+
+#sce-editor .sce-icon-picks {
+  margin-top: 6px;
+}
+
+#sce-editor .sce-icon-picks .btn {
+  margin: 0 2px 2px 0;
+  width: 28px;
+}
+
+#sce-editor .sce-confirm-message {
+  margin: 2px 0 8px 0;
+}
+
+#sce-editor .sce-indent {
+  margin: -4px 0 6px 20px;
+}
+
+/* System menu */
+
+#navbar_systemmenu .sce-menu-icon {
+  display: inline-block;
+  width: 1.25em;
+  margin-right: 6px;
+  text-align: center;
+}
+
+#navbar_systemmenu .dropdown-menu > li.sce-doubled {
+  display: none;
+}
+
+#navbar_systemmenu .dropdown-menu > li.dropdown-header.sce-added {
+  padding: 3px 20px;
+  font-size: 85%;
+  font-weight: bold;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* OctoPrint's own entries */
+
+#settings_plugin_systemcommandeditor .sce-core-list {
+  margin-bottom: 12px;
+}
+
+#settings_plugin_systemcommandeditor .sce-core-note {
+  padding: 4px 6px 0 6px;
+  font-size: 90%;
+}
+
+#sce-editor .sce-core-name {
+  display: inline-block;
+  padding-top: 5px;
+  font-weight: bold;
 }

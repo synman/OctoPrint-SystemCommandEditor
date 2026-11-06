@@ -1,0 +1,101 @@
+# coding=utf-8
+"""Conversion of system commands saved by older versions of this plugin.
+
+Before 2.0 the plugin kept a copy of OctoPrint's ``system.actions`` in its own settings and, on every startup,
+copied that copy back over ``system.actions``. 2.0 edits ``system.actions`` directly and keeps no copy, so on
+upgrade the two lists are merged into ``system.actions`` once and the copy is dropped.
+
+Kept free of OctoPrint imports so it can be tested on its own.
+"""
+
+DIVIDER = "divider"
+
+# keys OctoPrint itself reads from a system action, plus the ones this plugin adds
+KNOWN_KEYS = ("action", "name", "command", "async", "confirm", "fresh_credentials", "ignore", "icon")
+
+
+def _is_divider(entry):
+    return entry.get("action") == DIVIDER
+
+
+def _clean(entry):
+    """Copy an entry, dropping empty optional values. Unknown keys are kept so nothing is lost."""
+    result = {}
+    for key, value in entry.items():
+        if key == "action":
+            result[key] = value
+        elif key in ("confirm", "icon", "name") and not value:
+            continue
+        elif key in ("async", "fresh_credentials", "ignore") and not value:
+            continue
+        else:
+            result[key] = value
+    return result
+
+
+def _valid(entry):
+    return isinstance(entry, dict) and isinstance(entry.get("action"), str) and entry["action"] != ""
+
+
+def convert(system_actions, legacy_actions):
+    """Merge OctoPrint's system actions with the plugin's legacy copy.
+
+    Returns ``(actions, report)``. ``actions`` keeps the order of ``system_actions``, then appends commands only
+    the legacy copy has. A command whose ``action`` was already seen is dropped, so the duplicates the old editor
+    created collapse to their first entry. Adjacent dividers collapse, and dividers at either end are dropped.
+    """
+    report = {"duplicates": [], "restored": [], "invalid": 0, "dividers_dropped": 0}
+
+    merged = []
+    seen = set()
+
+    def add(entry, restoring):
+        if not _valid(entry):
+            report["invalid"] += 1
+            return
+        if _is_divider(entry):
+            merged.append(_clean(entry))
+            return
+        action = entry["action"]
+        if action in seen:
+            if not restoring:
+                report["duplicates"].append(action)
+            return
+        seen.add(action)
+        if restoring:
+            report["restored"].append(action)
+        merged.append(_clean(entry))
+
+    for entry in system_actions or []:
+        add(entry, False)
+
+    restoring = [entry for entry in (legacy_actions or []) if _valid(entry) and not _is_divider(entry)]
+    if restoring and any(entry["action"] not in seen for entry in restoring):
+        if merged and not _is_divider(merged[-1]):
+            merged.append({"action": DIVIDER})
+        for entry in restoring:
+            add(entry, True)
+
+    actions = []
+    for entry in merged:
+        if _is_divider(entry):
+            if actions and _is_divider(actions[-1]):
+                # two dividers in a row: keep one, preferring the one that names a section
+                if entry.get("name") and not actions[-1].get("name"):
+                    actions[-1] = entry
+                report["dividers_dropped"] += 1
+                continue
+            if not actions and not entry.get("name"):
+                # a plain divider at the top separates nothing; a named one starts the first section
+                report["dividers_dropped"] += 1
+                continue
+        actions.append(entry)
+    while actions and _is_divider(actions[-1]):
+        actions.pop()
+        report["dividers_dropped"] += 1
+
+    return actions, report
+
+
+def command_count(actions):
+    return sum(1 for entry in actions or [] if _valid(entry) and not _is_divider(entry))

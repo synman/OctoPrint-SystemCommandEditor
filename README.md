@@ -1,16 +1,89 @@
-# Plugin for OctoPrint - makes System Commands editable via settings
-====================================================================
+# OctoPrint System Command Editor
 
-This plugin helps you create, edit and delete System commands.
-You can Access all option in the settings under "Plugins -> System Command Editor"
+Add, edit, reorder and group the commands in OctoPrint's System menu, the power icon in the navigation bar,
+from **Settings → Plugins → System Command Editor**.
 
-Right Click on a Control or the Green Box to open a context menu.
+![The editor](extras/screenshots/editor.png)
+
+![The System menu](extras/screenshots/menu.png)
+
+![Editing a command](extras/screenshots/command.png)
+
+## What it does
+
+- Lists your commands the way the System menu shows them, with buttons on each row to move, edit, duplicate
+  and delete it. Drag a row by its handle to move it.
+- **Add command** opens an editor for the name, the shell command, an icon and these options:
+  - ask for confirmation, with your own message
+  - run in the background, for commands that stop or restart OctoPrint
+  - require a recent login
+  - ignore errors
+- **Add section** adds a divider line, with an optional heading that the System menu shows above the
+  commands that follow it.
+- **Run now** in the editor runs a saved command so you can try it.
+- OctoPrint's built-in entries (Shutdown, Reboot, Restart, Restart in safe mode) get icons and the headings
+  "System" and "OctoPrint" out of the box. Their rows at the top of the editor let you change those icons and
+  headings. What they run stays under **Settings → Server**, and they appear only once a command is set there.
+- The System menu shows each command's icon and each section's heading. Only the plugin's own CSS and
+  JavaScript are used; OctoPrint itself is not modified. Icons come from the settings, so users who may run
+  system commands but not change settings see headings without icons.
+
+Changes take effect when you click **Save** in the settings dialog. On OctoPrint 2.0 you are asked for your
+password, because OctoPrint requires a recent login to change system commands.
+
+## Where your commands are kept
+
+Commands are stored where OctoPrint keeps them, under `system.actions` in `config.yaml`. The plugin keeps no
+copy of its own. If you uninstall it, your commands stay in the System menu. Icons and section headings are
+saved with the commands as two extra keys, `icon` and a divider's `name`, which OctoPrint ignores. The icons
+and headings of OctoPrint's built-in entries have nowhere to go in OctoPrint's own settings, so they are kept in
+the plugin's settings under `plugins.systemcommandeditor.core`.
+
+## Upgrading from 1.x
+
+Versions before 2.0 kept a second copy of the commands in the plugin's own settings and copied it back over
+`system.actions` on every start. That could wipe commands on a fresh install, and its editor could save
+several copies of a new command.
+
+On the first start after upgrading, 2.0 converts your commands in place, once:
+
+1. Both lists are saved to `data/systemcommandeditor/pre-2.0-backup-<date>.yaml` in OctoPrint's base folder.
+2. Commands from the plugin's copy that are missing from `system.actions` are added back at the end.
+3. Duplicate commands, which share an identifier, are reduced to the first one.
+4. Repeated dividers, a plain divider at the start, and any divider at the end are removed.
+5. The plugin's copy is deleted.
+
+The result is written to `octoprint.log`, for example:
+
+```
+Converted system commands: 4 commands, 2 duplicates removed ['restart'], 1 restored from the plugin's old copy ['wifi'], 0 invalid entries skipped
+```
+
+## Requirements
+
+OctoPrint 1.9 or newer, including 2.0, on Python 3.7 or newer. Tested on 1.9.3, 1.10.3, 1.11.8 and 2.0.0rc5.
 
 ## Setup
 
-Install the plugin via OctoPrint's Plugin Manager, or like you would install any regular Python package from source:
+Install it through the Plugin Manager, or with the Python that runs OctoPrint:
 
     pip install https://github.com/synman/OctoPrint-SystemCommandEditor/archive/master.zip
-    
-Make sure you use the same Python environment that you installed OctoPrint under, otherwise the plugin
-won't be able to satisfy its dependencies.
+
+## Development
+
+Unit tests cover the conversion and the upgrade step. Run them with a Python that has OctoPrint installed:
+
+    pip install pytest
+    python -m pytest tests
+
+Files:
+
+| Path | What it holds |
+|---|---|
+| `octoprint_systemcommandeditor/__init__.py` | the plugin and the upgrade step |
+| `octoprint_systemcommandeditor/convert.py` | the conversion of 1.x commands, no OctoPrint imports |
+| `octoprint_systemcommandeditor/templates/systemcommandeditor_settings.jinja2` | the settings pane and editor |
+| `octoprint_systemcommandeditor/static/js/systemcommandeditor.js` | the settings pane and editor logic |
+| `octoprint_systemcommandeditor/static/js/systemcommandeditor_menu.js` | icons and headings in the System menu |
+| `octoprint_systemcommandeditor/static/css/systemcommandeditor.css` | styles for both |
+| `tests/` | pytest suites |
