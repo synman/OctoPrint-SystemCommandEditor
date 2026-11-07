@@ -1,4 +1,5 @@
-# OctoPrint System Command Editor
+[![Usage Statistics](https://github.com/synman/OctoPluginStats/actions/workflows/get-data.yaml/badge.svg)](https://synman.github.io/OctoPluginStats/#systemcommandeditorContainer)
+# System Command Editor Plugin for Octoprint
 
 Add, edit, reorder and group the commands in OctoPrint's System menu, the power icon in the navigation bar,
 from **Settings → Plugins → System Command Editor**.
