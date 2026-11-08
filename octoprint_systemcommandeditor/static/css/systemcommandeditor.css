@@ -158,3 +158,94 @@
   padding-top: 5px;
   font-weight: bold;
 }
+
+/* System menu: device rows (switch, selector, readout, link) and conditions */
+
+#navbar_systemmenu .sce-hidden {
+  display: none !important;
+}
+
+#navbar_systemmenu li.disabled > a,
+#navbar_systemmenu li.sce-device.disabled,
+#navbar_systemmenu a.sce-choice.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#navbar_systemmenu li.sce-device {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+}
+
+#navbar_systemmenu .sce-device-row {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 12px 3px 20px;
+  white-space: nowrap;
+}
+
+#navbar_systemmenu .sce-device-row.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#navbar_systemmenu .sce-device-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#navbar_systemmenu .sce-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 85%;
+  opacity: 0.8;
+}
+
+#navbar_systemmenu .sce-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #bbb;
+}
+
+#navbar_systemmenu .sce-dot.sce-on {
+  background: #3a3;
+}
+
+#navbar_systemmenu .sce-dot.sce-off {
+  background: #777;
+}
+
+#navbar_systemmenu .sce-buttons {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+#navbar_systemmenu .sce-btn {
+  padding: 0 5px;
+}
+
+#navbar_systemmenu .sce-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+#navbar_systemmenu li.sce-readout {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 20px;
+  white-space: nowrap;
+}
+
+#navbar_systemmenu li.sce-device.sce-readout > .sce-state {
+  margin-left: auto;
+}
