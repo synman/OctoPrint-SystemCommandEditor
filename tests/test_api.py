@@ -133,3 +133,7 @@ def test_command_status_without_status_device(monkeypatch):
             "missing": {"state": "unknown", "output": "", "exit": None, "error": "unknown device"},
         }
     }
+
+
+def test_api_is_declared_protected():
+    assert make_plugin().is_api_protected() is True

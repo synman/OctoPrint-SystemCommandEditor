@@ -33,7 +33,7 @@ def run_status(command, timeout=10):
     except subprocess.TimeoutExpired:
         _kill_group(proc)
         return None, "", "timeout"
-    return proc.returncode, stdout.strip()[:OUTPUT_LIMIT], None
+    return proc.returncode, stdout.strip(), None
 
 
 def evaluate(device, choice_values, exit_code, output, error):
@@ -88,6 +88,11 @@ def check_devices(devices, entries, ids, runner=run_status, timeout=10):
                 if entry.get("group") == device["id"] and entry.get("role") == "choice"
             ]
             state = evaluate(device, choices, exit_code, output, error)
-            results[device["id"]] = {"state": state, "output": output, "exit": exit_code, "error": error}
+            results[device["id"]] = {
+                "state": state,
+                "output": output[:OUTPUT_LIMIT],
+                "exit": exit_code,
+                "error": error,
+            }
 
     return results

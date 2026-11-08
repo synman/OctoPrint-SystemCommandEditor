@@ -99,11 +99,11 @@ def test_run_status_timeout_leaves_no_process_behind(tmp_path):
     assert not _alive(pid)
 
 
-def test_run_status_cuts_output_to_200_characters():
+def test_run_status_returns_full_output():
     command = " ".join(shlex.quote(part) for part in [sys.executable, "-c", "print('x' * 300)"])
     exit_code, output, error = run_status(command)
     assert (exit_code, error) == (0, None)
-    assert output == "x" * 200
+    assert output == "x" * 300
 
 
 def test_check_devices_unknown_id():
@@ -164,3 +164,49 @@ def test_check_devices_runs_in_parallel():
 
     assert elapsed < 0.8
     assert {key: value["state"] for key, value in result.items()} == {"d0": "ok", "d1": "ok", "d2": "ok"}
+
+
+def test_check_devices_stores_output_cut_to_200_characters():
+    devices = [{"id": "ro", "type": "readout", "status": "cmd"}]
+    result = check_devices(devices, [], ["ro"], runner=lambda c, t: (0, "x" * 300, None))
+    assert result["ro"]["output"] == "x" * 200
+
+
+def test_check_devices_switch_pattern_past_200_characters():
+    devices = [
+        {
+            "id": "sw",
+            "type": "switch",
+            "status": "cmd",
+            "on_pattern": '"relay_state": ?1',
+            "off_pattern": '"relay_state": ?0',
+        }
+    ]
+    result = check_devices(
+        devices, [], ["sw"], runner=lambda c, t: (0, "a" * 250 + '"relay_state":1', None)
+    )
+    assert result["sw"]["state"] == "on"
+
+
+def test_check_devices_readout_uses_full_first_line():
+    devices = [{"id": "ro", "type": "readout", "status": "cmd"}]
+    result = check_devices(devices, [], ["ro"], runner=lambda c, t: (0, "y" * 250, None))
+    assert result["ro"]["state"] == "y" * 250
+    assert result["ro"]["output"] == "y" * 200
+
+
+def test_check_devices_real_command_pattern_past_200_characters():
+    script = "print('a' * 250 + '\"relay_state\":0')"
+    command = " ".join(shlex.quote(part) for part in [sys.executable, "-c", script])
+    devices = [
+        {
+            "id": "plug",
+            "type": "switch",
+            "status": command,
+            "on_pattern": '"relay_state": ?1',
+            "off_pattern": '"relay_state": ?0',
+        }
+    ]
+    result = check_devices(devices, [], ["plug"])
+    assert result["plug"]["state"] == "off"
+    assert len(result["plug"]["output"]) == 200

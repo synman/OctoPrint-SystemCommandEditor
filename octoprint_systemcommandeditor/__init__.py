@@ -88,6 +88,9 @@ class SystemCommandEditorPlugin(
             core_commands=self._core_commands(),
         )
 
+    def is_api_protected(self):
+        return True
+
     def _action_entries(self):
         entries = []
         for item in self._settings.global_get(["system", "actions"]) or []:
