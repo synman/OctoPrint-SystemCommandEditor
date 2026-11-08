@@ -51,7 +51,36 @@
     {{ _('These commands appear in the System menu, the power icon in the navigation bar. Changes take effect when you click Save.') }}
 </p>
 
+<h4 class="sce-group-title">{{ _('Devices') }}</h4>
+<p class="muted">
+    {{ _('A device groups commands in the System menu: a switch has On and Off commands, a selector has a command for each choice, a readout shows a status, and a link opens a page.') }}
+</p>
+
+<div class="sce-list" data-bind="css: { 'sce-list-empty': devices().length === 0 }">
+    <div class="sce-empty muted" data-bind="visible: devices().length === 0">
+        {{ _('You have no devices yet. Add one with the button below.') }}
+    </div>
+    <!-- ko foreach: devices -->
+    <div class="sce-row sce-device-row">
+        <span class="sce-icon"><i data-bind="css: $data.icon || ''"></i></span>
+        <span class="sce-text">
+            <span class="sce-name" data-bind="text: $data.name"></span>
+            <span class="muted" data-bind="text: $root.typeLabel($data.type)"></span>
+        </span>
+        <span class="btn-group sce-buttons">
+            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit')|edq }}" data-bind="click: $root.editDevice"><i class="fa-solid fa-pencil"></i></button>
+            <button type="button" class="btn btn-mini btn-danger" title="{{ _('Delete')|edq }}" data-bind="click: $root.removeDevice"><i class="fa-solid fa-trash"></i></button>
+        </span>
+    </div>
+    <!-- /ko -->
+</div>
+
+<div class="sce-add-buttons">
+    <button type="button" class="btn" data-bind="click: addDevice"><i class="fa-solid fa-plug"></i> {{ _('Add device') }}</button>
+</div>
+
 <!-- ko if: coreEntries().length -->
+<h4 class="sce-group-title">{{ _('Built-in commands') }}</h4>
 <div class="sce-list sce-core-list">
     <!-- ko foreach: coreEntries -->
     <!-- ko if: $data.heading -->
@@ -75,30 +104,7 @@
 </div>
 <!-- /ko -->
 
-<h4>{{ _('Devices') }}</h4>
-<p class="muted">
-    {{ _('A device groups commands in the System menu: a switch has On and Off commands, a selector has a command for each choice, a readout shows a status, and a link opens a page.') }}
-</p>
-
-<div class="sce-list" data-bind="css: { 'sce-list-empty': devices().length === 0 }">
-    <div class="sce-empty muted" data-bind="visible: devices().length === 0">
-        {{ _('You have no devices yet. Add one with the buttons below.') }}
-    </div>
-    <!-- ko foreach: devices -->
-    <div class="sce-row sce-device-row">
-        <span class="sce-icon"><i data-bind="css: $data.icon || ''"></i></span>
-        <span class="sce-text">
-            <span class="sce-name" data-bind="text: $data.name"></span>
-            <span class="muted" data-bind="text: $root.typeLabel($data.type)"></span>
-        </span>
-        <span class="btn-group sce-buttons">
-            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit')|edq }}" data-bind="click: $root.editDevice"><i class="fa-solid fa-pencil"></i></button>
-            <button type="button" class="btn btn-mini btn-danger" title="{{ _('Delete')|edq }}" data-bind="click: $root.removeDevice"><i class="fa-solid fa-trash"></i></button>
-        </span>
-    </div>
-    <!-- /ko -->
-</div>
-
+<h4 class="sce-group-title">{{ _('Custom commands') }}</h4>
 <div class="sce-list" data-bind="css: { 'sce-list-empty': entries().length === 0 }">
     <div class="sce-empty muted" data-bind="visible: entries().length === 0">
         {{ _('You have no system commands yet. Add one with the buttons below.') }}
@@ -148,7 +154,6 @@
 <div class="sce-add-buttons">
     <button type="button" class="btn" data-bind="click: addCommand"><i class="fa-regular fa-square-plus"></i> {{ _('Add command') }}</button>
     <button type="button" class="btn" data-bind="click: addSection"><i class="fa-solid fa-grip-lines"></i> {{ _('Add section') }}</button>
-    <button type="button" class="btn" data-bind="click: addDevice"><i class="fa-solid fa-plug"></i> {{ _('Add device') }}</button>
 </div>
 
 <!-- Editor -->
