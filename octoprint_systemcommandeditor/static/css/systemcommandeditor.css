@@ -249,3 +249,41 @@
 #navbar_systemmenu li.sce-device.sce-readout > .sce-state {
   margin-left: auto;
 }
+
+/* device editor and command assignment */
+#settings_plugin_systemcommandeditor .sce-member {
+  white-space: nowrap;
+  max-width: 14em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#settings_plugin_systemcommandeditor .sce-device-row .sce-text {
+  flex: 1 1 auto;
+}
+
+#sce-editor .sce-role,
+#sce-editor .sce-condition select,
+#sce-device-editor .sce-condition select {
+  margin-top: 4px;
+}
+
+#sce-editor .sce-condition,
+#sce-device-editor .sce-condition {
+  margin: 4px 0 0 20px;
+}
+
+#sce-editor .sce-state-picks label.checkbox.inline,
+#sce-device-editor .sce-state-picks label.checkbox.inline {
+  margin-right: 10px;
+}
+
+#sce-editor .sce-preview {
+  margin: 8px 0 0 20px;
+}
+
+#sce-editor .sce-preview-command {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

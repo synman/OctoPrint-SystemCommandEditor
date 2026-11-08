@@ -1,3 +1,50 @@
+{% macro device_block() %}
+<!-- ko ifnot: isSection() -->
+<div class="control-group" data-bind="css: { error: deviceError() || roleError() || valueError() }">
+    <label class="control-label" for="sce-editor-device">{{ _('Device') }}</label>
+    <div class="controls">
+        <select id="sce-editor-device" class="input-block-level" data-bind="options: deviceChoices, optionsValue: 'id', optionsText: 'name', value: device"></select>
+        <!-- ko if: device() -->
+        <select class="input-block-level sce-role" data-bind="options: roleChoices, optionsValue: 'value', optionsText: 'label', value: role" aria-label="{{ _('Role')|edq }}"></select>
+        <!-- ko if: role() === 'choice' -->
+        <input type="text" class="input-block-level" data-bind="textInput: value" placeholder="{{ _('e.g. 1080')|edq }}">
+        <!-- /ko -->
+        <!-- /ko -->
+        <span class="help-block" data-bind="text: deviceError, visible: deviceError"></span>
+        <span class="help-block" data-bind="text: roleError, visible: roleError"></span>
+        <span class="help-block" data-bind="text: valueError, visible: valueError"></span>
+        <span class="help-block" data-bind="visible: !deviceError() && !roleError() && !valueError()">{{ _('Put this command on a device, so the System menu shows it as its on, off or choice command.') }}</span>
+    </div>
+</div>
+
+<div class="control-group" data-bind="css: { error: condition.error() }">
+    <div class="controls">
+        <label class="checkbox"><input type="checkbox" data-bind="checked: condition.enabled"> {{ _('Only allow in some printer states') }}</label>
+        <!-- ko if: condition.enabled -->
+        <div class="sce-condition">
+            <select class="input-medium" data-bind="value: condition.mode" aria-label="{{ _('Mode')|edq }}">
+                <option value="only">{{ _('Only when') }}</option>
+                <option value="never">{{ _('Never when') }}</option>
+            </select>
+            <div class="sce-state-picks">
+                <label class="checkbox inline"><input type="checkbox" value="printing" data-bind="checked: condition.states"> {{ _('Printing') }}</label>
+                <label class="checkbox inline"><input type="checkbox" value="paused" data-bind="checked: condition.states"> {{ _('Paused') }}</label>
+                <label class="checkbox inline"><input type="checkbox" value="ready" data-bind="checked: condition.states"> {{ _('Ready') }}</label>
+                <label class="checkbox inline"><input type="checkbox" value="offline" data-bind="checked: condition.states"> {{ _('Offline') }}</label>
+                <label class="checkbox inline"><input type="checkbox" value="error" data-bind="checked: condition.states"> {{ _('Error') }}</label>
+            </div>
+            <select class="input-medium" data-bind="value: condition.effect" aria-label="{{ _('Effect')|edq }}">
+                <option value="disable">{{ _('Gray out') }}</option>
+                <option value="hide">{{ _('Hide') }}</option>
+            </select>
+        </div>
+        <span class="help-block" data-bind="text: condition.error, visible: condition.error"></span>
+        <!-- /ko -->
+    </div>
+</div>
+<!-- /ko -->
+{% endmacro %}
+
 <h3>{{ _('System Commands') }}</h3>
 
 <p class="muted">
@@ -13,8 +60,11 @@
     <div class="sce-row sce-command">
         <span class="sce-icon"><i data-bind="css: $data.icon || ''"></i></span>
         <span class="sce-text"><span class="sce-name" data-bind="text: $data.name"></span></span>
+        <span class="sce-badges">
+            <span class="label label-info sce-member" data-bind="visible: $root.badgeFor($data), text: $root.badgeFor($data)"></span>
+        </span>
         <span class="btn-group sce-buttons">
-            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit icon and heading')|edq }}" data-bind="click: $root.editCore"><i class="fa-solid fa-pencil"></i></button>
+            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit icon, heading, device and condition')|edq }}" data-bind="click: $root.editCore"><i class="fa-solid fa-pencil"></i></button>
         </span>
     </div>
     <!-- /ko -->
@@ -24,6 +74,30 @@
     </div>
 </div>
 <!-- /ko -->
+
+<h4>{{ _('Devices') }}</h4>
+<p class="muted">
+    {{ _('A device groups commands in the System menu: a switch has On and Off commands, a selector has a command for each choice, a readout shows a status, and a link opens a page.') }}
+</p>
+
+<div class="sce-list" data-bind="css: { 'sce-list-empty': devices().length === 0 }">
+    <div class="sce-empty muted" data-bind="visible: devices().length === 0">
+        {{ _('You have no devices yet. Add one with the buttons below.') }}
+    </div>
+    <!-- ko foreach: devices -->
+    <div class="sce-row sce-device-row">
+        <span class="sce-icon"><i data-bind="css: $data.icon || ''"></i></span>
+        <span class="sce-text">
+            <span class="sce-name" data-bind="text: $data.name"></span>
+            <span class="muted" data-bind="text: $root.typeLabel($data.type)"></span>
+        </span>
+        <span class="btn-group sce-buttons">
+            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit')|edq }}" data-bind="click: $root.editDevice"><i class="fa-solid fa-pencil"></i></button>
+            <button type="button" class="btn btn-mini btn-danger" title="{{ _('Delete')|edq }}" data-bind="click: $root.removeDevice"><i class="fa-solid fa-trash"></i></button>
+        </span>
+    </div>
+    <!-- /ko -->
+</div>
 
 <div class="sce-list" data-bind="css: { 'sce-list-empty': entries().length === 0 }">
     <div class="sce-empty muted" data-bind="visible: entries().length === 0">
@@ -50,6 +124,7 @@
             <code class="sce-cmd" data-bind="text: $data.command, attr: { title: $data.command }"></code>
         </span>
         <span class="sce-badges">
+            <span class="label label-info sce-member" data-bind="visible: $root.badgeFor($data), text: $root.badgeFor($data)"></span>
             <span class="label" data-bind="visible: $data.confirm" title="{{ _('Asks for confirmation')|edq }}"><i class="fa-solid fa-circle-question"></i></span>
             <span class="label" data-bind="visible: $data.async" title="{{ _('Runs in the background')|edq }}"><i class="fa-solid fa-hourglass-half"></i></span>
             <span class="label" data-bind="visible: $data.fresh_credentials" title="{{ _('Requires a recent login')|edq }}"><i class="fa-solid fa-key"></i></span>
@@ -73,6 +148,7 @@
 <div class="sce-add-buttons">
     <button type="button" class="btn" data-bind="click: addCommand"><i class="fa-regular fa-square-plus"></i> {{ _('Add command') }}</button>
     <button type="button" class="btn" data-bind="click: addSection"><i class="fa-solid fa-grip-lines"></i> {{ _('Add section') }}</button>
+    <button type="button" class="btn" data-bind="click: addDevice"><i class="fa-solid fa-plug"></i> {{ _('Add device') }}</button>
 </div>
 
 <!-- Editor -->
@@ -136,6 +212,8 @@
 
             <!-- /ko -->
 
+            {{ device_block() }}
+
             <!-- ko ifnot: isSection() -->
             <div class="control-group">
                 <label class="control-label" for="sce-editor-icon">{{ _('Icon') }}</label>
@@ -159,6 +237,10 @@
                     <label class="checkbox"><input type="checkbox" data-bind="checked: useConfirm"> {{ _('Ask for confirmation before running') }}</label>
                     <!-- ko if: useConfirm -->
                     <input type="text" class="input-block-level sce-confirm-message" data-bind="textInput: confirmMessage" placeholder="{{ _('e.g. You are about to restart the webcam.')|edq }}">
+                    <div class="sce-preview">
+                        <span class="muted">{{ _('The confirmation will show your message and this command:') }}</span>
+                        <pre class="sce-preview-command" data-bind="text: command"></pre>
+                    </div>
                     <!-- /ko -->
                     <label class="checkbox"><input type="checkbox" data-bind="checked: async"> {{ _('Run in the background') }}</label>
                     <span class="help-block sce-indent">{{ _('The menu does not wait for the command to finish. Use this for commands that stop or restart OctoPrint.') }}</span>
@@ -174,6 +256,135 @@
         <!-- ko if: !isSection() && !isCore() -->
         <button type="button" class="btn pull-left" data-bind="click: runNow, enable: canRun, attr: { title: runTitle }"><i class="fa-solid fa-play"></i> {{ _('Run now') }}</button>
         <!-- /ko -->
+        <button type="button" class="btn" data-bind="click: cancel">{{ _('Cancel') }}</button>
+        <button type="button" class="btn btn-primary" data-bind="click: done, enable: valid">{{ _('Done') }}</button>
+    </div>
+</div>
+
+<!-- Device editor -->
+<div id="sce-device-editor" class="modal hide" data-bind="with: deviceEditor">
+    <div class="modal-header">
+        <a href="javascript:void(0)" class="close" data-bind="click: cancel">&times;</a>
+        <h3 data-bind="text: title"></h3>
+    </div>
+    <div class="modal-body">
+        <form class="form-horizontal" data-bind="submit: done">
+            <div class="control-group">
+                <label class="control-label" for="sce-device-type">{{ _('Type') }}</label>
+                <div class="controls">
+                    <select id="sce-device-type" class="input-block-level" data-bind="options: typeChoices, optionsValue: 'value', optionsText: 'label', value: type"></select>
+                </div>
+            </div>
+
+            <div class="control-group" data-bind="css: { error: nameError() }">
+                <label class="control-label" for="sce-device-name">{{ _('Name') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-device-name" class="input-block-level" data-bind="textInput: name" placeholder="{{ _('e.g. Laser')|edq }}">
+                    <span class="help-block" data-bind="text: nameError, visible: nameError"></span>
+                </div>
+            </div>
+
+            <div class="control-group" data-bind="css: { error: identifierError() }">
+                <label class="control-label" for="sce-device-identifier">{{ _('Identifier') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-device-identifier" class="input-block-level" data-bind="textInput: identifier, event: { input: identifierEdited }">
+                    <span class="help-block" data-bind="visible: !identifierError()">{{ _('Lowercase letters, digits, - and _ only.') }}</span>
+                    <span class="help-block" data-bind="text: identifierError, visible: identifierError"></span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="sce-device-icon">{{ _('Icon') }}</label>
+                <div class="controls">
+                    <div class="input-prepend sce-icon-input">
+                        <span class="add-on"><i data-bind="css: icon() || 'fa-solid fa-plug'"></i></span>
+                        <input type="text" id="sce-device-icon" data-bind="textInput: icon" placeholder="fa-solid fa-plug">
+                    </div>
+                    <div class="sce-icon-picks" data-bind="foreach: $root.iconChoices">
+                        <button type="button" class="btn btn-mini" data-bind="click: function() { $parent.icon($data) }, attr: { title: $data }, css: { active: $parent.icon() === $data }"><i data-bind="css: $data"></i></button>
+                    </div>
+                    <span class="help-block">{{ _('Any Font Awesome 6 icon class.') }}</span>
+                </div>
+            </div>
+
+            <!-- ko if: hasStatus -->
+            <div class="control-group" data-bind="css: { error: statusError() }">
+                <label class="control-label" for="sce-device-status">{{ _('Status command') }}</label>
+                <div class="controls">
+                    <textarea id="sce-device-status" class="input-block-level sce-mono" rows="2" data-bind="textInput: status"></textarea>
+                    <span class="help-block">{{ _('Runs on the OctoPrint server when the System menu opens.') }}</span>
+                    <span class="help-block" data-bind="text: statusError, visible: statusError"></span>
+                </div>
+            </div>
+            <!-- /ko -->
+
+            <!-- ko if: isSwitch -->
+            <div class="control-group">
+                <label class="control-label" for="sce-device-on">{{ _('On pattern') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-device-on" class="input-block-level sce-mono" data-bind="textInput: onPattern">
+                </div>
+            </div>
+            <div class="control-group">
+                <label class="control-label" for="sce-device-off">{{ _('Off pattern') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-device-off" class="input-block-level sce-mono" data-bind="textInput: offPattern">
+                    <span class="help-block">{{ _('Leave both empty to use the exit code: 0 means on.') }}</span>
+                </div>
+            </div>
+            <!-- /ko -->
+
+            <!-- ko if: isLink -->
+            <div class="control-group" data-bind="css: { error: urlError() }">
+                <label class="control-label" for="sce-device-url">{{ _('URL') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-device-url" class="input-block-level" data-bind="textInput: url">
+                    <span class="help-block" data-bind="text: urlError, visible: urlError"></span>
+                </div>
+            </div>
+            <!-- /ko -->
+
+            <!-- ko if: hasSection -->
+            <div class="control-group">
+                <label class="control-label" for="sce-device-section">{{ _('Section') }}</label>
+                <div class="controls">
+                    <select id="sce-device-section" class="input-block-level" data-bind="options: sectionChoices, optionsValue: 'value', optionsText: 'label', value: section"></select>
+                    <span class="help-block">{{ _('The divider in the System menu this device is shown under.') }}</span>
+                </div>
+            </div>
+            <!-- /ko -->
+
+            <!-- ko if: isLink -->
+            <div class="control-group" data-bind="css: { error: condition.error() }">
+                <div class="controls">
+                    <label class="checkbox"><input type="checkbox" data-bind="checked: condition.enabled"> {{ _('Only allow in some printer states') }}</label>
+                    <!-- ko if: condition.enabled -->
+                    <div class="sce-condition">
+                        <select class="input-medium" data-bind="value: condition.mode" aria-label="{{ _('Mode')|edq }}">
+                            <option value="only">{{ _('Only when') }}</option>
+                            <option value="never">{{ _('Never when') }}</option>
+                        </select>
+                        <div class="sce-state-picks">
+                            <label class="checkbox inline"><input type="checkbox" value="printing" data-bind="checked: condition.states"> {{ _('Printing') }}</label>
+                            <label class="checkbox inline"><input type="checkbox" value="paused" data-bind="checked: condition.states"> {{ _('Paused') }}</label>
+                            <label class="checkbox inline"><input type="checkbox" value="ready" data-bind="checked: condition.states"> {{ _('Ready') }}</label>
+                            <label class="checkbox inline"><input type="checkbox" value="offline" data-bind="checked: condition.states"> {{ _('Offline') }}</label>
+                            <label class="checkbox inline"><input type="checkbox" value="error" data-bind="checked: condition.states"> {{ _('Error') }}</label>
+                        </div>
+                        <select class="input-medium" data-bind="value: condition.effect" aria-label="{{ _('Effect')|edq }}">
+                            <option value="disable">{{ _('Gray out') }}</option>
+                            <option value="hide">{{ _('Hide') }}</option>
+                        </select>
+                    </div>
+                    <span class="help-block" data-bind="text: condition.error, visible: condition.error"></span>
+                    <!-- /ko -->
+                </div>
+            </div>
+            <!-- /ko -->
+            <button type="submit" class="hide"></button>
+        </form>
+    </div>
+    <div class="modal-footer">
         <button type="button" class="btn" data-bind="click: cancel">{{ _('Cancel') }}</button>
         <button type="button" class="btn btn-primary" data-bind="click: done, enable: valid">{{ _('Done') }}</button>
     </div>
