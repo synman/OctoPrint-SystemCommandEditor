@@ -111,6 +111,15 @@
         return this._last[action];
     };
 
+    // what a device row shows. nostatus: the device has no status command, so no dot and no word. pending: its
+    // status command has not answered yet. unknown: a check ran and failed or matched nothing. Otherwise the state.
+    function statusKind(hasStatus, result) {
+        if (!hasStatus) return "nostatus";
+        if (!result) return "pending";
+        if (result.state === null || result.state === undefined || result.state === "unknown") return "unknown";
+        return result.state;
+    }
+
     const ESCAPES = {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"};
 
     function escapeHtml(s) {
@@ -125,6 +134,7 @@
 
     const SceModel = {
         printerState: printerState,
+        statusKind: statusKind,
         conditionEffect: conditionEffect,
         members: members,
         switchView: switchView,
@@ -240,10 +250,15 @@ $(function () {
             return (e && e.group) || "";
         };
 
-        self._stateOf = (id) => {
-            const r = self._status.get(id);
-            if (!r || r.state === undefined) return null;
-            return r.state;
+        self._kindOf = (d) => SceModel.statusKind(!!d.status, self._status.get(d.id));
+
+        // a device row is drawn only when at least one of its members is in core's command list
+        self._hasPresentMember = (id) => {
+            const tables = [["custom", self._data.entries || {}], ["core", self._data.core || {}]];
+            return tables.some((table) => Object.keys(table[1]).some((action) => {
+                const e = table[1][action];
+                return !!e && e.group === id && !!self._spec(table[0], action);
+            }));
         };
 
         self._spec = (source, action) => {
@@ -373,8 +388,8 @@ $(function () {
 
         self._buildSwitch = (d, li, members, ps) => {
             const m = members;
-            const state = self._stateOf(d.id);
-            const view = SceModel.switchView(m, state === null ? "unknown" : state);
+            const kind = self._kindOf(d);
+            const view = SceModel.switchView(m, kind);
 
             let rowAction = view.rowClick ? m[view.rowClick] : null;
             let rowCond = self._condition(d.when);
@@ -386,8 +401,8 @@ $(function () {
             row.append(icon(d.icon), node("span", ["sce-device-name"]).text(d.name));
             if (self._checking[d.id]) {
                 row.append(node("span", ["sce-state"]).append(node("i", ["fa-solid fa-spinner fa-spin", "fa-fw"])));
-            } else {
-                const s = state === "on" || state === "off" ? state : "unknown";
+            } else if (kind !== "nostatus" && kind !== "pending") {
+                const s = kind === "on" || kind === "off" ? kind : "unknown";
                 const word = {on: "On", off: "Off", unknown: "Unknown"}[s];
                 row.append(node("span", ["sce-state"]).append(node("span", ["sce-dot", "sce-" + s]), word));
             }
@@ -427,15 +442,16 @@ $(function () {
         };
 
         self._buildSelector = (d, li, members) => {
-            const state = self._stateOf(d.id);
-            const current = members.choices.find((c) => state !== null && String(c.value) === String(state));
+            const kind = self._kindOf(d);
+            const shown = kind !== "nostatus" && kind !== "pending";
+            const current = members.choices.find((c) => shown && String(c.value) === String(kind));
 
             li.addClass("dropdown-submenu");
             const row = node("a", ["sce-device-row"]).attr("href", "javascript:void(0)");
             row.append(
                 icon(d.icon),
                 node("span", ["sce-device-name"]).text(d.name),
-                node("span", ["sce-state"]).text(current ? current.name : "Unknown")
+                node("span", ["sce-state"]).text(current ? current.name : (shown ? "Unknown" : ""))
             );
             row.on("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); });
             const sub = node("ul", ["dropdown-menu"]);
@@ -536,6 +552,7 @@ $(function () {
             devices.forEach((d) => {
                 const li = node("li", [DEVICE]).attr("data-device-id", d.id);
                 if (d.type === "switch" || d.type === "selector") {
+                    if (!self._hasPresentMember(d.id)) return;
                     const m = SceModel.members(d.id, entries, core);
                     if (d.type === "switch") self._buildSwitch(d, li, m);
                     else self._buildSelector(d, li, m);
@@ -544,11 +561,12 @@ $(function () {
                     return;
                 }
                 if (d.type === "readout") {
-                    const state = self._stateOf(d.id);
+                    const kind = self._kindOf(d);
                     li.addClass("sce-readout");
                     const text = self._checking[d.id]
                         ? node("span", ["sce-state"]).append(node("i", ["fa-solid fa-spinner fa-spin", "fa-fw"]))
-                        : node("span", ["sce-state"]).text(state === null ? "Unknown" : String(state));
+                        : node("span", ["sce-state"]).text(
+                            kind === "nostatus" || kind === "pending" ? "" : kind === "unknown" ? "Unknown" : String(kind));
                     li.append(icon(d.icon), node("span", ["sce-device-name"]).text(d.name), text);
                     place(d.section, li);
                     return;

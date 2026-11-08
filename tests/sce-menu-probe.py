@@ -29,8 +29,14 @@ DEVICES = [
     {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "disk-state",
      "section": "Machine"},
     {"id": "cam", "type": "link", "name": "Camera", "icon": "fa-solid fa-video", "url": "http://example.test/cam",
+     "section": "Machine"},    {"id": "nost", "type": "switch", "name": "No-status switch", "icon": "fa-solid fa-plug",
+     "on_pattern": "", "off_pattern": "", "section": "Machine"},
+    {"id": "ghost", "type": "switch", "name": "Ghost switch", "icon": "fa-solid fa-ghost", "status": "ghost-state",
      "section": "Machine"},
 ]
+
+# devices the menu is expected to draw: "ghost" has no member in core's command list, so it draws no row
+DRAWN = [d for d in DEVICES if d["id"] != "ghost"]
 
 ENTRIES = {
     "laser_on": {"name": "Laser on", "command": "laser-on-cmd", "group": "laser", "role": "on",
@@ -44,6 +50,14 @@ ENTRIES = {
                  "icon": "", "async": False, "confirm": ""},
     "res_720": {"name": "720p", "command": "res-720-cmd", "group": "res", "role": "choice", "value": "720",
                 "icon": "", "async": False, "confirm": ""},
+    "nost_on": {"name": "No-status on", "command": "nost-on-cmd", "group": "nost", "role": "on",
+                "icon": "fa-solid fa-lightbulb", "async": False, "confirm": "", "value": ""},
+    "nost_off": {"name": "No-status off", "command": "nost-off-cmd", "group": "nost", "role": "off",
+                 "icon": "fa-solid fa-circle", "async": False, "confirm": "", "value": ""},
+    "ghost_on": {"name": "Ghost on", "command": "ghost-on-cmd", "group": "ghost", "role": "on",
+                 "icon": "fa-solid fa-lightbulb", "async": False, "confirm": "", "value": ""},
+    "ghost_off": {"name": "Ghost off", "command": "ghost-off-cmd", "group": "ghost", "role": "off",
+                  "icon": "fa-solid fa-circle", "async": False, "confirm": "", "value": ""},
     "sync_action": {"name": "Sync action", "command": "sync-cmd", "group": "", "role": "", "value": "",
                     "icon": "fa-solid fa-gear", "async": False, "confirm": ""},
     "sync_fail": {"name": "Failing sync action", "command": "fail-cmd", "group": "", "role": "", "value": "",
@@ -74,6 +88,8 @@ CUSTOM_LIST = [
     {"action": "laser_restart", "name": "Restart laser", "command": "laser-restart-cmd"},
     {"action": "res_1080", "name": "1080p", "command": "res-1080-cmd"},
     {"action": "res_720", "name": "720p", "command": "res-720-cmd"},
+    {"action": "nost_on", "name": "No-status on", "command": "nost-on-cmd"},
+    {"action": "nost_off", "name": "No-status off", "command": "nost-off-cmd"},
     {"action": "divider", "name": "Tools"},
     {"action": "sync_action", "name": "Sync action", "command": "sync-cmd"},
     {"action": "sync_fail", "name": "Failing sync action", "command": "fail-cmd"},
@@ -270,7 +286,7 @@ def count_added():
 
 
 def device_rows():
-    return {d["id"]: page.evaluate(DEVICE_ROWS, d["id"]) for d in DEVICES}
+    return {d["id"]: page.evaluate(DEVICE_ROWS, d["id"]) for d in DRAWN}
 
 
 def run_probe():
@@ -364,6 +380,22 @@ def run_probe():
         }""")
         check("link href and target", link is not None and link["href"] == "http://example.test/cam"
               and link["target"] == "_blank", json.dumps(link))
+
+        # H2. a switch with no status command shows no dot and no word and both buttons; a switch with no member
+        #     in core's command list draws no row
+        nost_row = page.evaluate("""() => {
+            const li = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="nost"]');
+            if (!li) return null;
+            return {dots: li.querySelectorAll('.sce-dot').length,
+                    state: ((li.querySelector('.sce-state') || {}).textContent || '').trim(),
+                    buttons: [...li.querySelectorAll('button.sce-btn')].map(b => b.title)};
+        }""")
+        check("switch without status shows no dot, no word, and both on and off buttons",
+              nost_row is not None and nost_row["dots"] == 0 and nost_row["state"] == ""
+              and sorted(nost_row["buttons"]) == ["No-status off", "No-status on"], json.dumps(nost_row))
+        ghost_rows = page.locator('li.sce-device[data-device-id="ghost"]').count()
+        check("switch whose members are absent from the command list draws no row", ghost_rows == 0,
+              "rows=%s" % ghost_rows)
 
         # I. opening the System menu sends one status POST naming every device that has a status
         status_log.clear()

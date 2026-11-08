@@ -223,6 +223,11 @@
   background: #777;
 }
 
+#navbar_systemmenu .sce-dot.sce-unknown {
+  background: transparent;
+  border: 1px dashed #888;
+}
+
 #navbar_systemmenu .sce-buttons {
   display: flex;
   flex: 0 0 auto;

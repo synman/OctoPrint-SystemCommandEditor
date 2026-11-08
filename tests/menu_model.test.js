@@ -219,6 +219,35 @@ test("StatusTracker: an older accepted result is never stored over a newer one",
     assert.deepStrictEqual(s.get("x"), {state: "two"});
 });
 
+// ---- statusKind: what a device row shows ----
+test("statusKind: a device with no status command is nostatus whatever the result", () => {
+    assert.strictEqual(M.statusKind(false, undefined), "nostatus");
+    assert.strictEqual(M.statusKind(false, {state: "on"}), "nostatus");
+});
+
+test("statusKind: a status command not yet answered is pending", () => {
+    assert.strictEqual(M.statusKind(true, undefined), "pending");
+});
+
+test("statusKind: a check that failed or matched nothing is unknown", () => {
+    assert.strictEqual(M.statusKind(true, {state: null, error: "boom"}), "unknown");
+    assert.strictEqual(M.statusKind(true, {state: "unknown"}), "unknown");
+    assert.strictEqual(M.statusKind(true, {}), "unknown");
+});
+
+test("statusKind: a check that answered gives its state", () => {
+    assert.strictEqual(M.statusKind(true, {state: "on"}), "on");
+    assert.strictEqual(M.statusKind(true, {state: "off"}), "off");
+    assert.strictEqual(M.statusKind(true, {state: "1080"}), "1080");
+});
+
+test("switchView: nostatus and unknown give both the on and the off button", () => {
+    const m = {on: "a_on", off: "a_off", restart: null, choices: []};
+    assert.deepStrictEqual(M.switchView(m, "nostatus").buttons.map((b) => b.kind), ["off", "on"]);
+    assert.deepStrictEqual(M.switchView(m, "unknown").buttons.map((b) => b.kind), ["off", "on"]);
+    assert.strictEqual(M.switchView(m, "nostatus").rowClick, null);
+});
+
 // ---- seeded fuzz ----
 test("fuzz: switchView never returns a button whose member is null", () => {
     const rng = makeRng(SEED);

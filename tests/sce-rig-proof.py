@@ -2,8 +2,8 @@
 """Rig proof for System Command Editor 2.1: real backend, real commands, no faked routes.
 
 Seeds a test command set through the settings API, drives the real System menu, then restores the rig's
-own settings from a snapshot taken first. Commands only touch files in a temp directory, plus the rig's
-`echo reboot` system restart command.
+own settings from a snapshot taken first. Commands only touch files in a temp directory; the built-in
+reboot and shutdown entries are grouped but never run.
 
 Usage: python tests/sce-rig-proof.py <base url> <rig dir>   (rig dir holds the apikey file)
 """
@@ -97,7 +97,10 @@ try:
         check("one row per device, members hidden",
               row("lamp").count() == 1 and page.locator(f"{menu} li.sce-hidden").count() >= 5,
               page.locator(f"{menu} li.sce-hidden").count())
-        check("host row groups core reboot and shutdown", row("host").count() == 1)
+        core_listed = {c["action"] for c in api("GET", "/api/system/commands").get("core", [])}
+        want_host = 1 if core_listed & {"reboot", "shutdown"} else 0
+        check("host row is drawn only when core lists reboot or shutdown", row("host").count() == want_host,
+              f"listed={sorted(core_listed)} rows={row('host').count()}")
         titles = row("lamp").locator("button").evaluate_all("bs => bs.map(b => b.title)")
         check("lamp buttons are restart and on while off, titled by command name",
               titles == ["Power cycle lamp", "Lamp on"], titles)
