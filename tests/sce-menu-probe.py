@@ -420,6 +420,22 @@ def run_probe():
               released == ["on"] and page.evaluate(LASER_OFF) and laser_text == "Off",
               "released=%s text=%r" % (released, laser_text))
 
+        # J2. a re-check keeps the last known state on screen while it runs, so the menu does not reflow
+        if page.evaluate(MENU_OPEN):
+            page.click(TOGGLE)     # close it; that click's own check is answered at once
+            pump(600)
+        released.clear()
+        status_plan.append(("hold", STATUS_HOLD, {"laser": "off"}))
+        page.click(TOGGLE)         # one open, one held check
+        pump(300)
+        during = page.locator('li.sce-device[data-device-id="laser"] .sce-state').inner_text().strip()
+        state_spins = page.evaluate("""() => document.querySelectorAll(
+            'li.sce-device[data-device-id="laser"] .sce-state i.fa-spin').length""")
+        pump(STATUS_HOLD * 1000 + 600)
+        check("a re-check keeps the last state shown, with no spinner",
+              during == "Off" and state_spins == 0 and released == ["off"],
+              "during=%r spins=%s released=%s" % (during, state_spins, released))
+
         # K. cancelling the consent dialog leaves the plain icon with no check or cross
         open_menu()
         page.evaluate(CLICK_STANDALONE, "sync_cancel")

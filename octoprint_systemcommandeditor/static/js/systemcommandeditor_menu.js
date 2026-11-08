@@ -401,7 +401,8 @@ $(function () {
 
             const row = node("a", ["sce-device-row"]).attr("href", "javascript:void(0)");
             row.append(icon(d.icon), node("span", ["sce-device-name"]).text(d.name));
-            if (self._checking[d.id]) {
+            // a re-check keeps the last known state on screen, so opening the menu does not reflow it
+            if (self._checking[d.id] && kind === "pending") {
                 row.append(node("span", ["sce-state"]).append(node("i", ["fa-solid fa-spinner fa-spin", "fa-fw"])));
             } else if (kind !== "nostatus" && kind !== "pending") {
                 const s = kind === "on" || kind === "off" ? kind : "unknown";
@@ -565,7 +566,7 @@ $(function () {
                 if (d.type === "readout") {
                     const kind = self._kindOf(d);
                     li.addClass("sce-readout");
-                    const text = self._checking[d.id]
+                    const text = self._checking[d.id] && kind === "pending"
                         ? node("span", ["sce-state"]).append(node("i", ["fa-solid fa-spinner fa-spin", "fa-fw"]))
                         : node("span", ["sce-state"]).text(
                             kind === "nostatus" || kind === "pending" ? "" : kind === "unknown" ? "Unknown" : String(kind));
