@@ -58,6 +58,7 @@ $(function () {
         on: () => gettext("On"),
         off: () => gettext("Off"),
         restart: () => gettext("Restart"),
+        safe_restart: () => gettext("Safe mode restart"),
         choice: () => gettext("Choice")
     };
     const TYPE_LABELS = {
@@ -186,7 +187,8 @@ $(function () {
                 return [choose,
                     {value: "on", label: ROLE_LABELS.on()},
                     {value: "off", label: ROLE_LABELS.off()},
-                    {value: "restart", label: ROLE_LABELS.restart()}];
+                    {value: "restart", label: ROLE_LABELS.restart()},
+                    {value: "safe_restart", label: ROLE_LABELS.safe_restart()}];
             }
             return [choose, {value: "choice", label: ROLE_LABELS.choice()}];
         });

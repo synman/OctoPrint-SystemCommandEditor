@@ -30,7 +30,7 @@
     }
 
     function members(deviceId, entries, core) {
-        const m = {source: null, on: null, off: null, restart: null, choices: []};
+        const m = {source: null, on: null, off: null, restart: null, safe_restart: null, choices: []};
         const tables = [["custom", entries || {}], ["core", core || {}]];
         for (const pair of tables) {
             const source = pair[0];
@@ -43,6 +43,7 @@
                 if (e.role === "on" && !m.on) m.on = action;
                 else if (e.role === "off" && !m.off) m.off = action;
                 else if (e.role === "restart" && !m.restart) m.restart = action;
+                else if (e.role === "safe_restart" && !m.safe_restart) m.safe_restart = action;
                 else if (e.role === "choice") m.choices.push({action: action, value: e.value, name: name});
             }
         }
@@ -52,6 +53,7 @@
     function switchView(m, state) {
         const buttons = [];
         if (m.restart) buttons.push({kind: "restart", action: m.restart});
+        if (m.safe_restart) buttons.push({kind: "safe_restart", action: m.safe_restart});
         if (state !== "off" && m.off) buttons.push({kind: "off", action: m.off});
         if (state !== "on" && m.on) buttons.push({kind: "on", action: m.on});
         let rowClick = null;
@@ -159,7 +161,7 @@ $(function () {
     const MENU = "#navbar_systemmenu > ul.dropdown-menu";
     const BLANK = "sce-menu-icon-blank";
     const FLASH_MS = 3000;
-    const BUTTON_ICON = {restart: "fa-solid fa-rotate-right", off: "fa-solid fa-power-off", on: "fa-solid fa-play"};
+    const BUTTON_ICON = {restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved", off: "fa-solid fa-power-off", on: "fa-solid fa-play"};
 
     // core rejects with ["error", args] or ["denied", args] on failure and denial, and with a plain string on cancel
     function rejectOutcome(first) {

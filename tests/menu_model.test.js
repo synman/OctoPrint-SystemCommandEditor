@@ -97,7 +97,7 @@ test("members: a device with only core members has source core", () => {
 
 test("members: no matches gives empty members", () => {
     const m = M.members("nothing", {}, {});
-    assert.deepStrictEqual(m, {source: null, on: null, off: null, restart: null, choices: []});
+    assert.deepStrictEqual(m, {source: null, on: null, off: null, restart: null, safe_restart: null, choices: []});
 });
 
 // ---- the first entry with a role wins (a later entry must not overwrite it) ----
@@ -114,6 +114,20 @@ test("members: the first entry with role off wins", () => {
 test("members: the first entry with role restart wins", () => {
     const entries = {d_rs_first: {group: "d", role: "restart"}, d_rs_second: {group: "d", role: "restart"}};
     assert.strictEqual(M.members("d", entries, {}).restart, "d_rs_first");
+});
+
+test("members: a safe_restart role fills its own slot, first one wins", () => {
+    const core = {restart: {group: "op", role: "restart"}, restart_safe: {group: "op", role: "safe_restart"}};
+    const entries = {other_safe: {group: "op", role: "safe_restart"}};
+    const m = M.members("op", entries, core);
+    assert.strictEqual(m.restart, "restart");
+    assert.strictEqual(m.safe_restart, "other_safe");
+});
+
+test("switchView: a safe restart button follows restart, before off and on", () => {
+    const m = {on: "a_on", off: "a_off", restart: "a_restart", safe_restart: "a_safe", choices: []};
+    assert.deepStrictEqual(M.switchView(m, "unknown").buttons.map((b) => b.kind), ["restart", "safe_restart", "off", "on"]);
+    assert.deepStrictEqual(M.switchView({restart: "r", choices: []}, "on").buttons.map((b) => b.kind), ["restart"]);
 });
 
 // ---- switchView ----
