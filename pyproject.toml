@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "OctoPrint-SystemCommandEditor"
-version = "2.0.0"
+version = "2.1.0.dev1"
 description = "Add, edit, reorder and group the commands in the OctoPrint System menu"
 authors = [
     { name = "Shell M. Shrader", email = "shell@shellware.com" },

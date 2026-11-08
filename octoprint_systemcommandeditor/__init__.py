@@ -9,17 +9,42 @@ import io
 import os
 import time
 
+import flask
 import yaml
 
 import octoprint.plugin
+from octoprint.access.permissions import Permissions
 
 from .convert import command_count, convert
+from .status import check_devices
+
+API_ENTRY_KEYS = (
+    "name",
+    "command",
+    "confirm",
+    "async",
+    "fresh_credentials",
+    "ignore",
+    "icon",
+    "group",
+    "role",
+    "value",
+    "when",
+)
+
+CORE_COMMAND_SETTINGS = {
+    "shutdown": "systemShutdownCommand",
+    "reboot": "systemRestartCommand",
+    "restart": "serverRestartCommand",
+    "restart_safe": "serverRestartCommand",
+}
 
 
 class SystemCommandEditorPlugin(
     octoprint.plugin.SettingsPlugin,
     octoprint.plugin.TemplatePlugin,
     octoprint.plugin.AssetPlugin,
+    octoprint.plugin.SimpleApiPlugin,
 ):
     # Commands live only in OctoPrint's own system.actions, which the settings dialog saves through the core
     # settings API. The plugin keeps no copy: versions before 2.0 did, and copying it back over system.actions
@@ -34,11 +59,56 @@ class SystemCommandEditorPlugin(
                 "reboot": {"icon": "fa-solid fa-rotate-right", "heading": ""},
                 "restart": {"icon": "fa-solid fa-arrows-rotate", "heading": "OctoPrint"},
                 "restart_safe": {"icon": "fa-solid fa-shield-halved", "heading": ""},
-            }
+            },
+            "devices": [],
         }
 
     def get_settings_version(self):
         return 2
+
+    def get_api_commands(self):
+        return {"status": ["ids"]}
+
+    def on_api_command(self, command, data):
+        if not Permissions.SYSTEM.can():
+            flask.abort(403)
+        if command == "status":
+            devices = self._settings.get(["devices"]) or []
+            entries = self._action_entries() + self._core_entries()
+            return flask.jsonify(results=check_devices(devices, entries, data["ids"]))
+
+    def on_api_get(self, request):
+        if not Permissions.SYSTEM.can():
+            flask.abort(403)
+        entries = {entry["action"]: entry for entry in self._action_entries()}
+        return flask.jsonify(
+            devices=self._settings.get(["devices"]) or [],
+            core=self._settings.get(["core"]) or {},
+            entries=entries,
+            core_commands=self._core_commands(),
+        )
+
+    def _action_entries(self):
+        entries = []
+        for item in self._settings.global_get(["system", "actions"]) or []:
+            action = item.get("action")
+            if not action or action == "divider":
+                continue
+            entry = {key: item[key] for key in API_ENTRY_KEYS if key in item}
+            entry["action"] = action
+            entries.append(entry)
+        return entries
+
+    def _core_entries(self):
+        core = self._settings.get(["core"]) or {}
+        return [
+            {"action": key, "group": "", "role": "", "value": "", **value}
+            for key, value in core.items()
+        ]
+
+    def _core_commands(self):
+        commands = self._settings.global_get(["server", "commands"]) or {}
+        return {key: commands[setting] for key, setting in CORE_COMMAND_SETTINGS.items() if commands.get(setting)}
 
     def on_settings_migrate(self, target, current):
         if current is not None and current >= 2:
