@@ -135,7 +135,6 @@ test("switchView: buttons in order restart, off, on, each only when the member e
     const m = {on: "a_on", off: "a_off", restart: "a_restart", choices: []};
     const v = M.switchView(m, "unknown");
     assert.deepStrictEqual(v.buttons.map((b) => b.kind), ["restart", "off", "on"]);
-    assert.strictEqual(v.rowClick, null);
 });
 
 test("switchView: state on hides the off button, state off hides the on button", () => {
@@ -144,13 +143,11 @@ test("switchView: state on hides the off button, state off hides the on button",
     assert.deepStrictEqual(M.switchView(m, "off").buttons.map((b) => b.kind), ["restart", "on"]);
 });
 
-test("switchView: rowClick toggles to the other member", () => {
-    const m = {on: "a_on", off: "a_off", restart: null, choices: []};
-    assert.strictEqual(M.switchView(m, "on").rowClick, "off");
-    assert.strictEqual(M.switchView(m, "off").rowClick, "on");
-    assert.strictEqual(M.switchView(m, "unknown").rowClick, null);
-    const onlyOn = {on: "a_on", off: null, restart: null, choices: []};
-    assert.strictEqual(M.switchView(onlyOn, "on").rowClick, null);
+test("switchView: the row itself runs nothing, in any state", () => {
+    const m = {on: "a_on", off: "a_off", restart: "a_restart", choices: []};
+    ["on", "off", "unknown", "nostatus"].forEach((state) => {
+        assert.deepStrictEqual(Object.keys(M.switchView(m, state)), ["buttons"]);
+    });
 });
 
 test("switchView: a button has the member action it runs", () => {
@@ -259,7 +256,6 @@ test("switchView: nostatus and unknown give both the on and the off button", () 
     const m = {on: "a_on", off: "a_off", restart: null, choices: []};
     assert.deepStrictEqual(M.switchView(m, "nostatus").buttons.map((b) => b.kind), ["off", "on"]);
     assert.deepStrictEqual(M.switchView(m, "unknown").buttons.map((b) => b.kind), ["off", "on"]);
-    assert.strictEqual(M.switchView(m, "nostatus").rowClick, null);
 });
 
 // ---- seeded fuzz ----

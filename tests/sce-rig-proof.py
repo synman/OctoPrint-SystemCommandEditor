@@ -106,8 +106,13 @@ try:
               titles == ["Power cycle lamp", "Lamp on"], titles)
 
         row("lamp").locator("a.sce-device-row").click()
+        page.wait_for_timeout(1500)
+        check("a click on the row itself runs nothing", not os.path.exists(f"{D}/lamp"))
+
+        open_menu()
+        row("lamp").locator("button[title='Lamp on']").click()
         wait_state("lamp", "On")
-        check("row click ran Lamp on and the status re-check shows On", os.path.exists(f"{D}/lamp"))
+        check("the on button ran Lamp on and the status re-check shows On", os.path.exists(f"{D}/lamp"))
 
         open_menu()
         row("lamp").locator("button[title='Lamp off']").click()

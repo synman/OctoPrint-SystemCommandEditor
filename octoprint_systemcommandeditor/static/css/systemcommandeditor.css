@@ -306,3 +306,15 @@
   padding-top: 12px;
   border-top: 1px solid #ddd;
 }
+
+/* a switch row runs nothing itself; only its buttons do, so it does not look clickable */
+#navbar_systemmenu li.sce-device:not(.dropdown-submenu) > span.sce-device-row,
+#navbar_systemmenu li.sce-device:not(.dropdown-submenu) > a.sce-device-row:not([target]) {
+  cursor: default;
+}
+
+#navbar_systemmenu li.sce-device:not(.dropdown-submenu) > a.sce-device-row:not([target]):hover,
+#navbar_systemmenu li.sce-device:not(.dropdown-submenu) > a.sce-device-row:not([target]):focus {
+  background: none;
+  color: inherit;
+}

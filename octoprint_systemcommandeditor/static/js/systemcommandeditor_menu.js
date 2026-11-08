@@ -56,10 +56,8 @@
         if (m.safe_restart) buttons.push({kind: "safe_restart", action: m.safe_restart});
         if (state !== "off" && m.off) buttons.push({kind: "off", action: m.off});
         if (state !== "on" && m.on) buttons.push({kind: "on", action: m.on});
-        let rowClick = null;
-        if (state === "on" && m.off) rowClick = "off";
-        else if (state === "off" && m.on) rowClick = "on";
-        return {buttons: buttons, rowClick: rowClick};
+        // the row itself runs nothing; only its buttons do
+        return {buttons: buttons};
     }
 
     function StatusTracker() {
@@ -393,9 +391,7 @@ $(function () {
             const kind = self._kindOf(d);
             const view = SceModel.switchView(m, kind);
 
-            let rowAction = view.rowClick ? m[view.rowClick] : null;
-            let rowCond = self._condition(d.when);
-            if (!rowCond.effect && rowAction) rowCond = self._condition(self._entryOf(rowAction).when);
+            const rowCond = self._condition(d.when);
             if (rowCond.effect === "hide") li.addClass(HIDDEN);
             if (rowCond.effect === "disable") li.addClass("disabled");
 
@@ -413,8 +409,6 @@ $(function () {
             row.on("click", (ev) => {
                 ev.preventDefault();
                 ev.stopPropagation();
-                if (!rowAction || rowCond.effect === "disable") return;
-                self._run(self._sourceOf(rowAction), rowAction);
             });
 
             const buttons = node("span", ["sce-buttons"]);
