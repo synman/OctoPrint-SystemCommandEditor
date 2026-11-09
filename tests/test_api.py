@@ -356,7 +356,7 @@ def test_load_sample_presets_adds_maintenance_divider_when_no_custom_command():
     plugin = make_plugin(system_actions=[{"action": "divider", "name": "Webcam"}])
     plugin._load_sample_presets(plugin_groups=[], 
         detector=lambda: [],
-        maintenance_detector=lambda: maintenance_listing({"webcam_restart": 1}),
+        maintenance_detector=lambda: maintenance_listing({}),
     )
     actions = plugin._settings.config["system"]["actions"]
     backup = [preset for preset in maintenance(MAINTENANCE_ENV) if preset["action"] == "backup_now"][0]
@@ -387,7 +387,7 @@ def test_load_sample_presets_does_not_load_unavailable_maintenance_sample():
     plugin = make_plugin()
     plugin._load_sample_presets(plugin_groups=[], 
         detector=lambda: [],
-        maintenance_detector=lambda: maintenance_listing({"backup_now": 1, "webcam_restart": 1}),
+        maintenance_detector=lambda: maintenance_listing({"backup_now": 1}),
     )
     assert plugin._settings.config["system"]["actions"] == []
     assert not [call for call in plugin._settings.calls if call[0] == "global_set"]
@@ -449,7 +449,7 @@ def test_get_merges_saved_core_entries_over_their_defaults(monkeypatch):
 
 def test_first_start_marks_maintenance_control_and_command_with_their_action(tmp_path):
     plugin = make_plugin()
-    plugin._load_sample_presets(plugin_groups=[], detector=lambda: [], maintenance_detector=lambda: maintenance_listing({"webcam_restart": 1}))
+    plugin._load_sample_presets(plugin_groups=[], detector=lambda: [], maintenance_detector=lambda: maintenance_listing({}))
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     control = [device for device in config["devices"] if device["id"] == "backup_now"][0]
     command = [entry for entry in plugin._settings.config["system"]["actions"] if entry.get("action") == "backup_now"][0]
@@ -852,7 +852,7 @@ def test_first_start_adds_ready_made_switches_and_commands_after_maintenance(mon
     with caplog.at_level(logging.INFO, logger="test"):
         plugin._load_sample_presets(
             detector=sample_disk,
-            maintenance_detector=lambda: maintenance_listing({"webcam_restart": 1}),
+            maintenance_detector=lambda: maintenance_listing({}),
             plugin_groups=[psu_group(), octoprint_presets()],
         )
     config = plugin._settings.config["plugins"]["systemcommandeditor"]

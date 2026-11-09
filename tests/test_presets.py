@@ -128,7 +128,6 @@ ENV = {
 }
 MAINTENANCE_ACTIONS = [
     "backup_now",
-    "webcam_restart",
     "purge_timelapses",
     "purge_logs",
     "sync_clock",
@@ -150,7 +149,7 @@ def maintenance_runner(exit_by_action, sudo_exit=0, calls=None):
     return runner
 
 
-def test_maintenance_returns_seven_actions_in_order_with_quoted_paths():
+def test_maintenance_returns_six_actions_in_order_with_quoted_paths():
     presets = maintenance(ENV)
     assert [preset["action"] for preset in presets] == MAINTENANCE_ACTIONS
     for preset in presets:
@@ -159,11 +158,11 @@ def test_maintenance_returns_seven_actions_in_order_with_quoted_paths():
     assert backup["command"] == "'/opt/my venv/bin/octoprint' --basedir '/home/pi/my octo' plugins backup:backup"
     assert backup["detect"] == "test -x '/opt/my venv/bin/octoprint'"
     assert backup["async"] is True and backup["sample"] is True and backup["needs_sudo"] is False
-    assert presets[2]["command"] == "find '/home/pi/my octo/timelapse' -maxdepth 1 -type f -mtime +30 -delete"
+    assert presets[1]["command"] == "find '/home/pi/my octo/timelapse' -maxdepth 1 -type f -mtime +30 -delete"
 
 
-def test_maintenance_samples_are_backup_and_webcam_only():
-    assert [preset["action"] for preset in maintenance(ENV) if preset["sample"]] == ["backup_now", "webcam_restart"]
+def test_maintenance_sample_is_backup_only():
+    assert [preset["action"] for preset in maintenance(ENV) if preset["sample"]] == ["backup_now"]
 
 
 def test_detect_maintenance_marks_availability_from_detect_exit_code():
@@ -180,7 +179,7 @@ def test_detect_maintenance_sudo_note_only_when_sudo_fails_and_preset_needs_it()
     calls = []
     listed = detect_maintenance(ENV, runner=maintenance_runner({}, sudo_exit=1, calls=calls))
     by_action = {item["action"]: item for item in listed}
-    assert by_action["webcam_restart"]["note"] == "Needs passwordless sudo"
+    assert by_action["os_update"]["note"] == "Needs passwordless sudo"
     assert by_action["sync_clock"]["note"] == "Needs passwordless sudo"
     assert by_action["backup_now"]["note"] == ""
     assert by_action["purge_timelapses"]["note"] == ""
@@ -227,11 +226,11 @@ def test_action_of_builds_an_action_control_and_its_run_command():
 
 
 def test_action_of_takes_the_next_free_device_id_and_skips_status_when_none():
-    preset = [p for p in maintenance(ENV) if p["action"] == "webcam_restart"][0]
-    device, entry = action_of(preset, {"webcam_restart", "webcam_restart_2"})
-    assert device["id"] == "webcam_restart_3"
+    preset = [p for p in maintenance(ENV) if p["action"] == "sync_clock"][0]
+    device, entry = action_of(preset, {"sync_clock", "sync_clock_2"})
+    assert device["id"] == "sync_clock_3"
     assert "status" not in device
-    assert entry["group"] == "webcam_restart_3"
+    assert entry["group"] == "sync_clock_3"
 
 
 def test_backup_age_and_folder_size_status_commands_run_against_a_temp_folder(tmp_path):
@@ -361,9 +360,9 @@ def test_mark_presets_reports_no_change_for_custom_records():
     assert new_devices == devices and new_actions == actions
 
 
-def test_maintenance_actions_lists_the_seven_keys_without_detection():
+def test_maintenance_actions_lists_the_six_keys_without_detection():
     assert maintenance_actions() == [
-        "backup_now", "webcam_restart", "purge_timelapses", "purge_logs", "sync_clock", "wifi_powersave_off", "os_update",
+        "backup_now", "purge_timelapses", "purge_logs", "sync_clock", "wifi_powersave_off", "os_update",
     ]
 
 

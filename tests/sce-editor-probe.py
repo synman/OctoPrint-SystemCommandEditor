@@ -42,13 +42,13 @@ PRESETS = [
      "status": "df -h", "section": "Status", "sample": True, "available": True, "value": "18 GB"},
 ]
 
-# maintenance answer: backup is a sample and available, webcam is available with a sudo note, clock is unavailable
+# maintenance answer: backup is a sample and available, Wi-Fi power saving is available with a sudo note, clock is unavailable
 MAINTENANCE = [
     {"action": "backup_now", "name": "Back up OctoPrint now", "icon": "fa-solid fa-box-archive",
      "command": "octoprint --basedir /home/pi/.octoprint plugins backup:backup", "confirm": "", "async": True,
      "sample": True, "available": True, "note": ""},
-    {"action": "webcam_restart", "name": "Restart the webcam", "icon": "fa-solid fa-video",
-     "command": "sudo systemctl restart camera-streamer", "confirm": "", "async": False,
+    {"action": "wifi_powersave_off", "name": "Turn Wi-Fi power saving off", "icon": "fa-solid fa-wifi",
+     "command": "sudo iw dev wlan0 set power_save off", "confirm": "", "async": False,
      "sample": False, "available": True, "note": "Needs passwordless sudo"},
     {"action": "sync_clock", "name": "Sync the clock", "icon": "fa-solid fa-clock-rotate-left",
      "command": "sudo chronyc makestep", "confirm": "", "async": False,
@@ -681,14 +681,14 @@ def run_probe():
         mrows = page.locator("#sce-presets [data-group=maintenance] .sce-preset-row")
         check("presets modal lists three maintenance rows", mrows.count() == 3, "rows=%d" % mrows.count())
         backup = mrows.filter(has_text="Back up OctoPrint now")
-        webcam = mrows.filter(has_text="Restart the webcam")
+        wifi = mrows.filter(has_text="Turn Wi-Fi power saving off")
         clock = mrows.filter(has_text="Sync the clock")
         check("backup is enabled and unticked until picked",
               backup.locator("input").is_enabled() and not backup.locator("input").is_checked())
         backup.locator("input").check()
-        check("webcam shows the sudo note, stays enabled and unticked",
-              webcam.filter(has_text="Needs passwordless sudo").count() == 1 and webcam.locator("input").is_enabled()
-              and not webcam.locator("input").is_checked())
+        check("Wi-Fi power saving shows the sudo note, stays enabled and unticked",
+              wifi.filter(has_text="Needs passwordless sudo").count() == 1 and wifi.locator("input").is_enabled()
+              and not wifi.locator("input").is_checked())
         check("clock stays enabled and shows its note or Not detected on this system",
               clock.locator("input").is_enabled() and
               clock.filter(has_text="Not detected on this system").count() + clock.filter(has_text="Needs passwordless sudo").count() >= 1)
@@ -729,7 +729,7 @@ def run_probe():
             check("POST system.actions ends with the Maintenance divider and the ticked backup command",
                   len(saved) >= 2 and saved[-2] == {"action": "divider", "name": "Maintenance"}
                   and saved[-1].get("action") == "backup_now" and saved[-1].get("async") is True
-                  and not [a for a in saved if a.get("action") == "webcam_restart"],
+                  and not [a for a in saved if a.get("action") == "wifi_powersave_off"],
                   json.dumps(saved[-2:]))
 
         # Phase D2: the host switch is now present, so it starts ticked; unticking it removes it and frees its members

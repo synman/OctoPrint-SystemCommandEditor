@@ -220,17 +220,6 @@ def maintenance(env):
             "status": _python_status(BACKUP_AGE_SCRIPT, os.path.join(env["basedir"], "data", "backup")),
         },
         {
-            "action": "webcam_restart",
-            "name": "Restart the webcam",
-            "icon": "fa-solid fa-video",
-            "command": 'for u in camera-streamer webcamd mjpg-streamer; do if systemctl list-unit-files "$u.service" --no-legend | grep -q .; then exec sudo systemctl restart "$u"; fi; done; exit 1',
-            "confirm": "",
-            "async": False,
-            "sample": True,
-            "needs_sudo": True,
-            "detect": "systemctl list-unit-files camera-streamer.service webcamd.service mjpg-streamer.service --no-legend | grep -q .",
-        },
-        {
             "action": "purge_timelapses",
             "name": "Delete timelapses older than {} days".format(TIMELAPSE_DAYS),
             "icon": "fa-solid fa-film",
