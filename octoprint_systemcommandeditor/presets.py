@@ -132,37 +132,17 @@ else:
     print("Last backup " + text)
 """
 
-FOLDER_SIZE_SCRIPT = """
-import os, sys
-folder = sys.argv[1]
-total = 0
-for root, _dirs, names in os.walk(folder):
-    for name in names:
-        try:
-            total += os.path.getsize(os.path.join(root, name))
-        except OSError:
-            pass
-units = ["B", "KB", "MB", "GB", "TB"]
-size = float(total)
-i = 0
-while size >= 1024 and i < len(units) - 1:
-    size /= 1024
-    i += 1
-print("%d B" % total if i == 0 else "%.1f %s" % (size, units[i]))
-"""
-
-
-# What "Delete old logs" would delete right now: rotated logs at the top of the folder, aged as find's -mtime counts
-# whole days, so the readout and the command always agree.
-OLD_LOGS_SCRIPT = """
+# What a clean-up would delete right now: files at the top of the folder that match the pattern, aged as find's -mtime
+# counts whole days, so the readout and the command always agree. Arguments: folder, days, pattern, noun.
+OLD_FILES_SCRIPT = """
 import fnmatch, os, sys, time
-folder, days = sys.argv[1], int(sys.argv[2])
+folder, days, pattern, noun = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
 count = total = 0
 if os.path.isdir(folder):
     for name in os.listdir(folder):
         path = os.path.join(folder, name)
         try:
-            if not os.path.isfile(path) or not fnmatch.fnmatch(name, "*.log.*"):
+            if not os.path.isfile(path) or not fnmatch.fnmatch(name, pattern):
                 continue
             if int((time.time() - os.path.getmtime(path)) // 86400) > days:
                 count += 1
@@ -170,7 +150,7 @@ if os.path.isdir(folder):
         except OSError:
             pass
 if not count:
-    print("No old logs")
+    print("No old %ss" % noun)
 else:
     units = ["B", "KB", "MB", "GB", "TB"]
     size = float(total)
@@ -179,10 +159,15 @@ else:
         size /= 1024
         i += 1
     amount = "%d B" % total if i == 0 else "%.1f %s" % (size, units[i])
-    print("%d old log%s, %s" % (count, "" if count == 1 else "s", amount))
+    print("%d old %s%s, %s" % (count, noun, "" if count == 1 else "s", amount))
 """
 
 LOG_DAYS = 7
+TIMELAPSE_DAYS = 30
+
+
+def _old_files_status(folder, days, pattern, noun):
+    return "{} {} {} {}".format(_python_status(OLD_FILES_SCRIPT, folder), days, shlex.quote(pattern), noun)
 
 def _python_status(script, folder):
     return "{} -c {} {}".format(shlex.quote(sys.executable), shlex.quote(script), shlex.quote(folder))
@@ -219,15 +204,15 @@ def maintenance(env):
         },
         {
             "action": "purge_timelapses",
-            "name": "Delete timelapses older than 30 days",
+            "name": "Delete timelapses older than {} days".format(TIMELAPSE_DAYS),
             "icon": "fa-solid fa-film",
-            "command": "find {} -maxdepth 1 -type f -mtime +30 -delete".format(timelapse),
-            "confirm": "This deletes timelapse videos older than 30 days.",
+            "command": "find {} -maxdepth 1 -type f -mtime +{} -delete".format(timelapse, TIMELAPSE_DAYS),
+            "confirm": "This deletes timelapse videos older than {} days.".format(TIMELAPSE_DAYS),
             "async": False,
             "sample": False,
             "needs_sudo": False,
             "detect": "test -d {}".format(timelapse),
-            "status": _python_status(FOLDER_SIZE_SCRIPT, env["timelapse"]),
+            "status": _old_files_status(env["timelapse"], TIMELAPSE_DAYS, "*", "timelapse"),
         },
         {
             "action": "purge_logs",
@@ -239,7 +224,7 @@ def maintenance(env):
             "sample": False,
             "needs_sudo": False,
             "detect": "test -d {}".format(logs),
-            "status": _python_status(OLD_LOGS_SCRIPT, env["logs"]) + " " + str(LOG_DAYS),
+            "status": _old_files_status(env["logs"], LOG_DAYS, "*.log.*", "log"),
         },
         {
             "action": "sync_clock",

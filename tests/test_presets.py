@@ -234,7 +234,8 @@ def test_backup_age_and_folder_size_status_commands_run_against_a_temp_folder(tm
     by_action = {preset["action"]: preset for preset in maintenance(env)}
 
     assert run_status(by_action["backup_now"]["status"]) == (0, "Last backup 2 h ago", None)
-    assert run_status(by_action["purge_timelapses"]["status"]) == (0, "1.5 KB", None)
+    # a new clip is not old enough to delete
+    assert run_status(by_action["purge_timelapses"]["status"]) == (0, "No old timelapses", None)
     # a missing logs folder has nothing to delete
     assert run_status(by_action["purge_logs"]["status"]) == (0, "No old logs", None)
 
@@ -262,6 +263,29 @@ def test_old_logs_status_counts_exactly_what_the_command_deletes(tmp_path):
     subprocess.run(preset["command"], shell=True, check=True)
     assert sorted(os.listdir(logs)) == ["nested", "octoprint.log", "octoprint.log.2026-11-08"]
     assert run_status(preset["status"]) == (0, "No old logs", None)
+
+
+def test_old_timelapses_status_counts_exactly_what_the_command_deletes(tmp_path):
+    folder = tmp_path / "my timelapse"
+    folder.mkdir()
+    now = time.time()
+
+    def clip(name, days, size):
+        path = folder / name
+        path.write_bytes(b"v" * size)
+        os.utime(path, (now - days * 86400 - 60, now - days * 86400 - 60))
+
+    clip("print_a.mp4", 45, 2048)   # old: counted and deleted
+    clip("print_b.mp4", 30, 4096)   # 30 whole days: find -mtime +30 keeps it
+    clip("print_c.mp4", 1, 8192)    # new
+    env = {**ENV, "timelapse": str(folder)}
+    preset = [p for p in maintenance(env) if p["action"] == "purge_timelapses"][0]
+    assert preset["name"] == "Delete timelapses older than 30 days"
+
+    assert run_status(preset["status"]) == (0, "1 old timelapse, 2.0 KB", None)
+    subprocess.run(preset["command"], shell=True, check=True)
+    assert sorted(os.listdir(folder)) == ["print_b.mp4", "print_c.mp4"]
+    assert run_status(preset["status"]) == (0, "No old timelapses", None)
 
 
 def test_backup_age_says_none_when_the_backup_folder_is_empty(tmp_path):
