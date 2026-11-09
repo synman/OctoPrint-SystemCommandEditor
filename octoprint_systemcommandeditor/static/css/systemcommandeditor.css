@@ -161,6 +161,12 @@
   text-align: center;
 }
 
+/* a control row puts its flex gap after the icon too; a plain item core draws gets the same space as a margin, so
+   every label in the menu starts at one line */
+#navbar_systemmenu li:not(.sce-device) > a > .sce-menu-icon {
+  margin-right: 12px;
+}
+
 #navbar_systemmenu .dropdown-menu > li.sce-doubled {
   display: none;
 }

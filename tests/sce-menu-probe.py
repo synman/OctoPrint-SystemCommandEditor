@@ -571,6 +571,29 @@ def run_probe():
         check("the action button runs its member through the custom command endpoint",
               "bkup_run" in calls, "calls=%s" % calls)
 
+        # G4. a plain item core draws (here a standalone link) starts its label where a control row starts its name
+        open_menu()
+        xs = page.evaluate("""() => {
+            const m = document.querySelector('#navbar_systemmenu > ul.dropdown-menu');
+            const textX = (el) => {
+                const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT,
+                    {acceptNode: (n) => n.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP});
+                const n = w.nextNode();
+                if (!n) return null;
+                const r = document.createRange();
+                r.selectNodeContents(n);
+                return Math.round(r.getBoundingClientRect().left);
+            };
+            const plain = [...m.querySelectorAll(':scope > li:not(.sce-device)')].find((li) => li.innerText.trim() === 'Camera page');
+            const name = m.querySelector(':scope > li.sce-device .sce-device-name');
+            return {plain: plain ? textX(plain.querySelector('a')) : null, control: name ? textX(name) : null};
+        }""")
+        check("a plain menu item's label lines up with a control row's name",
+              xs["plain"] is not None and xs["plain"] == xs["control"], json.dumps(xs))
+        if page.evaluate(MENU_OPEN):
+            page.click(TOGGLE)
+            pump(300)
+
         # H. a standalone link command and a link run button each open their url in a new tab, and post nothing
         posts_before = len(calls)
         open_menu()
