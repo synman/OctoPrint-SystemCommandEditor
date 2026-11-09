@@ -53,6 +53,14 @@ MAINTENANCE = [
      "sample": False, "available": False, "note": ""},
 ]
 
+# switches answer: the host and OctoPrint switches, as the server builds them; neither is in the fixture yet
+SWITCHES = [
+    {"id": "host", "type": "switch", "name": "probe-host", "icon": "fa-solid fa-server",
+     "members": {"reboot": "restart", "shutdown": "off"}, "available": True},
+    {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print",
+     "members": {"restart": "restart", "restart_safe": "safe_restart"}, "available": True},
+]
+
 FIXTURE_ACTIONS = [
     {"action": "divider", "name": "Webcam"},
     {"action": "laser_on_cmd", "name": "Laser on", "command": "echo on", "icon": "fa-solid fa-lightbulb"},
@@ -103,7 +111,7 @@ def handle_presets(route, request):
         route.continue_()
         return
     route.fulfill(status=200, content_type="application/json",
-                  body=json.dumps({"presets": PRESETS, "maintenance": MAINTENANCE}))
+                  body=json.dumps({"presets": PRESETS, "maintenance": MAINTENANCE, "switches": SWITCHES}))
 
 
 def handle_commands(route, request):
@@ -546,6 +554,14 @@ def run_probe():
 
         # Phase D: add from presets; cpu is ticked, throttle is unavailable, disk is already a device
         open_settings()
+        # earlier phases put reboot and shutdown on a control; free them so the host switch must set both roles itself
+        page.evaluate("""() => {
+            const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            const settings = Object.assign({}, vm.coreSettings());
+            ['reboot', 'shutdown'].forEach((a) => { settings[a] = Object.assign({}, settings[a], {group: '', role: ''}); });
+            vm.coreSettings(settings);
+            vm._coreDirty = true;
+        }""")
         page.get_by_role("button", name="Add from presets").click()
         wait_visible("#sce-presets .sce-preset-row")
         rows = page.locator("#sce-presets [data-group=readouts] .sce-preset-row")
@@ -560,6 +576,12 @@ def run_probe():
               disk_row.locator("input").is_enabled() and disk_row.locator("input").is_checked())
         check("cpu readout starts unticked", cpu.locator("input").is_enabled() and not cpu.locator("input").is_checked())
         cpu.locator("input").check()
+        srows = page.locator("#sce-presets [data-group=switches] .sce-preset-row")
+        check("presets modal lists the host and OctoPrint switches, unticked while absent",
+              srows.count() == 2 and srows.nth(0).filter(has_text="probe-host").count() == 1
+              and not srows.nth(0).locator("input").is_checked() and not srows.nth(1).locator("input").is_checked(),
+              "rows=%d" % srows.count())
+        srows.filter(has_text="probe-host").locator("input").check()
         mrows = page.locator("#sce-presets [data-group=maintenance] .sce-preset-row")
         check("presets modal lists three maintenance rows", mrows.count() == 3, "rows=%d" % mrows.count())
         backup = mrows.filter(has_text="Back up OctoPrint now")
@@ -593,6 +615,14 @@ def run_probe():
                   len(status_at) == 1 and len(cpu_place) == 1 and cpu_place[0] > status_at[0]
                   and saved_actions[cpu_place[0]] == {"action": "cpu", "name": "CPU temperature", "device": "cpu"},
                   json.dumps(saved_actions))
+            host = [d for d in devices if d.get("id") == "host"]
+            # OctoPrint posts only changed keys, so the roles are judged from the settings as they stand after the save
+            core = ((state["current"].get("plugins") or {}).get("systemcommandeditor") or {}).get("core") or {}
+            check("ticking the host switch adds it first and joins reboot and shutdown to it by role",
+                  devices[:1] == [{"id": "host", "type": "switch", "name": "probe-host", "icon": "fa-solid fa-server"}]
+                  and (core.get("reboot") or {}).get("group") == "host" and (core.get("reboot") or {}).get("role") == "restart"
+                  and (core.get("shutdown") or {}).get("group") == "host" and (core.get("shutdown") or {}).get("role") == "off",
+                  json.dumps({"host": host, "core": core}))
             check("unticking an added readout and applying removes it from the POST",
                   len([d for d in devices if d.get("id") == "disk"]) == 0, json.dumps([d.get("id") for d in devices]))
             saved = list((body.get("system") or {}).get("actions") or [])
@@ -601,6 +631,23 @@ def run_probe():
                   and saved[-1].get("action") == "backup_now" and saved[-1].get("async") is True
                   and not [a for a in saved if a.get("action") == "webcam_restart"],
                   json.dumps(saved[-2:]))
+
+        # Phase D2: the host switch is now present, so it starts ticked; unticking it removes it and frees its members
+        open_settings()
+        page.get_by_role("button", name="Add from presets").click()
+        wait_visible("#sce-presets [data-group=switches] .sce-preset-row")
+        host_row = page.locator("#sce-presets [data-group=switches] .sce-preset-row").filter(has_text="probe-host")
+        check("a present switch starts ticked", host_row.locator("input").is_checked())
+        host_row.locator("input").uncheck()
+        page.locator("#sce-presets .modal-footer .btn-primary").click()
+        wait_hidden("#sce-presets")
+        save_settings()
+        after = ((state["current"].get("plugins") or {}).get("systemcommandeditor") or {})
+        after_core = after.get("core") or {}
+        check("unticking the host switch removes it and detaches reboot and shutdown",
+              not [d for d in after.get("devices") or [] if d.get("id") == "host"]
+              and not (after_core.get("reboot") or {}).get("group") and not (after_core.get("shutdown") or {}).get("group"),
+              json.dumps({"devices": [d.get("id") for d in after.get("devices") or []], "core": after_core}))
 
         # Phase E: an action control; its command takes the Run role, and the role list is just Run
         open_settings()   # the settings pane closes on each successful save

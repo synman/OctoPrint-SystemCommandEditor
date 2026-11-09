@@ -99,6 +99,31 @@ def detect(runner=run_status, timeout=10):
     return detected
 
 
+# OctoPrint's own System menu entries, each joined to one of two switches by its role. First start adds both, and the
+# presets picker adds and removes them like any other preset.
+SYSTEM_SWITCHES = [
+    {"id": "host", "icon": "fa-solid fa-server", "members": {"reboot": "restart", "shutdown": "off"}},
+    {"id": "octoprint", "name": "OctoPrint", "icon": "fa-solid fa-print",
+     "members": {"restart": "restart", "restart_safe": "safe_restart"}},
+]
+
+
+def system_switches(hostname):
+    """The two switches as presets; the host switch is named after this machine."""
+    host = hostname.split(".")[0] or "Host"
+    return [
+        {
+            "id": switch["id"],
+            "type": "switch",
+            "name": switch.get("name", host),
+            "icon": switch["icon"],
+            "members": dict(switch["members"]),
+            "available": True,
+        }
+        for switch in SYSTEM_SWITCHES
+    ]
+
+
 def sample_devices(detected):
     return [
         {key: item[key] for key in DEVICE_KEYS}

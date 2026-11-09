@@ -19,7 +19,7 @@ import octoprint.plugin
 from octoprint.access.permissions import Permissions
 
 from .convert import command_count, convert, place_readouts
-from .presets import action_of, detect, detect_maintenance, sample_devices
+from .presets import SYSTEM_SWITCHES, action_of, detect, detect_maintenance, sample_devices, system_switches
 from .status import check_devices
 
 API_ENTRY_KEYS = (
@@ -50,12 +50,9 @@ CORE_COMMAND_SETTINGS = {
 }
 
 
-# On first start, OctoPrint's own System menu entries are grouped under the host and OctoPrint devices
+# On first start, OctoPrint's own System menu entries are grouped under the host and OctoPrint switches
 SYSTEM_GROUPS = {
-    "reboot": ("host", "restart"),
-    "shutdown": ("host", "off"),
-    "restart": ("octoprint", "restart"),
-    "restart_safe": ("octoprint", "safe_restart"),
+    action: (switch["id"], role) for switch in SYSTEM_SWITCHES for action, role in switch["members"].items()
 }
 
 
@@ -102,7 +99,11 @@ class SystemCommandEditorPlugin(
             entries = self._action_entries() + self._core_entries()
             return flask.jsonify(results=check_devices(devices, entries, data["ids"]))
         if command == "presets":
-            return flask.jsonify(presets=detect(), maintenance=detect_maintenance(self._maintenance_env()))
+            return flask.jsonify(
+                presets=detect(),
+                maintenance=detect_maintenance(self._maintenance_env()),
+                switches=system_switches(socket.gethostname()),
+            )
 
     def on_after_startup(self):
         if self._settings.get_boolean(["presets_loaded"]):
@@ -130,10 +131,9 @@ class SystemCommandEditorPlugin(
         for action, (group, role) in SYSTEM_GROUPS.items():
             self._settings.set(["core", action, "group"], group)
             self._settings.set(["core", action, "role"], role)
-        host = socket.gethostname().split(".")[0] or "Host"
         return [
-            {"id": "host", "type": "switch", "name": host, "icon": "fa-solid fa-server"},
-            {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print"},
+            {key: switch[key] for key in ("id", "type", "name", "icon")}
+            for switch in system_switches(socket.gethostname())
         ]
 
     def _load_sample_presets(self, detector=detect, maintenance_detector=None):

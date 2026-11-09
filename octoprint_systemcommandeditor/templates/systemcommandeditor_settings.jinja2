@@ -392,6 +392,21 @@
             <i class="fa-solid fa-spinner fa-spin"></i> {{ _('Checking this system…') }}
         </div>
         <div data-bind="visible: failed" class="muted">{{ _('Could not check this system.') }}</div>
+        <h4 data-bind="visible: !loading() && !failed()">{{ _('Switches') }}</h4>
+        <div class="sce-list" data-group="switches" data-bind="visible: !loading() && !failed()">
+            <!-- ko foreach: switches -->
+            <div class="sce-row sce-preset-row">
+                <label>
+                    <input type="checkbox" data-bind="checked: checked">
+                </label>
+                <span class="sce-icon"><i data-bind="css: $data.item.icon || ''"></i></span>
+                <span class="sce-text">
+                    <span class="sce-name" data-bind="text: $data.item.name"></span>
+                    <span class="muted">{{ _('Switch for OctoPrint\'s own commands') }}</span>
+                </span>
+            </div>
+            <!-- /ko -->
+        </div>
         <h4 data-bind="visible: !loading() && !failed()">{{ _('Readouts') }}</h4>
         <div class="sce-list" data-group="readouts" data-bind="visible: !loading() && !failed()">
             <!-- ko foreach: readouts -->

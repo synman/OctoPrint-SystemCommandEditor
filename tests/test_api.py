@@ -139,9 +139,21 @@ def test_presets_command_returns_detected_list(monkeypatch):
     monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: maintenance_listed)
     plugin = make_plugin()
     plugin._maintenance_env = lambda: {"octoprint": "x", "basedir": "b", "timelapse": "t", "logs": "l"}
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
     with request_context():
         body = plugin.on_api_command("presets", {}).get_json()
-    assert body == {"presets": detected, "maintenance": maintenance_listed}
+    assert body["presets"] == detected and body["maintenance"] == maintenance_listed
+    # the host and OctoPrint switches, with the roles OctoPrint's own commands take on them, as first start uses
+    assert body["switches"] == [
+        {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server",
+         "members": {"reboot": "restart", "shutdown": "off"}, "available": True},
+        {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print",
+         "members": {"restart": "restart", "restart_safe": "safe_restart"}, "available": True},
+    ]
+    assert plugin_module.SYSTEM_GROUPS == {
+        "reboot": ("host", "restart"), "shutdown": ("host", "off"),
+        "restart": ("octoprint", "restart"), "restart_safe": ("octoprint", "safe_restart"),
+    }
 
 
 def test_startup_loads_presets_in_background_until_done(monkeypatch):

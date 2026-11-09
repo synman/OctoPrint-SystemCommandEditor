@@ -554,8 +554,9 @@ $(function () {
         };
     }
 
-    // "Add from presets": asks the server which readouts and maintenance commands this system offers. The ticked
-    // readouts become devices; the ticked maintenance commands become entries under a Maintenance divider.
+    // "Add from presets": asks the server which switches, readouts and maintenance commands this system offers. A
+    // ticked switch joins OctoPrint's own commands by role; ticked readouts become controls; ticked maintenance
+    // commands become entries under a Maintenance divider.
     function PresetPicker(owner) {
         const self = this;
 
@@ -583,11 +584,13 @@ $(function () {
 
         self.loading = ko.observable(false);
         self.failed = ko.observable(false);
+        self.switches = ko.observableArray([]);
         self.readouts = ko.observableArray([]);
         self.maintenance = ko.observableArray([]);
         // a row differs when its tick no longer matches whether it is present
         const differs = (row) => row.checked() !== row.added;
-        self.canApply = ko.pureComputed(() => self.readouts().some(differs) || self.maintenance().some(differs));
+        self.canApply = ko.pureComputed(() =>
+            self.switches().some(differs) || self.readouts().some(differs) || self.maintenance().some(differs));
 
         // the picker is a checklist of what is present: present rows start ticked, every other row starts unticked
         const rowOf = (item, added) => ({
@@ -599,6 +602,7 @@ $(function () {
 
         self.open = () => {
             const existing = owner.devices().map((device) => device.id);
+            self.switches([]);
             self.readouts([]);
             self.maintenance([]);
             self.failed(false);
@@ -606,6 +610,9 @@ $(function () {
             owner.presetDialog.modal("show");
             OctoPrint.simpleApiCommand("systemcommandeditor", "presets", {})
                 .done((response) => {
+                    self.switches(((response && response.switches) || []).map((preset) =>
+                        rowOf(preset, existing.includes(preset.id))
+                    ));
                     self.readouts(((response && response.presets) || []).map((preset) =>
                         rowOf(preset, existing.includes(preset.id))
                     ));
@@ -634,6 +641,19 @@ $(function () {
         };
 
         self.apply = () => {
+            // switches go first, in the server's order, as first start puts them
+            const addedSwitches = [];
+            self.switches().forEach((row) => {
+                const preset = row.item;
+                if (row.checked() && !row.added) {
+                    addedSwitches.push({id: preset.id, type: "switch", name: preset.name, icon: preset.icon});
+                    owner.joinCore(preset.id, preset.members);
+                } else if (!row.checked() && row.added) {
+                    owner.devices.remove((device) => device.id === preset.id);
+                    owner.detachControl(preset.id);
+                }
+            });
+            if (addedSwitches.length) owner.devices(addedSwitches.concat(owner.devices()));
             self.readouts().forEach((row) => {
                 if (row.checked() && !row.added) {
                     const preset = row.item;
@@ -675,7 +695,7 @@ $(function () {
                 }
                 picked.forEach((entry) => owner.entries.push(entry));
             }
-            if (removed.length || picked.length) owner.changed();
+            if (removed.length || picked.length || addedSwitches.length) owner.changed();
             owner.presetDialog.modal("hide");
         };
 
@@ -946,6 +966,17 @@ $(function () {
                 }
             });
         };
+
+        // the presets picker's switches: join OctoPrint's own commands to a switch by role, or detach every member
+        self.joinCore = (deviceId, members) => {
+            const settings = _.extend({}, self.coreSettings());
+            _.each(members, (role, action) => {
+                settings[action] = _.extend({}, settings[action], {group: deviceId, role: role, value: ""});
+            });
+            self.coreSettings(settings);
+            self._coreDirty = true;
+        };
+        self.detachControl = (deviceId) => reassign(deviceId, "", false);
 
         self.removeDevice = (device) => {
             showConfirmationDialog({
