@@ -250,6 +250,12 @@ def icon_picker_checks():
         preview: getComputedStyle(document.querySelector('#sce-editor .sce-icon-input .add-on i')).color})""")
     check("picking an icon color sets it and tints the preview",
           picked["color"] == "#00ff00" and picked["preview"] == "rgb(0, 255, 0)", json.dumps(picked))
+    page.locator("#sce-editor .sce-icon-invert").click()
+    inverted = page.evaluate("""() => ({on: ko.dataFor(document.querySelector('#sce-editor-icon')).iconInvert(),
+        badge: document.querySelector('#sce-editor .sce-icon-input .add-on i').classList.contains('sce-icon-inverted')})""")
+    check("the invert button turns the icon into an inverted badge", inverted["on"] and inverted["badge"],
+          json.dumps(inverted))
+    page.locator("#sce-editor .sce-icon-invert").click()
     page.locator("#sce-editor .sce-icon-color-clear").click()
     cleared = page.evaluate("() => ko.dataFor(document.querySelector('#sce-editor-icon')).iconColor()")
     check("the no-color button clears the icon color", cleared == "", "color=%r" % cleared)

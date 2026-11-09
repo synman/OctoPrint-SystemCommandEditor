@@ -4,12 +4,13 @@
     <div class="controls">
         <div class="sce-icon-field">
             <div class="input-prepend input-append sce-icon-input">
-                <span class="add-on"><i data-bind="css: icon() || '{{ fallback }}', style: { color: iconColor() }"></i></span>
+                <span class="add-on"><i data-bind="css: (icon() || '{{ fallback }}') + (iconInvert() ? ' sce-icon-inverted' : ''), style: iconInvert() ? { backgroundColor: iconColor() } : { color: iconColor() }"></i></span>
                 <input type="text" id="{{ input_id }}" autocomplete="off" placeholder="{{ fallback }}" data-bind="textInput: icon, hasFocus: iconSuggest.focused, event: { keydown: iconSuggest.keydown, keyup: iconSuggest.keyup }">
                 <label class="btn sce-icon-color" title="{{ _('Icon color')|edq }}" data-bind="css: { active: iconColor() }">
                     <i class="fa-solid fa-eye-dropper" data-bind="style: { color: iconColor() }"></i>
                     <input type="color" data-bind="value: iconColorPick">
                 </label>
+                <button type="button" class="btn sce-icon-invert" title="{{ _('Invert: a light icon on a badge of its color')|edq }}" data-bind="click: function() { iconInvert(!iconInvert()) }, css: { active: iconInvert() }"><i class="fa-solid fa-circle-half-stroke"></i></button>
                 <button type="button" class="btn sce-icon-color-clear" title="{{ _('No icon color')|edq }}" data-bind="click: function() { iconColor('') }, css: { active: !iconColor() }"><i class="fa-solid fa-droplet-slash"></i></button>
             </div>
             <div class="sce-icon-suggest" data-bind="visible: iconSuggest.visible">
@@ -112,7 +113,7 @@
     </div>
     <!-- ko foreach: devices -->
     <div class="sce-row sce-device-row">
-        <span class="sce-icon"><i data-bind="css: $data.icon || '', style: { color: $data.icon_color || '' }"></i></span>
+        <span class="sce-icon"><i data-bind="css: ($data.icon || '') + ($data.icon_invert ? ' sce-icon-inverted' : ''), style: $data.icon_invert ? { backgroundColor: $data.icon_color || '' } : { color: $data.icon_color || '' }"></i></span>
         <span class="sce-text">
             <span class="sce-name" data-bind="text: $data.name"></span>
             <span class="muted" data-bind="text: $root.typeLabel($data.type)"></span>
@@ -138,7 +139,7 @@
     <div class="sce-row sce-section"><span class="sce-section-label" data-bind="text: $data.heading"></span></div>
     <!-- /ko -->
     <div class="sce-row sce-command">
-        <span class="sce-icon"><i data-bind="css: $data.icon || '', style: { color: $data.icon_color || '' }"></i></span>
+        <span class="sce-icon"><i data-bind="css: ($data.icon || '') + ($data.icon_invert ? ' sce-icon-inverted' : ''), style: $data.icon_invert ? { backgroundColor: $data.icon_color || '' } : { color: $data.icon_color || '' }"></i></span>
         <span class="sce-text"><span class="sce-name" data-bind="text: $data.name"></span></span>
         <span class="sce-badges">
             <span class="label label-info sce-member" data-bind="visible: $root.badgeFor($data), text: $root.badgeFor($data)"></span>
@@ -175,7 +176,7 @@
         <!-- /ko -->
 
         <!-- ko ifnot: $root.isSection($data) -->
-        <span class="sce-icon"><i data-bind="css: $data.icon || '', style: { color: $data.icon_color || '' }"></i></span>
+        <span class="sce-icon"><i data-bind="css: ($data.icon || '') + ($data.icon_invert ? ' sce-icon-inverted' : ''), style: $data.icon_invert ? { backgroundColor: $data.icon_color || '' } : { color: $data.icon_color || '' }"></i></span>
         <span class="sce-text">
             <span class="sce-name" data-bind="text: $data.name"></span>
             <code class="sce-cmd" data-bind="text: $data.command, attr: { title: $data.command }"></code>

@@ -7,7 +7,7 @@
 $(function () {
     const DIVIDER = "divider";
     const ACTION_PATTERN = /^[a-z0-9_-]+$/;
-    const FLAGS = ["async", "fresh_credentials", "ignore"];
+    const FLAGS = ["async", "fresh_credentials", "ignore", "icon_invert"];
     const STATES = ["printing", "paused", "ready", "offline", "error"];
 
     const isSection = (entry) => entry.action === DIVIDER;
@@ -183,6 +183,7 @@ $(function () {
         self.icon = ko.observable("");
         self.iconColor = ko.observable("");
         self.iconColorPick = colorPick(self.iconColor);
+        self.iconInvert = ko.observable(false);
         self.iconSuggest = iconSuggest(self.icon);
         self.useConfirm = ko.observable(false);
         self.confirmMessage = ko.observable("");
@@ -307,7 +308,7 @@ $(function () {
         self.toEntry = () => {
             if (self.isCore()) {
                 return _.extend(
-                    {action: self.action(), name: self.name(), icon: self.icon().trim(), icon_color: self.iconColor(),
+                    {action: self.action(), name: self.name(), icon: self.icon().trim(), icon_color: self.iconColor(), icon_invert: self.iconInvert(),
                      heading: self.heading().trim()},
                     deviceFields()
                 );
@@ -321,6 +322,7 @@ $(function () {
                 command: self.command().trim(),
                 icon: self.icon().trim(),
                 icon_color: self.iconColor(),
+                icon_invert: self.iconInvert(),
                 confirm: self.useConfirm() ? self.confirmMessage().trim() || gettext("Are you sure?") : "",
                 async: self.async(),
                 fresh_credentials: self.freshCredentials(),
@@ -360,6 +362,7 @@ $(function () {
             self.command(entry.command || "");
             self.icon(entry.icon || "");
             self.iconColor(entry.icon_color || "");
+            self.iconInvert(!!entry.icon_invert);
             self.useConfirm(!!entry.confirm);
             self.confirmMessage(entry.confirm || "");
             self.async(!!entry.async);
@@ -411,6 +414,7 @@ $(function () {
         self.icon = ko.observable("");
         self.iconColor = ko.observable("");
         self.iconColorPick = colorPick(self.iconColor);
+        self.iconInvert = ko.observable(false);
         self.iconSuggest = iconSuggest(self.icon);
         self.status = ko.observable("");
         self.onPattern = ko.observable("");
@@ -477,7 +481,8 @@ $(function () {
                 type: type,
                 name: self.name().trim(),
                 icon: self.icon().trim(),
-                icon_color: self.iconColor()
+                icon_color: self.iconColor(),
+                icon_invert: self.iconInvert() || undefined
             };
             if (type !== "link") device.status = self.status().trim();
             if (type === "switch") {
@@ -505,6 +510,7 @@ $(function () {
             self.type(device.type || "switch");
             self.icon(device.icon || "");
             self.iconColor(device.icon_color || "");
+            self.iconInvert(!!device.icon_invert);
             self.status(device.status || "");
             self.onPattern(device.on_pattern || "");
             self.offPattern(device.off_pattern || "");
@@ -651,7 +657,7 @@ $(function () {
         self.coreEntries = ko.pureComputed(() => {
             const settings = self.coreSettings();
             return _.filter(self.systemViewModel.systemActions(), (item) => item.actionSource === "core").map((item) =>
-                _.extend({action: item.action, name: item.name, icon: "", icon_color: "", heading: ""}, settings[item.action] || {})
+                _.extend({action: item.action, name: item.name, icon: "", icon_color: "", icon_invert: false, heading: ""}, settings[item.action] || {})
             );
         });
         self.editCore = (entry) => {
@@ -660,6 +666,7 @@ $(function () {
                 settings[edited.action] = {
                     icon: edited.icon,
                     icon_color: edited.icon_color,
+                    icon_invert: !!edited.icon_invert,
                     heading: edited.heading,
                     group: edited.group,
                     role: edited.role,
@@ -814,6 +821,7 @@ $(function () {
                     if (core[action]) {
                         setField(core[action], "icon", value.icon || "");
                         setField(core[action], "icon_color", value.icon_color || "");
+                        setField(core[action], "icon_invert", !!value.icon_invert);
                         setField(core[action], "heading", value.heading || "");
                         setField(core[action], "group", value.group || "");
                         setField(core[action], "role", value.role || "");

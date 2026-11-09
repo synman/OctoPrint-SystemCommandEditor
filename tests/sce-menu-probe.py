@@ -25,6 +25,7 @@ DEVICES = [
     {"id": "laser", "type": "switch", "name": "Laser", "icon": "fa-solid fa-bolt", "status": "laser-state",
      "on_pattern": "ON", "off_pattern": "OFF", "section": "Machine"},
     {"id": "res", "type": "selector", "name": "Resolution", "icon": "fa-solid fa-ruler", "status": "res-state",
+     "icon_color": "#0000ff", "icon_invert": True,
      "section": "Machine"},
     {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "icon_color": "#ff0000",
      "status": "disk-state",
@@ -515,6 +516,10 @@ def run_probe():
             laserInline: document.querySelector('li.sce-device[data-device-id="laser"] i.sce-menu-icon').style.color})""")
         check("a device's icon color colors its icon, and others keep the menu's color",
               colors["disk"] == "rgb(255, 0, 0)" and colors["laserInline"] == "", json.dumps(colors))
+        inv = page.evaluate("""() => { const i = document.querySelector('li.sce-device[data-device-id="res"] i.sce-menu-icon');
+            const s = getComputedStyle(i); return {cls: i.classList.contains('sce-icon-inverted'), bg: s.backgroundColor, fg: s.color}; }""")
+        check("an inverted icon is a light glyph on a badge of its color",
+              inv["cls"] and inv["bg"] == "rgb(0, 0, 255)" and inv["fg"] == "rgb(255, 255, 255)", json.dumps(inv))
 
         # P. live updates are off by default: an open menu sends no further status checks
         open_menu()

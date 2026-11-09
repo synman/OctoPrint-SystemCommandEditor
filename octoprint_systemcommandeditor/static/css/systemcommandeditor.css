@@ -387,3 +387,11 @@
   opacity: 0;
   cursor: pointer;
 }
+
+/* per-icon invert: a light glyph on a badge of the icon's color, or of the text color without one */
+.sce-icon-inverted {
+  color: #fff !important;
+  background-color: #555;
+  border-radius: 3px;
+  padding: 2px 0;
+}
