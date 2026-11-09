@@ -556,7 +556,6 @@ $(function () {
             menu.find("." + DOUBLED).removeClass(DOUBLED);
             menu.find("." + COND).removeClass([HIDDEN, "disabled", COND].join(" ")).removeAttr("title");
             menu.addClass("sce-menu");
-            menu.toggleClass("sce-invert-icons", !!(self._data && self._data.invert_icons));
             if (!self._data) return;
 
             const entries = self._data.entries || {};

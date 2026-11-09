@@ -131,7 +131,7 @@ def status_body(ids, overrides):
     return json.dumps({"results": out})
 
 
-options = {"success_toast": False, "live_updates": False, "live_interval": 1, "invert_icons": False}
+options = {"success_toast": False, "live_updates": False, "live_interval": 1}
 
 SUCCESS_TOASTS = """() => [...document.querySelectorAll('.ui-pnotify')]
     .filter(n => /executed successfully/.test(n.innerText)).length"""
@@ -150,7 +150,7 @@ def handle_plugin(route, request):
     route.fulfill(status=200, content_type="application/json", body=json.dumps({
         "devices": DEVICES, "core": CORE, "entries": ENTRIES, "core_commands": CORE_COMMANDS,
         "success_toast": options["success_toast"], "live_updates": options["live_updates"],
-        "live_interval": options["live_interval"], "invert_icons": options["invert_icons"]}))
+        "live_interval": options["live_interval"]}))
 
 
 def handle_commands(route, request):
@@ -514,12 +514,6 @@ def run_probe():
         pump(2500)
         check("an open menu sends no further status checks by default", status_log == [], "sent=%s" % status_log)
 
-        # R. menu icons are not inverted by default
-        INVERTED = """() => { const i = document.querySelector('#navbar_systemmenu > ul.dropdown-menu li.sce-device i');
-            return i ? getComputedStyle(i).filter : null; }"""
-        plain = page.evaluate(INVERTED)
-        check("menu icons are not inverted by default", plain in ("none", ""), "filter=%r" % plain)
-
         # O. with the success toast turned on, a finished sync run shows core's success toast again
         options["success_toast"] = True
         page.reload(wait_until="domcontentloaded")
@@ -530,14 +524,6 @@ def run_probe():
         pump(int((SYNC_DELAY + 1.0) * 1000))
         toasts = page.evaluate(SUCCESS_TOASTS)
         check("with the option on, a finished sync run shows the success toast", toasts == 1, "toasts=%s" % toasts)
-
-        # S. with the invert option on, the menu's icons are drawn inverted
-        options["invert_icons"] = True
-        page.reload(wait_until="domcontentloaded")
-        wait_until(lambda: page.evaluate(
-            "() => document.querySelector('li.sce-device[data-device-id=\"laser\"] .sce-dot.sce-off') !== null"), 15)
-        inverted = page.evaluate(INVERTED)
-        check("with the invert option on, menu icons are inverted", inverted == "invert(1)", "filter=%r" % inverted)
 
         # Q. with live updates on, an open menu re-checks every interval, and a closed one stops
         options["live_updates"] = True
