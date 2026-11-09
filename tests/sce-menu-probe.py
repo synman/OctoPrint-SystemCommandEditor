@@ -348,6 +348,12 @@ MENU_OPEN = """() => {
 
 DIALOG_VISIBLE = """() => document.querySelectorAll('.modal pre').length > 0"""
 
+# the text of the visible confirmation's pre blocks, or null when no confirmation is visible
+VISIBLE_CONFIRM_TEXT = """() => {
+    const modal = [...document.querySelectorAll('.modal')].find(m => getComputedStyle(m).display !== 'none');
+    return modal ? [...modal.querySelectorAll('pre')].map(p => p.innerText).join('|') : null;
+}"""
+
 # wantCancel: click the dialog's cancel button; otherwise the last button that is not cancel or close
 CLICK_DIALOG = r"""(wantCancel) => {
     const modal = [...document.querySelectorAll('.modal')].find(m => getComputedStyle(m).display !== 'none');
@@ -590,8 +596,9 @@ def run_probe():
         # H2. a link with a confirmation shows it with its link text; cancel opens nothing; proceed opens its url
         open_menu()
         page.locator("#navbar_systemmenu a").filter(has_text=re.compile(r"^\s*Camera page with confirm\s*$")).first.click()
-        dialog = wait_until(lambda: page.evaluate(DIALOG_VISIBLE), 6)
-        dialog_text = page.evaluate("() => [...document.querySelectorAll('.modal pre')].map(p => p.innerText).join('|')")
+        # the visible confirmation only: OctoPrint's hidden license modal also holds a pre
+        dialog = wait_until(lambda: page.evaluate(VISIBLE_CONFIRM_TEXT) == "Link: http://example.test/confirm", 6)
+        dialog_text = page.evaluate(VISIBLE_CONFIRM_TEXT)
         check("a link with a confirmation asks first, showing its Link text", bool(dialog) and
               dialog_text == "Link: http://example.test/confirm", "dialog=%r text=%r" % (dialog, dialog_text))
         pages_before = len(page.context.pages)
@@ -602,7 +609,7 @@ def run_probe():
               "cancelled=%r pages=%d->%d calls=%s" % (cancelled, pages_before, len(page.context.pages), calls))
         open_menu()
         page.locator("#navbar_systemmenu a").filter(has_text=re.compile(r"^\s*Camera page with confirm\s*$")).first.click()
-        wait_until(lambda: page.evaluate(DIALOG_VISIBLE), 6)
+        wait_until(lambda: page.evaluate(VISIBLE_CONFIRM_TEXT) is not None, 6)
         with page.context.expect_page() as popup_info:
             page.evaluate(CLICK_DIALOG, False)
         popup = popup_info.value
