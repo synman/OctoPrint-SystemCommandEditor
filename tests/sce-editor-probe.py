@@ -28,8 +28,7 @@ CORE_FIXTURE = [
 ]
 STATE_PICK = "label:has-text('{}') input"
 FIXTURE_DEVICES = [
-    {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "df -h",
-     "section": ""},
+    {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "df -h"},
 ]
 # answer to the presets call: one available preset, one unavailable, and one whose id is already a device
 PRESETS = [
@@ -532,10 +531,16 @@ def run_probe():
         else:
             devices = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
             cpu_entry = [d for d in devices if d.get("id") == "cpu"]
-            check("POST carries cpu from presets with exactly six keys in section Status",
-                  len(cpu_entry) == 1 and set(cpu_entry[0]) == {"id", "type", "name", "icon", "status", "section"}
-                  and cpu_entry[0].get("section") == "Status" and cpu_entry[0].get("type") == "readout",
-                  json.dumps(cpu_entry))
+            check("POST carries cpu from presets with exactly five keys and no section",
+                  len(cpu_entry) == 1 and set(cpu_entry[0]) == {"id", "type", "name", "icon", "status"}
+                  and cpu_entry[0].get("type") == "readout", json.dumps(cpu_entry))
+            saved_actions = list((body.get("system") or {}).get("actions") or [])
+            status_at = [i for i, a in enumerate(saved_actions) if a == {"action": "divider", "name": "Status"}]
+            cpu_place = [i for i, a in enumerate(saved_actions) if a.get("device") == "cpu"]
+            check("POST places cpu under the Status divider, as its own entry with no command",
+                  len(status_at) == 1 and len(cpu_place) == 1 and cpu_place[0] > status_at[0]
+                  and saved_actions[cpu_place[0]] == {"action": "cpu", "name": "CPU temperature", "device": "cpu"},
+                  json.dumps(saved_actions))
             check("unticking an added readout and applying removes it from the POST",
                   len([d for d in devices if d.get("id") == "disk"]) == 0, json.dumps([d.get("id") for d in devices]))
             saved = list((body.get("system") or {}).get("actions") or [])

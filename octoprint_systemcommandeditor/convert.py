@@ -98,4 +98,59 @@ def convert(system_actions, legacy_actions):
 
 
 def command_count(actions):
-    return sum(1 for entry in actions or [] if _valid(entry) and not _is_divider(entry))
+    return sum(1 for entry in actions or [] if _valid(entry) and not _is_divider(entry) and "command" in entry)
+
+
+def free_key(base, used):
+    """Return ``base`` if unused, else ``base_2``, ``base_3``... ``used`` holds every action key in use."""
+    if base not in used:
+        return base
+    n = 2
+    while "{}_{}".format(base, n) in used:
+        n += 1
+    return "{}_{}".format(base, n)
+
+
+def _is_placement(entry):
+    return _valid(entry) and not _is_divider(entry) and "command" not in entry
+
+
+def place_readouts(devices, actions):
+    """Give every readout device without a placement one, placed after its section's divider's last entry.
+
+    A readout's placement is an action entry ``{"action", "name", "device"}`` with no command. Returns
+    ``(devices, actions, changed)``. Readouts keep their order. A section with no divider gets one at the end;
+    a readout with no section is appended at the end. ``section`` is dropped from every readout device.
+    Nothing is touched when there are no readouts.
+    """
+    readouts = [d for d in devices or [] if isinstance(d, dict) and d.get("type") == "readout"]
+    if not readouts:
+        return devices, actions, False
+
+    placed = {entry.get("device") for entry in actions or [] if _is_placement(entry)}
+    actions = [dict(entry) for entry in actions or []]
+    for device in readouts:
+        if device.get("id") in placed:
+            continue
+        used = {entry.get("action") for entry in actions} | {DIVIDER}
+        placement = {"action": free_key(device["id"], used), "name": device.get("name", ""), "device": device["id"]}
+        section = device.get("section")
+        if not section:
+            actions.append(placement)
+            continue
+        divider = next((i for i, e in enumerate(actions) if _is_divider(e) and e.get("name") == section), None)
+        if divider is None:
+            actions.append({"action": DIVIDER, "name": section})
+            actions.append(placement)
+            continue
+        end = divider
+        while end + 1 < len(actions) and not _is_divider(actions[end + 1]):
+            end += 1
+        actions.insert(end + 1, placement)
+
+    new_devices = []
+    for device in devices:
+        if isinstance(device, dict) and device.get("type") == "readout" and "section" in device:
+            device = {key: value for key, value in device.items() if key != "section"}
+        new_devices.append(device)
+    return new_devices, actions, True

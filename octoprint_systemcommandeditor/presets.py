@@ -62,7 +62,7 @@ CATALOG = [
     },
 ]
 
-DEVICE_KEYS = ("id", "type", "name", "icon", "status", "section")
+DEVICE_KEYS = ("id", "type", "name", "icon", "status")
 
 
 def device_of(preset):
@@ -72,7 +72,6 @@ def device_of(preset):
         "name": preset["name"],
         "icon": preset["icon"],
         "status": preset["status"],
-        "section": "Status",
     }
 
 

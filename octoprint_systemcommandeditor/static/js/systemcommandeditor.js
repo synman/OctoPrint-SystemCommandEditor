@@ -440,7 +440,7 @@ $(function () {
         self.isSwitch = ko.pureComputed(() => self.type() === "switch");
         self.isLink = ko.pureComputed(() => self.type() === "link");
         self.hasStatus = ko.pureComputed(() => self.type() !== "link");
-        self.hasSection = ko.pureComputed(() => self.type() === "readout" || self.type() === "link");
+        self.hasSection = ko.pureComputed(() => self.type() === "link");
 
         self.title = ko.pureComputed(() => (self.editing() ? gettext("Edit control") : gettext("Add control")));
 
@@ -496,7 +496,7 @@ $(function () {
                 device.off_pattern = self.offPattern().trim();
             }
             if (type === "link") device.url = self.url().trim();
-            if (type === "readout" || type === "link") device.section = self.section();
+            if (type === "link") device.section = self.section();
             if (type === "link") device.when = self.condition.toWhen();
             return dropEmpty(device);
         };
@@ -619,16 +619,18 @@ $(function () {
             self.readouts().forEach((row) => {
                 if (row.checked() && !row.added) {
                     const preset = row.item;
-                    owner.devices.push({
+                    const device = {
                         id: preset.id,
                         type: preset.type,
                         name: preset.name,
                         icon: preset.icon,
-                        status: preset.status,
-                        section: preset.section
-                    });
+                        status: preset.status
+                    };
+                    owner.devices.push(device);
+                    owner.placeReadout(device, "Status");
                 } else if (!row.checked() && row.added) {
                     owner.devices.remove((device) => device.id === row.item.id);
+                    owner.entries.remove((entry) => entry.device === row.item.id);
                 }
             });
             const removed = self.maintenance().filter((row) => row.added && !row.checked()).map((row) => row.item.action);
@@ -736,6 +738,54 @@ $(function () {
 
         self.isSection = isSection;
 
+        // --- readout placements: a custom-list entry that names a readout by device; it runs nothing -------------
+
+        self.isPlacement = (entry) => !isSection(entry) && !!entry.device;
+        self.isCommand = (entry) => !isSection(entry) && !entry.device;
+        self.deviceOf = (entry) => _.find(self.devices(), (d) => d.id === entry.device);
+        self.isPlaced = (device) => _.some(self.entries(), (entry) => entry.device === device.id);
+
+        // a placement's action key: its readout id if free, else id_2, id_3...
+        const placementKey = (base) => {
+            let candidate = base;
+            let counter = 2;
+            while (candidate === DIVIDER || self.actionInUse(candidate)) {
+                candidate = base + "_" + counter++;
+            }
+            return candidate;
+        };
+
+        // adds a readout's placement at the end of the list, or (section given) right after the last entry under
+        // that divider, creating the divider at the end when it is missing
+        self.placeReadout = (device, section) => {
+            const entry = {action: placementKey(device.id), name: device.name, device: device.id};
+            const list = self.entries().slice();
+            if (!section) {
+                list.push(entry);
+            } else {
+                const divider = list.findIndex((e) => isSection(e) && e.name === section);
+                if (divider < 0) {
+                    list.push({action: DIVIDER, name: section}, entry);
+                } else {
+                    let end = divider;
+                    while (end + 1 < list.length && !isSection(list[end + 1])) end++;
+                    list.splice(end + 1, 0, entry);
+                }
+            }
+            self.entries(list);
+            self.changed();
+        };
+        self.placeInMenu = (device) => self.placeReadout(device, "");
+
+        self.editPlacement = (entry) => {
+            const device = self.deviceOf(entry);
+            if (device) self.editDevice(device);
+        };
+        self.removePlacement = (entry) => {
+            self.entries.remove(entry);
+            self.changed();
+        };
+
         // --- devices and their members ----------------------------------------------------------------------------
 
         self.dividerNames = ko.pureComputed(() =>
@@ -770,6 +820,7 @@ $(function () {
         self.addDevice = () => {
             self.deviceEditor.show(null).done((device) => {
                 self.devices.push(device);
+                if (device.type === "readout") self.placeReadout(device, "");
             });
         };
 
@@ -778,6 +829,11 @@ $(function () {
                 const index = self.devices.indexOf(device);
                 if (index < 0) return;
                 self.devices.splice(index, 1, edited);
+                if (edited.type === "readout") {
+                    self.entries(self.entries().map((entry) => (entry.device === device.id
+                        ? _.extend({}, entry, {name: edited.name, device: edited.id}) : entry)));
+                    self.changed();
+                }
                 if (edited.id !== device.id || edited.type !== device.type) {
                     // members follow a new identifier; a changed type clears their roles, which no longer fit
                     reassign(device.id, edited.id, edited.type === device.type);
@@ -792,6 +848,7 @@ $(function () {
                 }),
                 onproceed: () => {
                     self.devices.remove(device);
+                    if (device.type === "readout") self.entries.remove((entry) => entry.device === device.id);
                     reassign(device.id, "", false);
                 }
             });

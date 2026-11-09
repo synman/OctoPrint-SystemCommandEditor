@@ -11,11 +11,14 @@ from octoprint_systemcommandeditor import SystemCommandEditorPlugin  # noqa: E40
 class FakeSettings:
     """The parts of PluginSettings the migration uses, over a plain config dict."""
 
-    def __init__(self, system_actions, plugin_actions):
+    def __init__(self, system_actions, plugin_actions, devices=None):
         self.config = {"system": {"actions": system_actions}, "plugins": {"systemcommandeditor": {}}}
         if plugin_actions is not None:
             self.config["plugins"]["systemcommandeditor"]["actions"] = plugin_actions
+        if devices is not None:
+            self.config["plugins"]["systemcommandeditor"]["devices"] = devices
         self.global_sets = []
+        self.saved = 0
 
     def global_get(self, path):
         node = self.config
@@ -30,16 +33,28 @@ class FakeSettings:
             node = node.setdefault(key, {})
         node[path[-1]] = value
 
-    def get(self, path):
-        return self.config["plugins"]["systemcommandeditor"].get(path[0])
+    def get(self, path, merged=False):
+        node = self.config["plugins"]["systemcommandeditor"]
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        return node
+
+    def set(self, path, value):
+        node = self.config["plugins"]["systemcommandeditor"]
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+        node[path[-1]] = value
 
     def remove(self, path):
         self.config["plugins"]["systemcommandeditor"].pop(path[0], None)
 
+    def save(self):
+        self.saved += 1
 
-def make_plugin(tmp_path, system_actions, plugin_actions):
+
+def make_plugin(tmp_path, system_actions, plugin_actions, devices=None):
     plugin = SystemCommandEditorPlugin()
-    plugin._settings = FakeSettings(system_actions, plugin_actions)
+    plugin._settings = FakeSettings(system_actions, plugin_actions, devices)
     plugin._logger = logging.getLogger("test")
     plugin.get_plugin_data_folder = lambda: str(tmp_path)
     return plugin
@@ -47,6 +62,17 @@ def make_plugin(tmp_path, system_actions, plugin_actions):
 
 def cmd(action):
     return {"action": action, "name": action, "command": "true"}
+
+
+def readout(id_, section=None, name=None):
+    device = {"id": id_, "type": "readout", "name": name or id_.title(), "icon": "", "status": "true"}
+    if section is not None:
+        device["section"] = section
+    return device
+
+
+def placement(id_, name=None):
+    return {"action": id_, "name": name or id_.title(), "device": id_}
 
 
 def test_legacy_copy_is_merged_and_dropped(tmp_path):
@@ -79,7 +105,111 @@ def test_already_clean_list_is_not_rewritten(tmp_path):
 
 def test_current_version_is_left_alone(tmp_path):
     plugin = make_plugin(tmp_path, [cmd("a"), cmd("a")], [cmd("b")])
-    plugin.on_settings_migrate(2, 2)
+    plugin.on_settings_migrate(3, 3)
     assert plugin._settings.config["system"]["actions"] == [cmd("a"), cmd("a")]
     assert plugin._settings.config["plugins"]["systemcommandeditor"]["actions"] == [cmd("b")]
     assert list(tmp_path.iterdir()) == []
+
+
+# version 3: readouts get placements
+
+
+def test_v3_places_readout_after_last_entry_of_its_section(tmp_path):
+    actions = [cmd("a"), {"action": "divider", "name": "Status"}, cmd("b"), cmd("c"), {"action": "divider"}, cmd("d")]
+    plugin = make_plugin(tmp_path, actions, None, devices=[readout("disk", "Status")])
+    plugin.on_settings_migrate(3, 2)
+
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert config["devices"] == [readout("disk")]
+    assert plugin._settings.config["system"]["actions"] == [
+        cmd("a"),
+        {"action": "divider", "name": "Status"},
+        cmd("b"),
+        cmd("c"),
+        placement("disk"),
+        {"action": "divider"},
+        cmd("d"),
+    ]
+
+
+def test_v3_creates_missing_divider_at_end(tmp_path):
+    plugin = make_plugin(tmp_path, [cmd("a")], None, devices=[readout("disk", "Status")])
+    plugin.on_settings_migrate(3, 2)
+    assert plugin._settings.config["system"]["actions"] == [
+        cmd("a"),
+        {"action": "divider", "name": "Status"},
+        placement("disk"),
+    ]
+
+
+def test_v3_readout_without_section_goes_to_end(tmp_path):
+    plugin = make_plugin(tmp_path, [cmd("a"), {"action": "divider", "name": "X"}, cmd("b")], None, devices=[readout("ip")])
+    plugin.on_settings_migrate(3, 2)
+    assert plugin._settings.config["system"]["actions"][-1] == placement("ip")
+    assert plugin._settings.config["system"]["actions"][:3] == [cmd("a"), {"action": "divider", "name": "X"}, cmd("b")]
+
+
+def test_v3_keeps_readout_order_and_strips_section_only_from_readouts(tmp_path):
+    devices = [
+        readout("one", "Status"),
+        {"id": "docs", "type": "link", "name": "Docs", "url": "https://x", "section": "Status"},
+        readout("two", "Status"),
+    ]
+    plugin = make_plugin(tmp_path, [{"action": "divider", "name": "Status"}], None, devices=devices)
+    plugin.on_settings_migrate(3, 2)
+
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert config["devices"] == [
+        readout("one"),
+        {"id": "docs", "type": "link", "name": "Docs", "url": "https://x", "section": "Status"},
+        readout("two"),
+    ]
+    assert plugin._settings.config["system"]["actions"] == [
+        {"action": "divider", "name": "Status"},
+        placement("one"),
+        placement("two"),
+    ]
+
+
+def test_v3_leaves_readout_that_already_has_placement_alone(tmp_path):
+    actions = [{"action": "divider", "name": "Status"}, placement("disk", "Disk")]
+    plugin = make_plugin(tmp_path, actions, None, devices=[readout("disk", "Status")])
+    plugin.on_settings_migrate(3, 2)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert "section" not in plugin._settings.config["plugins"]["systemcommandeditor"]["devices"][0]
+
+
+def test_v3_without_readouts_writes_nothing(tmp_path):
+    devices = [{"id": "sw", "type": "switch", "name": "Sw", "section": "X"}]
+    plugin = make_plugin(tmp_path, [cmd("a")], None, devices=devices)
+    plugin.on_settings_migrate(3, 2)
+    assert plugin._settings.global_sets == []
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == devices
+
+
+# first-start loader
+
+
+def test_loader_places_sample_readouts_under_status(tmp_path):
+    plugin = make_plugin(tmp_path, [cmd("a")], None)
+
+    def detector():
+        return [
+            {"id": "disk", "type": "readout", "name": "Free disk", "icon": "", "status": "df", "sample": True,
+             "available": True, "value": "1"},
+            {"id": "memory", "type": "readout", "name": "Free memory", "icon": "", "status": "free", "sample": False,
+             "available": True, "value": "2"},
+        ]
+
+    plugin._load_sample_presets(detector=detector, maintenance_detector=lambda: [])
+
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    readouts = [d for d in config["devices"] if d.get("type") == "readout"]
+    assert [d["id"] for d in readouts] == ["disk"]
+    assert "section" not in readouts[0]
+    assert plugin._settings.config["system"]["actions"] == [
+        cmd("a"),
+        {"action": "divider", "name": "Status"},
+        {"action": "disk", "name": "Free disk", "device": "disk"},
+    ]
+    assert config["presets_loaded"] is True

@@ -66,7 +66,7 @@ def test_detect_returns_catalog_order_with_device_and_sample_keys():
     for item, preset in zip(detected, CATALOG):
         assert item["sample"] is preset["sample"]
         assert item["available"] is True
-        assert item["section"] == "Status"
+        assert "section" not in item
 
 
 def test_device_of_builds_readout_record_with_six_keys():
@@ -77,7 +77,6 @@ def test_device_of_builds_readout_record_with_six_keys():
         "name": "Free disk",
         "icon": "fa-solid fa-hard-drive",
         "status": CATALOG[0]["status"],
-        "section": "Status",
     }
 
 
@@ -99,8 +98,7 @@ def test_sample_devices_keeps_only_sample_and_available_in_catalog_order():
     samples = sample_devices(detected)
     assert [record["id"] for record in samples] == ["disk"]
     for record in samples:
-        assert set(record) == {"id", "type", "name", "icon", "status", "section"}
-        assert record["section"] == "Status"
+        assert set(record) == {"id", "type", "name", "icon", "status"}
 
 
 ENV = {

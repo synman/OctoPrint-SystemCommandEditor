@@ -96,7 +96,7 @@
 <h3>{{ _('System Commands') }}</h3>
 
 <p class="muted">
-    {{ _('Controls show a state and gather the commands that drive it: switches, selectors, readouts and links. Built-in controls are OctoPrint\'s own commands. Custom controls are your own commands and section headings, in menu order. Changes take effect when you click Save.') }}
+    {{ _('Controls show a state and gather the commands that drive it: switches, selectors, readouts and links. Built-in controls are OctoPrint\'s own commands. Custom controls are your own commands, section headings and placed readouts, in menu order. Changes take effect when you click Save.') }}
 </p>
 
 <div class="sce-options">
@@ -131,6 +131,9 @@
             <span class="muted" data-bind="text: $root.typeLabel($data.type)"></span>
         </span>
         <span class="btn-group sce-buttons">
+            <!-- ko if: $data.type === 'readout' && !$root.isPlaced($data) -->
+            <button type="button" class="btn btn-mini" title="{{ _('Show this readout in the System menu')|edq }}" data-bind="click: $root.placeInMenu"><i class="fa-solid fa-bars-staggered"></i> {{ _('Place in menu') }}</button>
+            <!-- /ko -->
             <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit')|edq }}" data-bind="click: $root.editDevice"><i class="fa-solid fa-pencil"></i></button>
             <button type="button" class="btn btn-mini btn-danger" title="{{ _('Delete')|edq }}" data-bind="click: $root.removeDevice"><i class="fa-solid fa-trash"></i></button>
         </span>
@@ -170,7 +173,7 @@
 
 <h4 class="sce-group-title">{{ _('Custom controls') }}</h4>
 <p class="muted">
-    {{ _('Your own commands and section headings, in the order the System menu shows them.') }}
+    {{ _('Your own commands, section headings and placed readouts, in the order the System menu shows them.') }}
 </p>
 <div class="sce-list" data-bind="css: { 'sce-list-empty': entries().length === 0 }">
     <div class="sce-empty muted" data-bind="visible: entries().length === 0">
@@ -190,7 +193,15 @@
         </span>
         <!-- /ko -->
 
-        <!-- ko ifnot: $root.isSection($data) -->
+        <!-- ko if: $root.isPlacement($data) -->
+        <span class="sce-icon"><i data-bind="css: (($root.deviceOf($data) || {}).icon || '') + (($root.deviceOf($data) || {}).icon_invert ? ' sce-icon-inverted' : ''), style: ($root.deviceOf($data) || {}).icon_invert ? { backgroundColor: ($root.deviceOf($data) || {}).icon_color || '' } : { color: ($root.deviceOf($data) || {}).icon_color || '' }"></i></span>
+        <span class="sce-text">
+            <span class="sce-name" data-bind="text: $data.name"></span>
+            <span class="muted">{{ _('Readout') }}</span>
+        </span>
+        <!-- /ko -->
+
+        <!-- ko if: $root.isCommand($data) -->
         <span class="sce-icon"><i data-bind="css: ($data.icon || '') + ($data.icon_invert ? ' sce-icon-inverted' : ''), style: $data.icon_invert ? { backgroundColor: $data.icon_color || '' } : { color: $data.icon_color || '' }"></i></span>
         <span class="sce-text">
             <span class="sce-name" data-bind="text: $data.name"></span>
@@ -208,11 +219,17 @@
         <span class="btn-group sce-buttons">
             <button type="button" class="btn btn-mini" title="{{ _('Move up')|edq }}" data-bind="click: $root.moveUp, enable: $index() > 0"><i class="fa-solid fa-arrow-up"></i></button>
             <button type="button" class="btn btn-mini" title="{{ _('Move down')|edq }}" data-bind="click: $root.moveDown, enable: $index() < $root.entries().length - 1"><i class="fa-solid fa-arrow-down"></i></button>
+            <!-- ko if: $root.isPlacement($data) -->
+            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit this readout in Controls')|edq }}" data-bind="click: $root.editPlacement"><i class="fa-solid fa-pencil"></i></button>
+            <button type="button" class="btn btn-mini btn-danger" title="{{ _('Remove from the System menu; the control stays in Controls')|edq }}" data-bind="click: $root.removePlacement"><i class="fa-solid fa-trash"></i></button>
+            <!-- /ko -->
+            <!-- ko ifnot: $root.isPlacement($data) -->
             <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit')|edq }}" data-bind="click: $root.edit"><i class="fa-solid fa-pencil"></i></button>
-            <!-- ko ifnot: $root.isSection($data) -->
+            <!-- ko if: $root.isCommand($data) -->
             <button type="button" class="btn btn-mini" title="{{ _('Duplicate')|edq }}" data-bind="click: $root.duplicate"><i class="fa-solid fa-copy"></i></button>
             <!-- /ko -->
             <button type="button" class="btn btn-mini btn-danger" title="{{ _('Delete')|edq }}" data-bind="click: $root.remove"><i class="fa-solid fa-trash"></i></button>
+            <!-- /ko -->
         </span>
     </div>
     <!-- /ko -->

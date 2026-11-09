@@ -102,3 +102,48 @@ def test_never_fewer_commands_than_either_input_without_duplicates():
     legacy = [cmd("c")]
     actions, _ = convert(system, legacy)
     assert command_count(actions) == 3
+
+
+free_key = convert_module.free_key
+place_readouts = convert_module.place_readouts
+
+
+def placement(id_):
+    return {"action": id_, "name": id_.title(), "device": id_}
+
+
+def test_convert_keeps_placement_entries_and_counts_only_commands():
+    system = [cmd("a"), placement("disk"), DIV, cmd("b")]
+    actions, report = convert(system, [])
+    assert actions == system
+    assert report["invalid"] == 0
+    assert command_count(actions) == 2
+
+
+def test_free_key_returns_base_when_unused_and_suffixes_on_collision():
+    assert free_key("disk", {"memory", "divider"}) == "disk"
+    assert free_key("disk", {"disk"}) == "disk_2"
+    assert free_key("disk", {"disk", "disk_2"}) == "disk_3"
+    assert free_key("divider", {"divider"}) == "divider_2"
+
+
+def test_place_readouts_appends_placement_and_strips_section():
+    devices = [{"id": "disk", "type": "readout", "name": "Disk", "section": "Status"}]
+    new_devices, actions, changed = place_readouts(devices, [cmd("a")])
+    assert changed is True
+    assert new_devices == [{"id": "disk", "type": "readout", "name": "Disk"}]
+    assert actions == [cmd("a"), {"action": "divider", "name": "Status"}, {"action": "disk", "name": "Disk", "device": "disk"}]
+
+
+def test_place_readouts_avoids_key_collision_with_a_command():
+    devices = [{"id": "a", "type": "readout", "name": "A", "section": ""}]
+    _, actions, _ = place_readouts(devices, [cmd("a")])
+    assert actions[-1] == {"action": "a_2", "name": "A", "device": "a"}
+
+
+def test_place_readouts_no_readouts_is_unchanged():
+    devices = [{"id": "sw", "type": "switch", "name": "Sw", "section": "X"}]
+    new_devices, actions, changed = place_readouts(devices, [cmd("a")])
+    assert changed is False
+    assert new_devices is devices
+    assert actions == [cmd("a")]

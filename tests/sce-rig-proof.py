@@ -49,6 +49,7 @@ core["shutdown"].update(group="host", role="off")
 SEED = {
     "system": {"actions": [
         {"action": "divider", "name": "Test"},
+        {"action": "disk", "name": "Free space", "device": "disk"},
         {"action": "lamp_on", "name": "Lamp on", "command": f"touch {D}/lamp", "group": "lamp", "role": "on"},
         {"action": "lamp_off", "name": "Lamp off", "command": f"rm -f {D}/lamp", "confirm": "Turn the lamp off?",
          "group": "lamp", "role": "off"},
@@ -62,7 +63,7 @@ SEED = {
         {"id": "host", "type": "switch", "name": "This machine"},
         {"id": "lamp", "type": "switch", "name": "Lamp", "icon": "fa-solid fa-lightbulb", "status": f"test -f {D}/lamp"},
         {"id": "mode", "type": "selector", "name": "Mode", "status": f"cat {D}/mode"},
-        {"id": "disk", "type": "readout", "name": "Free space", "status": "df -h / | tail -1 | awk '{print $4}'", "section": "Test"},
+        {"id": "disk", "type": "readout", "name": "Free space", "status": "df -h / | tail -1 | awk '{print $4}'"},
         {"id": "docs", "type": "link", "name": "OctoPrint docs", "url": "https://docs.octoprint.org", "section": "Test"},
     ]}},
 }

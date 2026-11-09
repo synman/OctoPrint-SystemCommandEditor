@@ -346,6 +346,21 @@ test("fuzz: StatusTracker.get holds the newest accepted result", () => {
     }
 });
 
+test("placementOf: a readout is drawn at the placement entry that names its device", () => {
+    const entries = {
+        disk: {action: "disk", name: "Free disk", device: "disk"},
+        backup_now: {action: "backup_now", command: "true", name: "Back up"}
+    };
+    assert.strictEqual(M.placementOf("disk", entries), "disk");
+});
+
+test("placementOf: an unplaced readout has no placement, and a command never counts as one", () => {
+    const entries = {backup_now: {action: "backup_now", command: "true", name: "Back up"}};
+    assert.strictEqual(M.placementOf("disk", entries), "");
+    assert.strictEqual(M.placementOf("disk", {}), "");
+    assert.strictEqual(M.placementOf("disk", undefined), "");
+});
+
 const elapsed = Date.now() - STARTED;
 if (failures.length) {
     console.log("FAIL: " + failures.length + " of " + count + " tests");

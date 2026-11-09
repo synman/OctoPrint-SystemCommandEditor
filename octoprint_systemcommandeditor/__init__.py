@@ -18,7 +18,7 @@ import yaml
 import octoprint.plugin
 from octoprint.access.permissions import Permissions
 
-from .convert import command_count, convert
+from .convert import command_count, convert, place_readouts
 from .presets import detect, detect_maintenance, entry_of, sample_devices
 from .status import check_devices
 
@@ -36,7 +36,11 @@ API_ENTRY_KEYS = (
     "role",
     "value",
     "when",
+    "device",
 )
+
+# the divider a sample readout's placement goes under on first start
+STATUS_SECTION = "Status"
 
 CORE_COMMAND_SETTINGS = {
     "shutdown": "systemShutdownCommand",
@@ -84,7 +88,7 @@ class SystemCommandEditorPlugin(
         }
 
     def get_settings_version(self):
-        return 2
+        return 3
 
     def get_api_commands(self):
         return {"status": ["ids"], "presets": []}
@@ -139,13 +143,18 @@ class SystemCommandEditorPlugin(
             added = sample_devices(detector())
             self._settings.set(["devices"], skin + added)
             self._logger.info("Added sample devices: %s", [device["id"] for device in added])
+            if added:
+                # a sample readout is shown in the menu only where its placement is, so place each one under Status
+                actions = self._settings.global_get(["system", "actions"]) or []
+                _, actions, _ = place_readouts([dict(device, section=STATUS_SECTION) for device in added], actions)
+                self._settings.global_set(["system", "actions"], actions)
         elif skin:
             self._settings.set(["devices"], skin + devices)
         if maintenance_detector is None:
             def maintenance_detector():
                 return detect_maintenance(self._maintenance_env())
         actions = self._settings.global_get(["system", "actions"]) or []
-        if not any(item.get("action") != "divider" for item in actions):
+        if not any(item.get("action") != "divider" and "device" not in item for item in actions):
             samples = [
                 entry_of(preset) for preset in maintenance_detector() if preset["sample"] and preset["available"]
             ]
@@ -196,9 +205,24 @@ class SystemCommandEditorPlugin(
         return {key: commands[setting] for key, setting in CORE_COMMAND_SETTINGS.items() if commands.get(setting)}
 
     def on_settings_migrate(self, target, current):
-        if current is not None and current >= 2:
-            return
+        if current is None or current < 2:
+            self._convert_legacy_commands()
+        if current is None or current < 3:
+            self._place_readouts()
 
+    def _place_readouts(self):
+        devices = self._settings.get(["devices"]) or []
+        actions = copy.deepcopy(self._settings.global_get(["system", "actions"]) or [])
+        new_devices, new_actions, changed = place_readouts(devices, actions)
+        if not changed:
+            return
+        if new_actions != actions:
+            self._settings.global_set(["system", "actions"], new_actions)
+        if new_devices != devices:
+            self._settings.set(["devices"], new_devices)
+        self._logger.info("Placed readouts in the custom controls list")
+
+    def _convert_legacy_commands(self):
         system_actions = copy.deepcopy(self._settings.global_get(["system", "actions"]) or [])
         legacy_actions = copy.deepcopy(self._settings.get(["actions"]) or [])
 

@@ -149,7 +149,17 @@
         return confirm + "<pre>" + escapeHtml(command || "") + "</pre>";
     }
 
+    // the action key of the placement entry that draws readout deviceId in the menu, or "" when it has none
+    function placementOf(deviceId, entries) {
+        for (const key of Object.keys(entries || {})) {
+            const e = entries[key];
+            if (e && e.device === deviceId) return key;
+        }
+        return "";
+    }
+
     const SceModel = {
+        placementOf: placementOf,
         printerState: printerState,
         statusKind: statusKind,
         conditionEffect: conditionEffect,
@@ -592,6 +602,10 @@ $(function () {
             devices.forEach((d) => { deviceIds[d.id] = d; });
             const items = menu.children("li").toArray().map((el) => ({el: $(el), data: ko.dataFor(el)}));
             const firstMember = {};
+            // placement entries (a readout's place in the custom list) keyed by action, and the rows they are drawn at
+            const placeKeys = Object.create(null);
+            Object.keys(entries).forEach((key) => { if (entries[key] && entries[key].device) placeKeys[key] = true; });
+            const placedAt = Object.create(null);
 
             items.forEach((item) => {
                 const el = item.el;
@@ -599,6 +613,13 @@ $(function () {
                 if (!data || !data.actionSource) return;
                 const source = data.actionSource;
                 const action = data.action;
+
+                if (source === "custom" && action in placeKeys) {
+                    // a readout's placement: never drawn or run itself; its readout row is drawn in its place
+                    markCore(el, HIDDEN);
+                    placedAt[action] = el;
+                    return;
+                }
 
                 if (source !== "custom") {
                     if (action === "divider") return;
@@ -663,7 +684,9 @@ $(function () {
                         : node("span", ["sce-state"]).text(
                             kind === "nostatus" || kind === "pending" ? "" : kind === "unknown" ? "Unknown" : String(kind));
                     li.append(icon(d.icon, d.icon_color, d.icon_invert), node("span", ["sce-device-name"]).text(d.name), text);
-                    place(d.section, li);
+                    // drawn only where its placement entry is; a readout with no placement is not in the menu
+                    const anchor = placedAt[SceModel.placementOf(d.id, entries)];
+                    if (anchor) anchor.before(li);
                     return;
                 }
                 if (d.type === "link") {
@@ -698,7 +721,8 @@ $(function () {
                 const data = ko.dataFor(li[0]);
                 if (!data || !data.actionSource || data.action === "divider") return;
                 if (self._groupOf(data.actionSource, data.action)) return;
-                if (!self._entry(data.actionSource, data.action)) return;
+                const entry = self._entry(data.actionSource, data.action);
+                if (!entry || entry.device) return;
                 event.preventDefault();
                 event.stopPropagation();
                 if (li.hasClass("disabled")) return;

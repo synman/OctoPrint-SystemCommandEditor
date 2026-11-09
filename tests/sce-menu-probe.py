@@ -28,23 +28,22 @@ DEVICES = [
      "icon_color": "#0000ff", "icon_invert": True,
      "section": "Machine"},
     {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "icon_color": "#ff0000",
-     "status": "disk-state",
-     "section": "Machine"},
+     "status": "disk-state"},
     {"id": "cam", "type": "link", "name": "Camera", "icon": "fa-solid fa-video", "url": "http://example.test/cam",
      "section": "Machine"},
     {"id": "nost", "type": "switch", "name": "No-status switch", "icon": "fa-solid fa-plug",
      "on_pattern": "", "off_pattern": "", "section": "Machine"},
     {"id": "ghost", "type": "switch", "name": "Ghost switch", "icon": "fa-solid fa-ghost", "status": "ghost-state",
      "section": "Machine"},
-    # no custom divider is named Status, so the menu draws a heading for it
-    {"id": "upt", "type": "readout", "name": "Uptime", "icon": "fa-solid fa-clock", "status": "upt-state",
-     "section": "Status"},
+    {"id": "upt", "type": "readout", "name": "Uptime", "icon": "fa-solid fa-clock", "status": "upt-state"},
 ]
 
 # devices the menu is expected to draw: "ghost" has no member in core's command list, so it draws no row
 DRAWN = [d for d in DEVICES if d["id"] != "ghost"]
 
 ENTRIES = {
+    "disk": {"name": "Disk", "device": "disk"},
+    "upt": {"name": "Uptime", "device": "upt"},
     "laser_on": {"name": "Laser on", "command": "laser-on-cmd", "group": "laser", "role": "on",
                  "icon": "fa-solid fa-lightbulb", "async": False, "confirm": "", "value": "", "when": {
                      "mode": "never", "states": ["printing"], "effect": "disable"}},
@@ -104,6 +103,10 @@ CUSTOM_LIST = [
      "confirm": "Run the cancel test action?"},
     {"action": "async_action", "name": "Async action", "command": "async-cmd",
      "confirm": "Run the async action now?"},
+    # readouts are drawn only at their placement entries: disk under Machine, upt under Status
+    {"action": "disk", "name": "Disk", "device": "disk"},
+    {"action": "divider", "name": "Status"},
+    {"action": "upt", "name": "Uptime", "device": "upt"},
 ]
 
 CORE_LIST = [{"action": "restart", "name": "Restart OctoPrint", "confirm": "Restart OctoPrint?"}]
@@ -503,10 +506,10 @@ def run_probe():
               before == after and all(v == 1 for v in rows.values()),
               "before=%s after=%s rows=%s" % (before, after, json.dumps(rows)))
 
-        # P. a section no custom divider names gets one heading, and its row follows it, also after a re-render
+        # P. the Status divider gets one heading, and the upt readout row follows it, also after a re-render
         open_menu()
         heading = page.evaluate(STATUS_HEADING)
-        check("one Status heading exists and the upt row follows it after a re-render",
+        check("one Status heading exists and the upt readout row follows it after a re-render",
               heading["heads"] == 1 and heading["rowFollows"], json.dumps(heading))
 
         # T. an icon color set on a device colors its icon; one without a color keeps the menu's own
