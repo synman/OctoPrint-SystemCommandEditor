@@ -97,13 +97,18 @@
         return verb + " " + clause + " " + joined + ".";
     }
 
-    function members(deviceId, entries, core) {
+    // a control's members: custom ones in the saved order (order: the custom action keys in list order, optional; a
+    // custom key it leaves out follows in table order), then core ones in table order
+    function members(deviceId, entries, core, order) {
         const m = {source: null, on: null, off: null, restart: null, safe_restart: null, choices: [], runs: []};
-        const tables = [["custom", entries || {}], ["core", core || {}]];
+        const custom = entries || {};
+        const listed = Array.isArray(order) ? order.filter((k) => Object.prototype.hasOwnProperty.call(custom, k)) : [];
+        const customKeys = listed.concat(Object.keys(custom).filter((k) => listed.indexOf(k) === -1));
+        const tables = [["custom", custom, customKeys], ["core", core || {}, null]];
         for (const pair of tables) {
             const source = pair[0];
             const table = pair[1];
-            for (const action of Object.keys(table)) {
+            for (const action of (pair[2] || Object.keys(table))) {
                 const e = table[action];
                 if (!e || e.group !== deviceId) continue;
                 if (m.source === null) m.source = source;
@@ -284,6 +289,70 @@
         return out;
     }
 
+    // a heading's unit: the one-entry unit that is a divider
+    const isHeadingUnit = (unit) => unit.length === 1 && unit[0].action === "divider";
+
+    // the list as blocks: a heading unit with every following unit up to the next heading; each unit before the first
+    // heading is a block of its own. Every block is an array of units.
+    function blocks(entries, deviceIdOf) {
+        const out = [];
+        let current = null;
+        units(entries, deviceIdOf).forEach(function (unit) {
+            if (isHeadingUnit(unit)) {
+                current = [unit];
+                out.push(current);
+            } else if (current) {
+                current.push(unit);
+            } else {
+                out.push([unit]);
+            }
+        });
+        return out;
+    }
+
+    // the index of the block whose heading is heading, or -1
+    function headingBlockIndex(bs, heading) {
+        return bs.findIndex((b) => b[0].length === 1 && b[0][0] === heading);
+    }
+
+    // the blocks flattened back to one list of entries, in order
+    function flattenBlocks(bs) {
+        return bs.reduce((all, block) => block.reduce((acc, unit) => acc.concat(unit), all), []);
+    }
+
+    // true when the heading's block can move one block up (step -1) or down (step 1)
+    function canMoveBlock(entries, deviceIdOf, heading, step) {
+        const bs = blocks(entries, deviceIdOf);
+        const i = headingBlockIndex(bs, heading);
+        return i >= 0 && i + step >= 0 && i + step < bs.length;
+    }
+
+    // the list with the heading's block swapped with its neighbouring block; at the first or last block it is unchanged
+    function moveBlock(entries, deviceIdOf, heading, step) {
+        const bs = blocks(entries, deviceIdOf);
+        const i = headingBlockIndex(bs, heading);
+        const j = i + step;
+        if (i >= 0 && j >= 0 && j < bs.length) {
+            const other = bs[j];
+            bs[j] = bs[i];
+            bs[i] = other;
+        }
+        return flattenBlocks(bs);
+    }
+
+    // the list with the heading's block moved to the target's block place: before the target block when it sits above
+    // it, after when below, so the block never lands inside another block
+    function dropBlock(entries, deviceIdOf, heading, target) {
+        const bs = blocks(entries, deviceIdOf);
+        const from = headingBlockIndex(bs, heading);
+        const to = bs.findIndex((b) => b.some((unit) => unit.indexOf(target) >= 0));
+        if (from >= 0 && to >= 0 && from !== to) {
+            const moved = bs.splice(from, 1)[0];
+            bs.splice(to, 0, moved);
+        }
+        return flattenBlocks(bs);
+    }
+
     // the icons a sync command's busy indicator may use: Font Awesome 6 Free solid glyphs that read well turning
     const BUSY_ICONS = ["fa-solid fa-spinner", "fa-solid fa-circle-notch", "fa-solid fa-arrows-rotate",
         "fa-solid fa-rotate", "fa-solid fa-rotate-right", "fa-solid fa-gear", "fa-solid fa-fan",
@@ -351,6 +420,10 @@
         commandBlock: commandBlock,
         conditionSummary: conditionSummary,
         members: members,
+        blocks: blocks,
+        canMoveBlock: canMoveBlock,
+        moveBlock: moveBlock,
+        dropBlock: dropBlock,
         switchView: switchView,
         actionView: actionView,
         StatusTracker: StatusTracker,
@@ -968,7 +1041,7 @@ $(function () {
                 const li = node("li", [DEVICE]).attr("data-device-id", d.id);
                 if (d.type === "switch" || d.type === "selector" || d.type === "action") {
                     if (!self._hasPresentMember(d.id)) return;
-                    const m = SceModel.members(d.id, entries, core);
+                    const m = SceModel.members(d.id, entries, core, self._data.order);
                     if (d.type === "switch") self._buildSwitch(d, li, m);
                     else if (d.type === "selector") self._buildSelector(d, li, m);
                     else self._buildAction(d, li, m);

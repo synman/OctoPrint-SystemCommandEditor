@@ -44,6 +44,8 @@ DEVICES = [
      "read": {"plugin": "tplinksmartplug", "helper": "get_state", "live": False},
      "on_pattern": "^on$", "off_pattern": "^off$", "section": "Machine"},
     {"id": "grbl", "type": "action", "name": "Grbl", "icon": "fa-solid fa-microchip", "status": "grbl-state"},
+    # a control whose run members are saved Zulu then Alpha, so the saved order, not the name order, draws them
+    {"id": "srt", "type": "action", "name": "Sorted", "icon": "fa-solid fa-bars"},
 ]
 
 # devices the menu is expected to draw: "ghost" has no member in core's command list, so it draws no row
@@ -104,7 +106,13 @@ ENTRIES = {
     "grbl_sleep": {"name": "Sleep", "command": "sleep-cmd", "group": "grbl", "role": "run",
                    "icon": "fa-solid fa-moon", "async": False, "confirm": "", "value": "",
                    "when_control": {"mode": "never", "states": ["Sleep"], "effect": "disable"}},
+    "srt_alpha": {"name": "Alpha run", "command": "srt-alpha-cmd", "group": "srt", "role": "run",
+                  "icon": "fa-solid fa-play", "async": False, "confirm": "", "value": ""},
+    "srt_zulu": {"name": "Zulu run", "command": "srt-zulu-cmd", "group": "srt", "role": "run",
+                 "icon": "fa-solid fa-play", "async": False, "confirm": "", "value": ""},
 }
+# the saved order of the custom entries the GET answers: Zulu run is saved before Alpha run
+ORDER = ["srt_zulu"] + [key for key in ENTRIES if key != "srt_zulu"]
 
 CORE = {
     "restart": {"icon": "fa-solid fa-arrows-rotate", "heading": "OctoPrint", "group": "", "role": "", "value": ""},
@@ -131,6 +139,8 @@ CUSTOM_LIST = [
     {"action": "laser_on", "name": "Laser on", "command": "laser-on-cmd"},
     {"action": "laser_off", "name": "Laser off", "command": "laser-off-cmd"},
     {"action": "laser_restart", "name": "Restart laser", "command": "laser-restart-cmd"},
+    {"action": "srt_alpha", "name": "Alpha run", "command": "srt-alpha-cmd"},
+    {"action": "srt_zulu", "name": "Zulu run", "command": "srt-zulu-cmd"},
     {"action": "res_1080", "name": "1080p", "command": "res-1080-cmd"},
     {"action": "res_720", "name": "720p", "command": "res-720-cmd"},
     {"action": "nost_on", "name": "No-status on", "command": "nost-on-cmd"},
@@ -226,7 +236,7 @@ def handle_plugin(route, request):
         route.fulfill(status=200, content_type="application/json", body=status_body(ids, {}, live))
         return
     route.fulfill(status=200, content_type="application/json", body=json.dumps({
-        "devices": DEVICES, "core": CORE, "entries": ENTRIES, "core_commands": CORE_COMMANDS,
+        "devices": DEVICES, "core": CORE, "entries": ENTRIES, "order": ORDER, "core_commands": CORE_COMMANDS,
         "success_toast": options["success_toast"], "live_updates": options["live_updates"],
         "live_interval": options["live_interval"]}))
 
@@ -429,6 +439,9 @@ def run_probe():
         # A. one row per device
         counts = device_rows()
         check("one row per device", all(v == 1 for v in counts.values()), json.dumps(counts))
+        saved = [b["title"] for b in page.evaluate(BUTTONS, "srt")]
+        check("a control's run buttons draw in saved order, not name order", saved == ["Zulu run", "Alpha run"],
+              json.dumps(saved))
 
         # B. member items hidden
         members = ["laser_on", "laser_off", "laser_restart", "res_1080", "res_720"]

@@ -284,7 +284,7 @@
         <span class="sce-icon"><i data-bind="css: ($data.icon || '') + ($data.icon_invert ? ' sce-icon-inverted' : ''), style: $data.icon_invert ? { backgroundColor: $data.icon_color || '' } : { color: $data.icon_color || '' }"></i></span>
         <span class="sce-text">
             <span class="sce-name" data-bind="text: $data.name"></span>
-            <code class="sce-cmd" data-bind="text: $data.command, attr: { title: $data.command }"></code>
+            <code class="sce-cmd" data-bind="text: $root.runTextOf($data), attr: { title: $root.runTextOf($data) }"></code>
         </span>
         <span class="sce-badges">
             <span class="label label-info sce-member" data-bind="visible: $root.badgeFor($data), text: $root.badgeFor($data)"></span>
@@ -308,6 +308,12 @@
             <!-- ko if: $root.isCommand($data) -->
             <button type="button" class="btn btn-mini" title="{{ _('Duplicate')|edq }}" data-bind="click: $root.duplicate"><i class="fa-solid fa-copy"></i></button>
             <!-- /ko -->
+            <!-- ko if: $root.isSection($data) -->
+            <button type="button" class="btn btn-mini" title="{{ _('Duplicate')|edq }}" data-bind="click: $root.duplicateSection"><i class="fa-solid fa-copy"></i></button>
+            <!-- /ko -->
+            <!-- /ko -->
+            <!-- ko if: $root.isControl($data) -->
+            <button type="button" class="btn btn-mini" title="{{ _('Duplicate')|edq }}" data-bind="click: $root.duplicateControlRow"><i class="fa-solid fa-copy"></i></button>
             <!-- /ko -->
             <button type="button" class="btn btn-mini btn-danger" title="{{ _('Delete')|edq }}" data-bind="click: $root.remove"><i class="fa-solid fa-trash"></i></button>
             <!-- /ko -->
@@ -409,7 +415,7 @@
                     <input type="text" class="input-block-level sce-confirm-message" data-bind="textInput: confirmMessage" placeholder="{{ _('e.g. You are about to restart the webcam.')|edq }}">
                     <div class="sce-preview">
                         <span class="muted">{{ _('The confirmation will show your message and this command:') }}</span>
-                        <pre class="sce-preview-command" data-bind="text: command"></pre>
+                        <pre class="sce-preview-command" data-bind="text: previewText"></pre>
                     </div>
                     <!-- /ko -->
                     <label class="checkbox"><input type="checkbox" data-bind="checked: async"> {{ _('Run in the background') }}</label>

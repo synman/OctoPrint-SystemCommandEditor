@@ -268,6 +268,23 @@ def test_get_passes_a_plugin_commands_run_to_the_menu(monkeypatch):
     assert body["entries"]["c"]["run"] == run
 
 
+def test_get_answers_order_in_system_actions_order_without_dividers(monkeypatch):
+    allow(monkeypatch)
+    # not alphabetical: the saved order is what the menu must draw, and dividers are left out
+    actions = [
+        {"action": "zeta", "name": "Zeta", "command": "echo z"},
+        {"action": "divider", "name": "Section"},
+        {"action": "alpha", "name": "Alpha", "command": "echo a", "group": "d", "role": "run"},
+        {"action": "mid", "name": "Mid", "command": "echo m", "group": "d", "role": "run"},
+    ]
+    plugin = make_plugin(system_actions=actions, devices=[{"id": "d", "type": "action"}])
+
+    with request_context():
+        body = plugin.on_api_get(None).get_json()
+
+    assert body["order"] == ["zeta", "alpha", "mid"]
+
+
 def test_get_returns_entries_and_core_commands(monkeypatch):
     allow(monkeypatch)
     actions = [
@@ -291,7 +308,7 @@ def test_get_returns_entries_and_core_commands(monkeypatch):
     with request_context():
         body = plugin.on_api_get(None).get_json()
 
-    assert set(body) == {"devices", "core", "entries", "core_commands", "success_toast", "live_updates", "live_interval", "busy_icon"}
+    assert set(body) == {"devices", "core", "entries", "order", "core_commands", "success_toast", "live_updates", "live_interval", "busy_icon"}
     assert body["busy_icon"] == "fa-solid fa-spinner"
     assert body["live_updates"] is False
     assert body["live_interval"] == 5

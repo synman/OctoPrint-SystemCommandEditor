@@ -342,11 +342,13 @@ class SystemCommandEditorPlugin(
     def on_api_get(self, request):
         if not Permissions.SYSTEM.can():
             flask.abort(403)
-        entries = {entry["action"]: entry for entry in self._action_entries()}
+        listed = self._action_entries()
+        entries = {entry["action"]: entry for entry in listed}
         return flask.jsonify(
             devices=self._settings.get(["devices"]) or [],
             core=self._settings.get(["core"], merged=True) or {},
             entries=entries,
+            order=[entry["action"] for entry in listed],
             core_commands=self._core_commands(),
             success_toast=self._settings.get(["success_toast"]) is True,
             live_updates=self._settings.get(["live_updates"]) is True,

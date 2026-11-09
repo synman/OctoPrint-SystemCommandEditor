@@ -448,6 +448,176 @@ def busy_icon_checks():
     open_settings()  # the save closed the dialog; the phases after this work in it
 
 
+LIST_VM = "(() => ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor')))()"
+
+
+def set_list(entries, devices):
+    """Replaces the custom list and controls in the open pane; the save path is not touched."""
+    page.evaluate("""([entries, devices]) => {
+        const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+        vm.devices(devices);
+        vm.entries(entries);
+    }""", [entries, devices])
+
+
+def list_names():
+    """Each list entry as 'Name' for a command, '#Name' for a heading, in list order."""
+    return page.evaluate("""() => {
+        const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+        return vm.entries().map(e => e.action === 'divider' ? '#' + (e.name || '') : (e.name || e.action));
+    }""")
+
+
+def list_state():
+    return page.evaluate("""() => {
+        const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+        return {entries: ko.toJS(vm.entries()), devices: ko.toJS(vm.devices())};
+    }""")
+
+
+def list_ops_checks():
+    """Section moves and drags, section and control duplicates, run duplicates, unlinking, the maintenance place, and
+    the run text. Works on a fixture list set through the open pane; never saves over the rig."""
+    open_settings()
+    ctl_devices = [{"id": "ctl", "type": "action", "name": "Ctl", "icon": "fa-solid fa-play"}]
+    set_list([
+        {"action": "divider", "name": "S"},
+        {"action": "s_cmd", "name": "Plain S", "command": "echo s"},
+        {"action": "ctl_on", "name": "Ctl on", "group": "ctl", "role": "run", "command": "echo on"},
+        {"action": "ctl_off", "name": "Ctl off", "group": "ctl", "role": "run", "command": "echo off"},
+        {"action": "divider", "name": "T"},
+        {"action": "t_cmd", "name": "Plain T", "command": "echo t"},
+    ], ctl_devices)
+    page.wait_for_timeout(200)
+
+    # Up on the heading below S moves its whole block above S
+    page.locator("#settings_plugin_systemcommandeditor .sce-row.sce-section", has_text="T").locator(
+        "button[title='Move up']").click()
+    names = list_names()
+    check("Up on a heading moves its whole block above the heading before it",
+          names == ["#T", "Plain T", "#S", "Plain S", "Ctl on", "Ctl off"], "names=%s" % names)
+
+    # dragging the heading S onto the heading T moves S's block above T
+    page.drag_and_drop("#settings_plugin_systemcommandeditor .sce-row.sce-section >> nth=1",
+                       "#settings_plugin_systemcommandeditor .sce-row.sce-section >> nth=0")
+    names = list_names()
+    check("dragging a heading moves its block to the drop place",
+          names == ["#S", "Plain S", "Ctl on", "Ctl off", "#T", "Plain T"], "names=%s" % names)
+
+    # Duplicate on the heading S: "Copy of S" right after S with copies of its items, the copied control joined
+    page.locator("#settings_plugin_systemcommandeditor .sce-row.sce-section", has_text="S").first.locator(
+        "button[title='Duplicate']").click()
+    names = list_names()
+    check("Duplicate on a heading adds Copy of S right after S with copies of its items",
+          names == ["#S", "Plain S", "Ctl on", "Ctl off", "#Copy of S", "Copy of Plain S", "Ctl on", "Ctl off",
+                    "#T", "Plain T"], "names=%s" % names)
+    state_now = list_state()
+    copied = [d for d in state_now["devices"] if d["name"] == "Copy 2 of Ctl" or d["name"] == "Copy of Ctl"]
+    joined = [e for e in state_now["entries"] if copied and e.get("group") == copied[-1]["id"]]
+    check("the section copy's control is joined to its copied members", len(copied) == 1 and len(joined) == 2,
+          "devices=%s" % [d["name"] for d in state_now["devices"]])
+
+    # the control row's copy button adds a Copy of control with its custom members right after the original unit
+    page.locator("#settings_plugin_systemcommandeditor .sce-row.sce-control").first.locator(
+        "button[title='Duplicate']").click()
+    state_now = list_state()
+    ctl_copies = [d for d in state_now["devices"] if d["name"].startswith("Copy") and d["name"].endswith("of Ctl")]
+    names = list_names()
+    check("the control row's copy button adds a Copy of control after the original unit",
+          len(ctl_copies) == 2 and names[2:5] == ["Ctl on", "Ctl off", "Ctl on"], "names=%s" % names)
+
+    # a run command's Duplicate keeps its control and lands right after it
+    custom_button("Ctl on").click()
+    wait_visible("#sce-editor")
+    page.locator("#sce-editor .modal-footer .btn:has-text('Duplicate')").click()
+    wait_hidden("#sce-editor")
+    state_now = list_state()
+    ctl_on = [e for e in state_now["entries"] if e.get("name") == "Ctl on"][0]
+    names = list_names()
+    after = [e for e in state_now["entries"] if e.get("name") == "Copy of Ctl on"]
+    check("a run command's Duplicate keeps its control and lands right after it",
+          len(after) == 1 and after[0].get("group") == ctl_on.get("group") and
+          names.index("Copy of Ctl on") == names.index("Ctl on") + 1, "names=%s" % names)
+
+    # renaming a preset-made command drops the marker from every record of that preset
+    set_list([
+        {"action": "pz_run", "name": "Preset run", "group": "pz", "role": "run", "command": "echo p", "preset": "pset"},
+        {"action": "pz_two", "name": "Preset two", "group": "pz", "role": "run", "command": "echo q", "preset": "pset"},
+    ], [{"id": "pz", "type": "action", "name": "Preset ctl", "icon": "fa-solid fa-play", "preset": "pset"}])
+    page.wait_for_timeout(200)
+    custom_button("Preset run").click()
+    wait_visible("#sce-editor")
+    page.fill("#sce-editor-name", "Renamed run")
+    modal_done("#sce-editor")
+    state_now = list_state()
+    marked = [x for x in state_now["entries"] + state_now["devices"] if x.get("preset") == "pset"]
+    check("renaming a preset-made command drops the marker from every record of its preset", marked == [],
+          "marked=%s" % [x.get("name") for x in marked])
+
+    # renaming the host switch keeps its marker
+    set_list([], [{"id": "host", "type": "switch", "name": "Host", "icon": "fa-solid fa-server", "preset": "host"}])
+    page.wait_for_timeout(200)
+    page.evaluate("() => { const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor')); vm.editDevice(vm.devices()[0]); }")
+    wait_visible("#sce-device-editor")
+    page.fill("#sce-device-name", "Host renamed")
+    modal_done("#sce-device-editor")
+    state_now = list_state()
+    check("renaming the host switch keeps its preset marker",
+          state_now["devices"][0].get("preset") == "host" and state_now["devices"][0]["name"] == "Host renamed",
+          "devices=%s" % state_now["devices"])
+
+    # detaching one preset command drops only its marker
+    set_list([
+        {"action": "pd_a", "name": "Detach a", "group": "pd", "role": "run", "command": "echo a", "preset": "pdset"},
+        {"action": "pd_b", "name": "Keep b", "group": "pd", "role": "run", "command": "echo b", "preset": "pdset"},
+    ], [{"id": "pd", "type": "action", "name": "Detach ctl", "icon": "fa-solid fa-play", "preset": "pdset"}])
+    page.wait_for_timeout(200)
+    custom_button("Detach a").click()
+    wait_visible("#sce-editor")
+    page.select_option("#sce-editor-device", label="None")
+    modal_done("#sce-editor")
+    state_now = list_state()
+    kept = {x.get("name"): x.get("preset") for x in state_now["entries"] + state_now["devices"]}
+    check("detaching one preset command drops only its marker",
+          kept.get("Detach a") is None and kept.get("Keep b") == "pdset" and kept.get("Detach ctl") == "pdset",
+          "markers=%s" % kept)
+
+    # ticking a maintenance preset when Maintenance is not last places it at the end of that section
+    set_list([
+        {"action": "divider", "name": "Maintenance"},
+        {"action": "maint_x", "name": "Maint X", "command": "echo x"},
+        {"action": "divider", "name": "Other"},
+        {"action": "other_cmd", "name": "Other cmd", "command": "echo o"},
+    ], [])
+    page.wait_for_timeout(200)
+    page.evaluate("""() => { const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+        vm.presets.open(); }""")
+    page.wait_for_function("""() => { const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+        return !vm.presets.loading() && vm.presets.maintenance().length > 0; }""", timeout=8000)
+    page.evaluate("""() => { const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+        vm.presets.maintenance().find(r => r.item.action === 'backup_now').checked(true);
+        vm.presets.apply(); }""")
+    page.wait_for_timeout(200)
+    names = list_names()
+    check("a ticked maintenance preset lands at the end of the Maintenance section",
+          names == ["#Maintenance", "Maint X", "Back up OctoPrint now", "#Other", "Other cmd"], "names=%s" % names)
+
+    # the confirmation preview and the row code column show the run text, G-code from its lines
+    set_list([{"action": "gc", "name": "Send macro", "run": {"gcode": ["M117 hi", "G28"]}, "role": ""}], [])
+    page.wait_for_timeout(200)
+    code = page.locator("#settings_plugin_systemcommandeditor .sce-row", has_text="Send macro").locator(".sce-cmd").first.text_content() or ""
+    check("the row code column shows the G-code run text", code.startswith("G-code: ") and "M117 hi" in code, "code=%r" % code)
+    edit_command("Send macro")
+    page.check("#sce-editor label.checkbox:has-text('Ask for confirmation') input")
+    wait_visible("#sce-editor .sce-preview-command")
+    preview = page.locator("#sce-editor .sce-preview-command").first.text_content() or ""
+    check("the confirmation preview shows the G-code run text", preview.startswith("G-code: ") and "G28" in preview,
+          "preview=%r" % preview)
+    page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
+    wait_hidden("#sce-editor")
+
+
+
 def run_probe():
     global page
     started = time.time()
@@ -1170,6 +1340,8 @@ def run_probe():
             offered = page.locator("#sce-editor label:has-text('Limit to Spindle states')").count()
             check("a built-in command offers no control condition block", offered == 0, "offered=%s" % offered)
             modal_done("#sce-editor")
+
+        list_ops_checks()
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)

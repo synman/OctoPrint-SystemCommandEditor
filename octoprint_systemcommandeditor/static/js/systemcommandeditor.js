@@ -6,6 +6,8 @@
  */
 $(function () {
     const DIVIDER = "divider";
+    // the markers a rename keeps: the host and OctoPrint switches draw OctoPrint's own commands
+    const KEPT_MARKERS = ["host", "octoprint"];
     const PLUGIN_DIVIDER = "Plugin devices";
     const ACTION_PATTERN = /^[a-z0-9_-]+$/;
     const FLAGS = ["async", "fresh_credentials", "ignore", "icon_invert"];
@@ -84,6 +86,9 @@ $(function () {
             .replace(/[̀-ͯ]/g, "")
             .replace(/[^a-z0-9]+/g, "_")
             .replace(/^_+|_+$/g, "");
+
+    // an entry's text as the menu's confirmation shows it: its shell command, else its run text
+    const textOf = (command, run) => command || (run ? window.SceModel.describeRun(run) : "");
 
     // The hidden key of a command or control: its name with every run of other characters turned into _, then _2, _3...
     // until no other entry or control has it. An unchanged name keeps the key it has, so renaming is what changes it.
@@ -302,6 +307,11 @@ $(function () {
             return !!run && Array.isArray(run.gcode);
         });
         self.isRunOnly = ko.pureComputed(() => !!self.runCall() && !self.isGcode());
+        // the confirmation preview shows what the menu will show: a run's text, a G-code run from the box as typed now
+        self.previewText = ko.pureComputed(() => {
+            if (self.isGcode()) return textOf("", _.extend({}, self.runCall(), {gcode: gcodeLines()}));
+            return textOf(self.runCall() ? "" : self.command(), self.runCall());
+        });
         self.gcodeText = ko.observable("");
         const gcodeLines = () => self.gcodeText().split("\n").map((line) => line.trim()).filter((line) => line);
 
@@ -793,7 +803,23 @@ $(function () {
             label: pluginLabel(preset)
         });
 
-        // a plugin preset's control, then its commands at the end under a Plugin devices divider (made when missing);
+        // the picked entries go right after the last item of the named section; the divider is made at the end of the
+        // list only when the section is missing
+        const placeInSection = (name, items) => {
+            const list = owner.entries().slice();
+            const at = list.findIndex((e) => isSection(e) && e.name === name);
+            if (at < 0) {
+                list.push({action: DIVIDER, name: name});
+                items.forEach((item) => list.push(item));
+            } else {
+                let end = at + 1;
+                while (end < list.length && !isSection(list[end])) end++;
+                list.splice(end, 0, ...items);
+            }
+            owner.entries(list);
+        };
+
+        // a plugin preset's control, then its commands in the Plugin devices section (made when missing);
         // each command keeps its run call or shell command, its role and icon, and its group is the control's key
         const addPlugin = (preset) => {
             const control = preset.control;
@@ -809,8 +835,7 @@ $(function () {
             owner.devices.push(device);
             const commands = preset.commands || [];
             if (!commands.length) return;
-            if (!owner.dividerNames().includes(PLUGIN_DIVIDER)) owner.entries.push({action: DIVIDER, name: PLUGIN_DIVIDER});
-            commands.forEach((command) => {
+            const items = commands.map((command) => {
                 const action = keyFor(`${preset.name} ${command.name}`, undefined, "command", (key) => owner.actionInUse(key));
                 const entry = {
                     action: action, name: command.name, role: command.role,
@@ -824,8 +849,9 @@ $(function () {
                 if (command.icon) entry.icon = command.icon;
                 if (command.async) entry.async = true;
                 if (command.confirm) entry.confirm = command.confirm;
-                owner.entries.push(entry);
+                return entry;
             });
+            placeInSection(PLUGIN_DIVIDER, items);
         };
 
         // every control and every command carrying the marker goes; a removed control's other members are detached,
@@ -882,12 +908,7 @@ $(function () {
                 owner.devices.push(device);
                 picked.push(entryOf(preset, id, action));
             });
-            if (picked.length) {
-                if (!owner.dividerNames().includes("Maintenance")) {
-                    owner.entries.push({action: DIVIDER, name: "Maintenance"});
-                }
-                picked.forEach((entry) => owner.entries.push(entry));
-            }
+            if (picked.length) placeInSection("Maintenance", picked);
             const pluginRows = self.plugins().reduce((all, group) => all.concat(group.rows), []);
             const pluginRemoved = pluginRows.filter((row) => row.added && !row.checked());
             pluginRemoved.forEach((row) => removePreset(row.item.preset));
@@ -1153,16 +1174,22 @@ $(function () {
             self.deviceEditor.show(device).done((edited) => {
                 const index = self.devices.indexOf(device);
                 if (index < 0) return;
-                self.devices.splice(index, 1, edited);
-                if (edited.type === "readout") {
+                // a renamed control makes its preset the operator's own; a host or OctoPrint switch keeps its link
+                const renamed = !!device.preset && (device.name || "").trim() !== edited.name.trim() &&
+                    !KEPT_MARKERS.includes(device.preset);
+                if (renamed) unlinkPreset(device.preset);
+                const next = renamed ? _.omit(edited, "preset") : edited;
+                self.devices.splice(index, 1, next);
+                if (next.type === "readout") {
                     self.entries(self.entries().map((entry) => (entry.device === device.id
-                        ? _.extend({}, entry, {name: edited.name, device: edited.id}) : entry)));
+                        ? _.extend({}, entry, {name: next.name, device: next.id}) : entry)));
                     self.changed();
                 }
-                if (edited.id !== device.id || edited.type !== device.type) {
+                if (next.id !== device.id || next.type !== device.type) {
                     // members follow a new identifier; a changed type clears their roles, which no longer fit
-                    reassign(device.id, edited.id, edited.type === device.type);
+                    reassign(device.id, next.id, next.type === device.type);
                 }
+                if (renamed) self.changed();
             });
         };
 
@@ -1354,12 +1381,23 @@ $(function () {
 
         // --- list operations --------------------------------------------------------------------------------------
 
+        // drops a preset marker from every control and entry carrying it: the records are the operator's own from then on
+        const unlinkPreset = (marker) => {
+            self.devices(self.devices().map((d) => (d.preset === marker ? _.omit(d, "preset") : d)));
+            self.entries(self.entries().map((e) => (e.preset === marker ? _.omit(e, "preset") : e)));
+        };
+
+        // saving an edit: a renamed command that is linked to a preset unlinks it, and a command whose control was
+        // cleared drops its own marker only
         const replace = (oldEntry, newEntry) => {
             const index = self.entries.indexOf(oldEntry);
-            if (index >= 0) {
-                self.entries.splice(index, 1, newEntry);
-                self.changed();
-            }
+            if (index < 0) return;
+            const renamed = !!oldEntry.preset && (oldEntry.name || "").trim() !== (newEntry.name || "").trim();
+            const detached = !!oldEntry.preset && !!oldEntry.group && !newEntry.group;
+            if (renamed) unlinkPreset(oldEntry.preset);
+            const next = renamed || detached ? _.omit(newEntry, "preset") : newEntry;
+            self.entries.splice(index, 1, next);
+            self.changed();
         };
 
         self.addCommand = () => {
@@ -1380,33 +1418,137 @@ $(function () {
             self.editor.show(entry, isSection(entry)).done((edited) => replace(entry, edited));
         };
 
-        // a copy of a command: the first free "Copy of" name, no preset, group, role or value, right after the original
+        // --- copies --------------------------------------------------------------------------------------------------
+
+        // the context of one copy: a fresh hidden key for each copy, unique among every entry and control and among the
+        // keys this copy has taken so far, and the names the copy must not repeat
+        const copyContext = () => {
+            const used = new Set();
+            self.entries().forEach((e) => { if (!isSection(e)) used.add(e.action); });
+            self.devices().forEach((d) => used.add(d.id));
+            return {
+                fresh: (name, fallback) => {
+                    const key = keyFor(name, undefined, fallback, (k) => used.has(k));
+                    used.add(key);
+                    return key;
+                },
+                commandNames: self.entries().filter((e) => !isSection(e)).map((e) => e.name),
+                deviceNames: self.devices().map((d) => d.name)
+            };
+        };
+        const customMembers = (controlId) => self.entries().filter((e) => !isSection(e) && e.group === controlId);
+
+        // a command's copy: "Copy of" name and a fresh key, no preset; a run copy keeps its control and role, any other
+        // role drops group, role and value
+        const copyCommand = (entry, ctx) => {
+            let copy = _.omit(entry, "preset");
+            if (copy.role !== "run") copy = _.omit(copy, "group", "role", "value");
+            copy.name = window.SceModel.copyName(entry.name, ctx.commandNames);
+            ctx.commandNames.push(copy.name);
+            copy.action = ctx.fresh(copy.name, "command");
+            return copy;
+        };
+        // a control member's copy: its own name and a fresh key, joined to the copied control, no preset
+        const copyMember = (entry, controlId, ctx) => {
+            const copy = _.extend(_.omit(entry, "preset"), {group: controlId});
+            copy.action = ctx.fresh(copy.name, "command");
+            return copy;
+        };
+        // a control's copy: "Copy of" name and a fresh id, no preset
+        const copyControl = (device, ctx) => {
+            const copy = _.omit(device, "preset");
+            copy.name = window.SceModel.copyName(device.name, ctx.deviceNames);
+            ctx.deviceNames.push(copy.name);
+            copy.id = ctx.fresh(copy.name, "control");
+            return copy;
+        };
+        // the copies one list unit makes, for a section copy: a readout with its placement, a control with its custom
+        // members, or a command
+        const copyUnit = (unit, ctx) => {
+            const first = unit[0];
+            if (self.isPlacement(first)) {
+                const device = self.deviceOf(first);
+                if (!device) return {devices: [], entries: [_.extend(_.omit(first, "preset"), {action: ctx.fresh(first.name || first.action, "placement")})]};
+                const copy = copyControl(device, ctx);
+                return {devices: [copy], entries: [{action: ctx.fresh(copy.id, "placement"), name: copy.name, device: copy.id}]};
+            }
+            const control = self.controlOf(first);
+            if (control) {
+                const copy = copyControl(control, ctx);
+                return {devices: [copy], entries: customMembers(control.id).map((m) => copyMember(m, copy.id, ctx))};
+            }
+            return {devices: [], entries: [copyCommand(first, ctx)]};
+        };
+        // the last index of the unit that holds the entry
+        const unitEndOf = (entry) => {
+            const unit = unitsNow().find((u) => u.indexOf(entry) >= 0) || [entry];
+            return self.entries().indexOf(unit[unit.length - 1]);
+        };
+
+        // a command's copy: a run copy stays on its control, right after the original; any other copy stands alone after
+        // the original's unit, so a control's members stay one unit
         self.duplicate = (entry) => {
-            const copy = _.omit(entry, "preset", "group", "role", "value");
-            copy.name = window.SceModel.copyName(entry.name, self.entries().filter((e) => !isSection(e)).map((e) => e.name));
-            copy.action = keyFor(copy.name, undefined, "command", (key) => self.actionInUse(key));
-            const index = self.entries.indexOf(entry);
-            self.entries.splice(index < 0 ? self.entries().length : index + 1, 0, copy);
+            const ctx = copyContext();
+            const copy = copyCommand(entry, ctx);
+            const list = self.entries().slice();
+            const at = list.indexOf(entry);
+            const end = copy.group ? at : unitEndOf(entry);
+            list.splice(end < 0 ? list.length : end + 1, 0, copy);
+            self.entries(list);
             self.changed();
         };
 
-        // a copy of a control: the control alone, no preset; a readout's copy also gets a placement right after the
-        // original's, or at the end when the original has none
+        // a control's copy: the control alone with no preset, its custom members copied after the original's unit, and a
+        // readout's copy gets its own placement right after the original's, or at the end when the original has none
         self.duplicateDevice = (device) => {
-            const copy = _.omit(device, "preset");
-            copy.name = window.SceModel.copyName(device.name, self.devices().map((d) => d.name));
-            copy.id = keyFor(copy.name, undefined, "control", (key) =>
-                self.devices().some((d) => d.id === key) || self.entries().some((e) => !isSection(e) && e.action === key));
-            self.devices.push(copy);
+            const ctx = copyContext();
+            const copy = copyControl(device, ctx);
+            const members = customMembers(device.id).map((m) => copyMember(m, copy.id, ctx));
+            const list = self.entries().slice();
+            if (members.length) {
+                const unit = unitsNow().find((u) => controlIdOf(u[0]) === device.id);
+                list.splice(list.indexOf(unit[unit.length - 1]) + 1, 0, ...members);
+            }
             if (copy.type === "readout") {
-                const list = self.entries().slice();
                 const placed = list.findIndex((e) => self.isPlacement(e) && e.device === device.id);
                 list.splice(placed < 0 ? list.length : placed + 1, 0,
-                    {action: placementKey(copy.id), name: copy.name, device: copy.id});
-                self.entries(list);
+                    {action: ctx.fresh(copy.id, "placement"), name: copy.name, device: copy.id});
             }
+            self.devices.push(copy);
+            self.entries(list);
             self.changed();
         };
+
+        // a section's copy: a "Copy of" divider, then a copy of each item as that item's own Duplicate makes it, all placed
+        // right after the original section's last item
+        self.duplicateSection = (heading) => {
+            const bs = window.SceModel.blocks(self.entries(), controlIdOf);
+            const block = bs.find((b) => b[0].length === 1 && b[0][0] === heading);
+            if (!block) return;
+            const ctx = copyContext();
+            const copies = [{action: DIVIDER, name: window.SceModel.copyName(heading.name || "", self.dividerNames())}];
+            const newDevices = [];
+            block.slice(1).forEach((unit) => {
+                const made = copyUnit(unit, ctx);
+                made.devices.forEach((d) => newDevices.push(d));
+                made.entries.forEach((e) => copies.push(e));
+            });
+            const list = self.entries().slice();
+            const end = list.indexOf(heading) + block.reduce((n, unit) => n + unit.length, 0);
+            list.splice(end, 0, ...copies);
+            newDevices.forEach((d) => self.devices.push(d));
+            self.entries(list);
+            self.changed();
+        };
+
+        // the row's copy button on a control: the same copy the control editor's Duplicate makes
+        self.duplicateControlRow = (entry) => {
+            const device = self.controlOf(entry);
+            if (device) self.duplicateDevice(device);
+        };
+
+        // the run text of a list entry, as the menu's confirmation and the row's code column show it
+        self.runTextOf = (entry) => textOf(entry.command, entry.run);
 
         // a control's row removes all its member commands, not the control itself (that stays in Controls)
         self.remove = (entry) => {
@@ -1434,12 +1576,19 @@ $(function () {
         const unitIndex = (units, entry) => units.findIndex((unit) => unit.indexOf(entry) >= 0);
 
         self.canMove = (entry, step) => {
+            if (isSection(entry)) return window.SceModel.canMoveBlock(self.entries(), controlIdOf, entry, step);
             const units = unitsNow();
             const i = unitIndex(units, entry);
             return i >= 0 && i + step >= 0 && i + step < units.length;
         };
 
         const moveUnit = (entry, step) => {
+            // a heading moves with its whole block; an item moves alone, as before
+            if (isSection(entry)) {
+                self.entries(window.SceModel.moveBlock(self.entries(), controlIdOf, entry, step));
+                self.changed();
+                return;
+            }
             const units = unitsNow();
             const i = unitIndex(units, entry);
             const j = i + step;
@@ -1487,7 +1636,11 @@ $(function () {
         // the dragged unit takes the target unit's place, as a single-entry move does
         self.dropRow = (entry, event) => {
             event.preventDefault();
-            if (self._dragging !== undefined) {
+            if (self._dragging !== undefined && isSection(self._dragging)) {
+                // a dragged heading moves its whole block to the target's block place
+                self.entries(window.SceModel.dropBlock(self.entries(), controlIdOf, self._dragging, entry));
+                self.changed();
+            } else if (self._dragging !== undefined) {
                 const units = unitsNow();
                 const from = unitIndex(units, self._dragging);
                 const to = unitIndex(units, entry);
