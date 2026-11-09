@@ -166,7 +166,22 @@
         return "";
     }
 
+    const BUTTON_ICON = {restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved", off: "fa-solid fa-power-off", on: "fa-solid fa-play"};
+
+    // every button a control's row can show, in the menu's order, whatever its state: the settings list draws them all
+    function rowButtons(m) {
+        const buttons = [];
+        ["restart", "safe_restart", "off", "on"].forEach((kind) => {
+            if (m[kind]) buttons.push({kind: kind, action: m[kind], icon: BUTTON_ICON[kind]});
+        });
+        (m.runs || []).forEach((r) => buttons.push({kind: "run", action: r.action, icon: r.icon || "fa-solid fa-play"}));
+        (m.choices || []).forEach((c) => buttons.push({kind: "choice", action: c.action, icon: c.icon || "fa-solid fa-circle"}));
+        return buttons;
+    }
+
     const SceModel = {
+        BUTTON_ICON: BUTTON_ICON,
+        rowButtons: rowButtons,
         placementOf: placementOf,
         printerState: printerState,
         statusKind: statusKind,
@@ -196,7 +211,7 @@ $(function () {
     const MENU = "#navbar_systemmenu > ul.dropdown-menu";
     const BLANK = "sce-menu-icon-blank";
     const FLASH_MS = 3000;
-    const BUTTON_ICON = {restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved", off: "fa-solid fa-power-off", on: "fa-solid fa-play"};
+    const BUTTON_ICON = SceModel.BUTTON_ICON;
 
     // core rejects with ["error", args] or ["denied", args] on failure and denial, and with a plain string on cancel
     function rejectOutcome(first) {
