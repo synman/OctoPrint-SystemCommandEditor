@@ -117,7 +117,7 @@ class SystemCommandEditorPlugin(
 
     def _skin_system_entries(self, devices):
         # returns the host and OctoPrint devices to put first, or nothing when the operator has already set this up
-        core = self._settings.get(["core"]) or {}
+        core = self._settings.get(["core"], merged=True) or {}
         if any(device.get("id") in ("host", "octoprint") for device in devices):
             return []
         if any((core.get(action) or {}).get("group") for action in SYSTEM_GROUPS):
@@ -162,7 +162,7 @@ class SystemCommandEditorPlugin(
         entries = {entry["action"]: entry for entry in self._action_entries()}
         return flask.jsonify(
             devices=self._settings.get(["devices"]) or [],
-            core=self._settings.get(["core"]) or {},
+            core=self._settings.get(["core"], merged=True) or {},
             entries=entries,
             core_commands=self._core_commands(),
             success_toast=self._settings.get(["success_toast"]) is True,
@@ -185,7 +185,7 @@ class SystemCommandEditorPlugin(
         return entries
 
     def _core_entries(self):
-        core = self._settings.get(["core"]) or {}
+        core = self._settings.get(["core"], merged=True) or {}
         return [
             {"action": key, "group": "", "role": "", "value": "", **value}
             for key, value in core.items()

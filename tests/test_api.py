@@ -31,8 +31,13 @@ class FakeSettings:
             node = node.get(key) if isinstance(node, dict) else None
         return node
 
-    def get(self, path):
-        return self.config["plugins"]["systemcommandeditor"].get(path[0])
+    def get(self, path, merged=False):
+        value = self.config["plugins"]["systemcommandeditor"].get(path[0])
+        if merged and isinstance(value, dict):
+            # OctoPrint's merged read: the saved values over the plugin's defaults, one level per key
+            defaults = SystemCommandEditorPlugin().get_settings_defaults().get(path[0]) or {}
+            value = {key: {**(defaults.get(key) or {}), **(value.get(key) or {})} for key in set(defaults) | set(value)}
+        return value
 
     def get_boolean(self, path):
         return bool(self.get(path))
@@ -215,7 +220,10 @@ def test_get_returns_entries_and_core_commands(monkeypatch):
     assert body["live_interval"] == 5
     assert body["success_toast"] is False
     assert body["devices"] == [{"id": "d", "type": "switch"}]
-    assert body["core"] == {"shutdown": {"icon": "i"}}
+    # the saved icon wins; every other key comes from the defaults
+    assert body["core"]["shutdown"]["icon"] == "i"
+    assert body["core"]["shutdown"]["heading"] == "System"
+    assert set(body["core"]) == {"shutdown", "reboot", "restart", "restart_safe"}
     assert body["entries"] == {
         "a": {"action": "a", "name": "A", "command": "echo a", "when": "yes", "icon_color": "#ff0000"},
         "b": {"action": "b", "name": "B", "command": "echo b", "group": "g", "role": "choice", "value": "v"},
@@ -344,3 +352,14 @@ def test_first_start_skips_skin_when_host_device_exists(monkeypatch):
     assert config["devices"] == existing
     assert config["core"]["reboot"]["group"] == ""
     assert config["core"]["restart"]["group"] == ""
+
+
+
+def test_get_merges_saved_core_entries_over_their_defaults(monkeypatch):
+    # first start saves only group and role on a core entry; its default heading must still reach the menu
+    monkeypatch.setattr(Permissions.SYSTEM, "can", lambda: True)
+    plugin = make_plugin(core={"shutdown": {"group": "host", "role": "off"}})
+    with flask.Flask(__name__).test_request_context():
+        core = plugin.on_api_get(None).get_json()["core"]
+    assert core["shutdown"]["heading"] == "System"
+    assert core["shutdown"]["group"] == "host"
