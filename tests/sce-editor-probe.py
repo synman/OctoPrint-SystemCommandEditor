@@ -1138,6 +1138,14 @@ def run_probe():
         send_row.locator("input").check()
         page.locator("#sce-presets .modal-footer .btn-primary").click()
         wait_hidden("#sce-presets")
+        # in memory, before any save: a command-only preset's command carries no group and no role
+        in_memory = page.evaluate("""() => {
+            const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            const e = vm.entries().find(x => x.preset === 'octoprint:snapshot');
+            return e ? {hasGroup: 'group' in e, hasRole: 'role' in e} : null;
+        }""")
+        check("the picked command-only preset's command carries no group and no role",
+              in_memory == {"hasGroup": False, "hasRole": False}, json.dumps(in_memory))
         body = save_settings()
         if body is None:
             check("save after OctoPrint pick posts the settings", False, "no POST captured")
@@ -1208,6 +1216,30 @@ def run_probe():
             check("a new Link command saves its url and no command or run",
                   saved.get("url") == "http://printer.local/page" and "command" not in saved and "run" not in saved,
                   json.dumps(saved))
+
+        # Phase D7: reopening the saved link shows kind Link with its URL; with a confirmation on, the preview shows
+        # its link text; unticking it again leaves the saved link as it was
+        open_settings()
+        edit_command("Open printer page")
+        kind_value = page.locator("#sce-editor-kind").input_value()
+        url_value = page.locator("#sce-editor-url").input_value()
+        check("reopening a saved link command shows kind Link with its URL",
+              kind_value == "link" and url_value == "http://printer.local/page",
+              "kind=%r url=%r" % (kind_value, url_value))
+        page.check("#sce-editor label:has-text('Ask for confirmation before running') input")
+        preview = page.locator("#sce-editor pre.sce-preview-command").inner_text().strip()
+        check("with a confirmation on, the preview shows Link: <url> as the link is typed",
+              preview == "Link: http://printer.local/page", "preview=%r" % preview)
+        page.uncheck("#sce-editor label:has-text('Ask for confirmation before running') input")
+        modal_done("#sce-editor")
+        saved_link = page.evaluate("""() => {
+            const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            const e = vm.entries().find(x => x.name === 'Open printer page');
+            return e ? {url: e.url, hasCommand: 'command' in e, hasRun: 'run' in e} : null;
+        }""")
+        check("saving the link unchanged keeps its url and no command or run",
+              saved_link == {"url": "http://printer.local/page", "hasCommand": False, "hasRun": False},
+              json.dumps(saved_link))
 
         # Phase D5: an undetected webcam preset shows its label and stays tickable; PSU and Grbl (no available key)
         # show no label; ticking Grbl and the webcam preset posts Grbl's icon-bearing command and the webcam switch

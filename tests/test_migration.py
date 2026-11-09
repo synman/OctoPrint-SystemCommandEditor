@@ -305,6 +305,13 @@ def test_v5_turns_each_link_device_into_a_standalone_link_command_at_the_end(tmp
     ]
 
 
+def test_v5_two_link_devices_with_the_same_name_get_different_keys(tmp_path):
+    devices = [link_device("first", "Cam"), link_device("second", "Cam")]
+    plugin = make_plugin(tmp_path, [], None, devices=devices)
+    plugin.on_settings_migrate(5, 4)
+    assert [a["action"] for a in plugin._settings.config["system"]["actions"]] == ["cam", "cam_2"]
+
+
 def test_v5_key_for_a_link_takes_a_key_already_in_use(tmp_path):
     devices = [link_device("x", "A")]
     plugin = make_plugin(tmp_path, [cmd("a")], None, devices=devices)
