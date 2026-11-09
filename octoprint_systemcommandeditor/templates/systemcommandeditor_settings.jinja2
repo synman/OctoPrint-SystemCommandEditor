@@ -3,15 +3,9 @@
     <label class="control-label" for="{{ input_id }}">{{ _('Icon') }}</label>
     <div class="controls">
         <div class="sce-icon-field">
-            <div class="input-prepend input-append sce-icon-input">
+            <div class="input-prepend sce-icon-input">
                 <span class="add-on"><i data-bind="css: (icon() || '{{ fallback }}') + (iconInvert() ? ' sce-icon-inverted' : ''), style: iconInvert() ? { backgroundColor: iconColor() } : { color: iconColor() }"></i></span>
                 <input type="text" id="{{ input_id }}" autocomplete="off" placeholder="{{ fallback }}" data-bind="textInput: icon, hasFocus: iconSuggest.focused, event: { keydown: iconSuggest.keydown, keyup: iconSuggest.keyup }">
-                <label class="btn sce-icon-color" title="{{ _('Icon color')|edq }}" data-bind="css: { active: iconColor() }">
-                    <i class="fa-solid fa-eye-dropper" data-bind="style: { color: iconColor() }"></i>
-                    <input type="color" data-bind="value: iconColorPick">
-                </label>
-                <button type="button" class="btn sce-icon-invert" title="{{ _('Invert: a light icon on a badge of its color')|edq }}" data-bind="click: function() { iconInvert(!iconInvert()) }, css: { active: iconInvert() }"><i class="fa-solid fa-circle-half-stroke"></i></button>
-                <button type="button" class="btn sce-icon-color-clear" title="{{ _('No icon color')|edq }}" data-bind="click: function() { iconColor('') }, css: { active: !iconColor() }"><i class="fa-solid fa-droplet-slash"></i></button>
             </div>
             <div class="sce-icon-suggest" data-bind="visible: iconSuggest.visible">
                 <div data-bind="with: iconSuggest">
@@ -25,6 +19,14 @@
                     <div class="muted sce-icon-suggest-more" data-bind="visible: more() > 0, text: 'and ' + more() + ' more, keep typing'"></div>
                 </div>
             </div>
+        </div>
+        <div class="btn-group sce-icon-style">
+            <label class="btn btn-small sce-icon-color" title="{{ _('Icon color')|edq }}" data-bind="css: { active: iconColor() }">
+                <i class="fa-solid fa-eye-dropper" data-bind="style: { color: iconColor() }"></i>
+                <input type="color" data-bind="value: iconColorPick">
+            </label>
+            <button type="button" class="btn btn-small sce-icon-invert" title="{{ _('Invert: a light icon on a badge of its color')|edq }}" data-bind="click: function() { iconInvert(!iconInvert()) }, css: { active: iconInvert() }"><i class="fa-solid fa-circle-half-stroke"></i></button>
+            <button type="button" class="btn btn-small sce-icon-color-clear" title="{{ _('No icon color')|edq }}" data-bind="click: function() { iconColor('') }, css: { active: !iconColor() }"><i class="fa-solid fa-droplet-slash"></i></button>
         </div>
         <div class="sce-icon-picks" data-bind="foreach: $root.iconChoices">
             <button type="button" class="btn btn-mini" data-bind="click: function() { $parent.icon($data) }, attr: { title: $data }, css: { active: $parent.icon() === $data }"><i data-bind="css: $data"></i></button>

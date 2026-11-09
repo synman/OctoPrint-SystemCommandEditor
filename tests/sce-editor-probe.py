@@ -211,6 +211,9 @@ def icon_picker_checks():
     page.wait_for_function("() => document.activeElement && document.activeElement.id === 'sce-editor-name'",
                            timeout=5000)
     icon = page.locator("#sce-editor-icon")
+    over = page.evaluate("""() => { const b = document.querySelector('#sce-editor .modal-body');
+        return b.scrollWidth - b.clientWidth; }""")
+    check("the command editor has no horizontal scroll", over <= 0, "overflow=%spx" % over)
     classes = page.locator("#sce-editor .sce-icon-suggest-item .sce-icon-suggest-cls")
 
     icon.click()
@@ -267,6 +270,9 @@ def icon_picker_checks():
     page.get_by_role("button", name="Add device").click()
     wait_visible("#sce-device-editor")
     page.wait_for_timeout(400)
+    over = page.evaluate("""() => { const b = document.querySelector('#sce-device-editor .modal-body');
+        return b.scrollWidth - b.clientWidth; }""")
+    check("the device editor has no horizontal scroll", over <= 0, "overflow=%spx" % over)
     got = {}
     for text in ("Chamber Light #2", "Wi-Fi  (5 GHz)", "Café plug"):
         page.fill("#sce-device-name", text)

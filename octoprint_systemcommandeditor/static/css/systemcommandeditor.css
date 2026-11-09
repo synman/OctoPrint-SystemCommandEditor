@@ -370,12 +370,12 @@
 }
 
 /* per-icon color: the color input sits invisibly over the eye-dropper button */
-.sce-icon-input .sce-icon-color {
+.sce-icon-style .sce-icon-color {
   position: relative;
   overflow: hidden;
 }
 
-.sce-icon-input .sce-icon-color input[type="color"] {
+.sce-icon-style .sce-icon-color input[type="color"] {
   position: absolute;
   top: 0;
   left: 0;
@@ -394,4 +394,10 @@
   background-color: #555;
   border-radius: 3px;
   padding: 2px 0;
+}
+
+.sce-icon-style {
+  display: inline-block;
+  margin: 4px 8px 4px 0;
+  vertical-align: middle;
 }
