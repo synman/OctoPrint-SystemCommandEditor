@@ -240,6 +240,8 @@ def test_get_returns_entries_and_core_commands(monkeypatch):
     # the saved icon wins; every other key comes from the defaults
     assert body["core"]["shutdown"]["icon"] == "i"
     assert body["core"]["shutdown"]["heading"] == "System"
+    # OctoPrint's own restart entries carry no heading by default
+    assert body["core"]["restart"]["heading"] == "" and body["core"]["restart_safe"]["heading"] == ""
     assert set(body["core"]) == {"shutdown", "reboot", "restart", "restart_safe"}
     assert body["entries"] == {
         "a": {"action": "a", "name": "A", "command": "echo a", "when": "yes", "icon_color": "#ff0000"},

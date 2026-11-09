@@ -74,7 +74,7 @@ class SystemCommandEditorPlugin(
             "core": {
                 "shutdown": {"icon": "fa-solid fa-power-off", "heading": "System", "icon_color": "", "icon_invert": False, "group": "", "role": "", "value": "", "when": None},
                 "reboot": {"icon": "fa-solid fa-rotate-right", "heading": "", "icon_color": "", "icon_invert": False, "group": "", "role": "", "value": "", "when": None},
-                "restart": {"icon": "fa-solid fa-arrows-rotate", "heading": "OctoPrint", "icon_color": "", "icon_invert": False, "group": "", "role": "", "value": "", "when": None},
+                "restart": {"icon": "fa-solid fa-arrows-rotate", "heading": "", "icon_color": "", "icon_invert": False, "group": "", "role": "", "value": "", "when": None},
                 "restart_safe": {"icon": "fa-solid fa-shield-halved", "heading": "", "icon_color": "", "icon_invert": False, "group": "", "role": "", "value": "", "when": None},
             },
             "devices": [],
