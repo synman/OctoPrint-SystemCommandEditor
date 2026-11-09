@@ -120,6 +120,10 @@ posts = []
 # a control with a plugin read, added to the saved settings only by Phase S, so earlier phases see FIXTURE_DEVICES alone
 GRBL_DEVICE = {"id": "grbl", "type": "action", "name": "Grbl", "icon": "fa-solid fa-microchip",
                "read": {"plugin": "bettergrblsupport", "helper": "state"}}
+# a second control with a read and no commands, for Phase C: a built-in command may join only a control with no
+# custom commands, so Grbl, which has some by then, cannot take one
+SPINDLE_DEVICE = {"id": "spindle", "type": "action", "name": "Spindle", "icon": "fa-solid fa-fan",
+                  "read": {"plugin": "bettergrblsupport", "helper": "state"}}
 # the states calls the page made, and the words the fixture answers a plugin read with
 state_calls = []
 GRBL_WORDS = ["Idle", "Run", "Hold", "Jog", "Alarm", "Door", "Check", "Home", "Sleep", "Reset", "N/A"]
@@ -1074,6 +1078,7 @@ def run_probe():
         # clears the condition.
         plugin_saved = state["current"].setdefault("plugins", {}).setdefault("systemcommandeditor", {})
         plugin_saved.setdefault("devices", []).append(dict(GRBL_DEVICE, read=dict(GRBL_DEVICE["read"])))
+        plugin_saved["devices"].append(dict(SPINDLE_DEVICE, read=dict(SPINDLE_DEVICE["read"])))
         page.reload(wait_until="domcontentloaded")
         page.wait_for_function("typeof ko !== 'undefined' && document.querySelector('#navbar_show_settings') !== null",
                                timeout=20000)
@@ -1145,15 +1150,16 @@ def run_probe():
               any("status" in c and c["status"] == "echo heat" for c in state_calls), json.dumps(state_calls))
 
         # Phase C: a built-in command never offers or saves the control condition, even on a control that has a read
+        open_settings()
         button = core_row("reboot")
         check("the built-in reboot command is listed for the check", button is not None, "actions=%s" % core_actions())
         if button is not None:
             button.click()
             wait_visible("#sce-editor")
-            page.select_option("#sce-editor-device", label="Grbl")
+            page.select_option("#sce-editor-device", label="Spindle")
             page.select_option("#sce-editor .sce-role", value="run")
             page.wait_for_timeout(300)
-            offered = page.locator("#sce-editor label:has-text('Limit to Grbl states')").count()
+            offered = page.locator("#sce-editor label:has-text('Limit to Spindle states')").count()
             check("a built-in command offers no control condition block", offered == 0, "offered=%s" % offered)
             modal_done("#sce-editor")
             body = save_settings() or {}
