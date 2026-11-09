@@ -876,7 +876,7 @@ def test_first_start_adds_ready_made_switches_and_commands_after_maintenance(mon
         )
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     assert [device["id"] for device in config["devices"]] == [
-        "host", "octoprint", "disk", "backup_now", "printer_connection", "printer_power",
+        "host", "octoprint", "disk", "backup_now", "connection", "printer_power",
     ]
     actions = plugin._settings.config["system"]["actions"]
     backup = [preset for preset in maintenance(MAINTENANCE_ENV) if preset["action"] == "backup_now"][0]
@@ -884,10 +884,10 @@ def test_first_start_adds_ready_made_switches_and_commands_after_maintenance(mon
     assert actions[2:4] == [{"action": "divider", "name": "Maintenance"}, backup_run]
     assert actions[4:] == [
         {"action": "divider", "name": "Plugin devices"},
-        {"action": "printer_connection_connect", "name": "Connect", "run": {"printer": "connect"}, "role": "on",
-         "icon": "fa-solid fa-play", "group": "printer_connection", "preset": "octoprint:connection"},
-        {"action": "printer_connection_disconnect", "name": "Disconnect", "run": {"printer": "disconnect"},
-         "role": "off", "icon": "fa-solid fa-power-off", "group": "printer_connection", "preset": "octoprint:connection"},
+        {"action": "connection_connect", "name": "Connect", "run": {"printer": "connect"}, "role": "on",
+         "icon": "fa-solid fa-play", "group": "connection", "preset": "octoprint:connection"},
+        {"action": "connection_disconnect", "name": "Disconnect", "run": {"printer": "disconnect"},
+         "role": "off", "icon": "fa-solid fa-power-off", "group": "connection", "preset": "octoprint:connection"},
         {"action": "psu_control_on", "name": "On", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"},
          "role": "on", "group": "printer_power", "preset": "psucontrol:psu"},
         {"action": "psu_control_off", "name": "Off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"},
@@ -895,7 +895,7 @@ def test_first_start_adds_ready_made_switches_and_commands_after_maintenance(mon
     ]
     assert ("set", "devices", config["devices"]) in plugin._settings.calls
     assert ("global_set", ["system", "actions"], actions) in plugin._settings.calls
-    assert "Added ready-made controls: ['printer_connection', 'printer_power']" in caplog.text
+    assert "Added ready-made controls: ['connection', 'printer_power']" in caplog.text
 
 
 def test_first_start_with_existing_controls_adds_no_ready_made_switches_or_commands(monkeypatch):
@@ -906,7 +906,7 @@ def test_first_start_with_existing_controls_adds_no_ready_made_switches_or_comma
                                 plugin_groups=[psu_group(), octoprint_presets()])
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     ids = [device["id"] for device in config["devices"]]
-    assert "printer_connection" not in ids and "printer_power" not in ids
+    assert "connection" not in ids and "printer_power" not in ids
     assert ids == ["host", "octoprint", "mine"]
     assert plugin._settings.config["system"]["actions"] == []
 
@@ -919,10 +919,10 @@ def test_first_start_never_adds_the_connection_twice_when_its_marker_is_already_
                                 plugin_groups=[octoprint_presets(), octoprint_presets()])
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     connections = [device for device in config["devices"] if device.get("preset") == "octoprint:connection"]
-    assert [device["id"] for device in connections] == ["printer_connection"]
+    assert [device["id"] for device in connections] == ["connection"]
     actions = plugin._settings.config["system"]["actions"]
-    assert [entry["action"] for entry in actions if entry.get("group") == "printer_connection"] == [
-        "printer_connection_connect", "printer_connection_disconnect",
+    assert [entry["action"] for entry in actions if entry.get("group") == "connection"] == [
+        "connection_connect", "connection_disconnect",
     ]
 
 

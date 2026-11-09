@@ -608,9 +608,9 @@ def test_octoprint_group_is_one_group_named_octoprint_with_five_presets_in_order
 def test_octoprint_connection_is_a_state_switch_with_connect_and_disconnect():
     preset = octoprint_by_id()["octoprint:connection"]
     control = preset["control"]
-    assert preset["name"] == "Printer connection"
+    assert preset["name"] == "Connection"
     assert control == {
-        "type": "switch", "name": "Printer connection", "icon": "fa-solid fa-link",
+        "type": "switch", "name": "Connection", "icon": "fa-solid fa-link",
         "read": {"printer": "state"},
         "on_pattern": "^(Operational|Printing|Paused|Pausing|Resuming|Cancelling|Finishing)",
         "off_pattern": "^(Offline|Closed|Error)",
@@ -623,7 +623,7 @@ def test_octoprint_connection_is_a_state_switch_with_connect_and_disconnect():
 
 def test_octoprint_job_reads_progress_and_runs_pause_resume_and_a_confirmed_cancel():
     preset = octoprint_by_id()["octoprint:job"]
-    assert preset["control"] == {"type": "action", "name": "Print job", "icon": "fa-solid fa-hourglass-half",
+    assert preset["control"] == {"type": "action", "name": "Current job", "icon": "fa-solid fa-hourglass-half",
                                  "read": {"printer": "progress"}}
     assert preset["commands"] == [
         {"name": "Pause", "run": {"printer": "pause"}, "role": "run", "icon": "fa-solid fa-pause",

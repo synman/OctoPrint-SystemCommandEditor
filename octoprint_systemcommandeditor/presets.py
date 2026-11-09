@@ -607,7 +607,7 @@ def octoprint_presets(snapshot_url=None):
 
     With a non-empty ``snapshot_url`` the group also offers a webcam snapshot link, last."""
     connection = {
-        "type": "switch", "name": "Printer connection", "icon": "fa-solid fa-link", "read": {"printer": "state"},
+        "type": "switch", "name": "Connection", "icon": "fa-solid fa-link", "read": {"printer": "state"},
         "on_pattern": "^(Operational|Printing|Paused|Pausing|Resuming|Cancelling|Finishing)",
         "off_pattern": "^(Offline|Closed|Error)",
     }
@@ -623,7 +623,7 @@ def octoprint_presets(snapshot_url=None):
         return control, commands
 
     job = action(
-        "Print job",
+        "Current job",
         "fa-solid fa-hourglass-half",
         [
             {"name": "Pause", "run": {"printer": "pause"}, "role": "run", "icon": "fa-solid fa-pause",
@@ -666,8 +666,8 @@ def octoprint_presets(snapshot_url=None):
           "icon": "fa-solid fa-bullhorn"}],
     )
     entries = [
-        ("octoprint:connection", "Printer connection", (connection, connection_commands)),
-        ("octoprint:job", "Print job", job),
+        ("octoprint:connection", "Connection", (connection, connection_commands)),
+        ("octoprint:job", "Current job", job),
         ("octoprint:printer", "Printer", printer),
         ("octoprint:gcode", "G-code macros", gcode),
         ("octoprint:event", "Custom event", event),
