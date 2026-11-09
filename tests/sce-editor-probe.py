@@ -80,9 +80,11 @@ PLUGINS = [
                      "read": {"plugin": "bettergrblsupport", "api": "state", "field": "state"}},
          "commands": [
              {"name": "Home", "run": {"plugin": "bettergrblsupport", "api": "home"}, "role": "run",
-              "icon": "fa-solid fa-house"},
+              "icon": "fa-solid fa-house",
+              "when_control": {"mode": "only", "states": ["Idle", "Alarm"], "effect": "disable"}},
              {"name": "Reset", "run": {"plugin": "bettergrblsupport", "api": "reset"}, "role": "run",
-              "confirm": "Reset the controller?"}]}]},
+              "confirm": "Reset the controller?",
+              "when": {"mode": "never", "states": ["printing"], "effect": "disable"}}]}]},
     # a webcam services group: one preset not detected (available false), a switch with a status and shell commands
     {"plugin": "webcam", "name": "Webcam services", "presets": [
         {"preset": "webcam:ustreamer", "name": "Webcam (ustreamer)", "available": False, "note": "",
@@ -977,6 +979,11 @@ def run_probe():
             check("ticking Grbl and saving posts its Home run with the icon the fixture gives it",
                   home.get("run") == {"plugin": "bettergrblsupport", "api": "home"}
                   and home.get("icon") == "fa-solid fa-house", json.dumps(home))
+            reset = next((a for a in saved if a.get("action") == "grbl_reset"), {})
+            check("ticking Grbl carries each command's control and printer conditions into the saved entries",
+                  home.get("when_control") == {"mode": "only", "states": ["Idle", "Alarm"], "effect": "disable"}
+                  and reset.get("when") == {"mode": "never", "states": ["printing"], "effect": "disable"},
+                  json.dumps([home, reset]))
             web = [d for d in devices if d.get("preset") == "webcam:ustreamer"]
             check("ticking the webcam preset posts a switch with its status and marker",
                   len(web) == 1 and web[0].get("type") == "switch"
@@ -1149,7 +1156,8 @@ def run_probe():
         check("a shell status asks the states call for its status line",
               any("status" in c and c["status"] == "echo heat" for c in state_calls), json.dumps(state_calls))
 
-        # Phase C: a built-in command never offers or saves the control condition, even on a control that has a read
+        # Phase C: a built-in command never offers the control condition, even on a control that has a read; with no
+        # block offered there is nothing to tick, so the offer is the whole check
         open_settings()
         button = core_row("reboot")
         check("the built-in reboot command is listed for the check", button is not None, "actions=%s" % core_actions())
@@ -1162,10 +1170,6 @@ def run_probe():
             offered = page.locator("#sce-editor label:has-text('Limit to Spindle states')").count()
             check("a built-in command offers no control condition block", offered == 0, "offered=%s" % offered)
             modal_done("#sce-editor")
-            body = save_settings() or {}
-            saved_core = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("core") or {}
-            check("a built-in command saves no when_control",
-                  "when_control" not in (saved_core.get("reboot") or {}), json.dumps(saved_core.get("reboot")))
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)
