@@ -90,6 +90,9 @@ $(function () {
     // an entry's text as the menu's confirmation shows it: its shell command, else its run text
     const textOf = (command, run) => command || (run ? window.SceModel.describeRun(run) : "");
 
+    // an entry's run text, as the menu's confirmation and the row show it: its command or run, else "Link: <url>"
+    const runTextOf = (entry) => textOf(entry.command, entry.run) || window.SceModel.linkText(entry);
+
     // The hidden key of a command or control: its name with every run of other characters turned into _, then _2, _3...
     // until no other entry or control has it. An unchanged name keeps the key it has, so renaming is what changes it.
     const keyFor = (name, original, fallback, taken) => {
@@ -150,7 +153,6 @@ $(function () {
         selector: () => gettext("Selector"),
         action: () => gettext("Action"),
         readout: () => gettext("Readout"),
-        link: () => gettext("Link")
     };
 
     // A printer-state condition: shared by commands, built-in commands and links
@@ -288,6 +290,11 @@ $(function () {
         self.name = ko.observable("");
         self.action = ko.observable("");
         self.command = ko.observable("");
+        // a custom command is a shell command or a link to a page; the kind decides which one the entry stores
+        self.kind = ko.observable("shell");
+        self.isLinkKind = ko.pureComputed(() => self.kind() === "link");
+        self.url = ko.observable("");
+        self.canChooseKind = ko.pureComputed(() => !self.isSection() && !self.isCore() && !self.runCall());
         self.icon = ko.observable("");
         self.iconColor = ko.observable("");
         self.iconColorPick = colorPick(self.iconColor);
@@ -309,6 +316,7 @@ $(function () {
         self.isRunOnly = ko.pureComputed(() => !!self.runCall() && !self.isGcode());
         // the confirmation preview shows what the menu will show: a run's text, a G-code run from the box as typed now
         self.previewText = ko.pureComputed(() => {
+            if (self.isLinkKind()) return window.SceModel.linkText({url: self.url().trim()});
             if (self.isGcode()) return textOf("", _.extend({}, self.runCall(), {gcode: gcodeLines()}));
             return textOf(self.runCall() ? "" : self.command(), self.runCall());
         });
@@ -344,9 +352,14 @@ $(function () {
         });
         self.commandError = ko.pureComputed(() => {
             if (self.isSection() || self.isCore()) return "";
+            if (self.isLinkKind()) return "";
             if (self.isGcode()) return gcodeLines().length ? "" : gettext("Enter at least one G-code line.");
             if (self.runCall()) return "";
             return self.command().trim() ? "" : gettext("A command is required.");
+        });
+        self.urlError = ko.pureComputed(() => {
+            if (!self.isLinkKind()) return "";
+            return self.url().trim() ? "" : gettext("A URL is required for a link.");
         });
 
         // --- device assignment ------------------------------------------------------------------------------------
@@ -400,7 +413,7 @@ $(function () {
         });
 
         self.valid = ko.pureComputed(
-            () => !self.nameError() && !self.commandError() && !self.deviceError() &&
+            () => !self.nameError() && !self.commandError() && !self.urlError() && !self.deviceError() &&
                 !self.roleError() && !self.valueError() && !self.condition.error() && !self.control.error()
         );
 
@@ -439,6 +452,14 @@ $(function () {
                 fresh_credentials: self.freshCredentials(),
                 ignore: self.ignore()
             }, deviceFields());
+            if (self.isLinkKind()) {
+                // a link stores its url and no command or run
+                entry.url = self.url().trim();
+                delete entry.command;
+                delete entry.run;
+                return clean(entry);
+            }
+            delete entry.url;
             if (self.isGcode()) {
                 // the other keys of the run are kept; the lines are trimmed and blank ones dropped
                 entry.run = _.extend({}, self.runCall(), {gcode: gcodeLines()});
@@ -452,7 +473,7 @@ $(function () {
 
         // Only a saved, unchanged command can be run: the server runs what is saved, not what is in this dialog
         self.canRun = ko.pureComputed(() => {
-            if (self.isSection() || self.isCore() || !self.editing() || !self.valid()) return false;
+            if (self.isSection() || self.isCore() || self.isLinkKind() || !self.editing() || !self.valid()) return false;
             return owner.isSavedAsIs(self.toEntry());
         });
         self.runTitle = ko.pureComputed(() =>
@@ -478,6 +499,8 @@ $(function () {
             self.name(entry.name || "");
             self.action(entry.action && entry.action !== DIVIDER ? entry.action : "");
             self.command(entry.command || "");
+            self.kind(entry.url ? "link" : "shell");
+            self.url(entry.url || "");
             self.runCall(entry.run);
             self.gcodeText(entry.run && Array.isArray(entry.run.gcode) ? entry.run.gcode.join("\n") : "");
             self.icon(entry.icon || "");
@@ -546,23 +569,16 @@ $(function () {
         self.status = ko.observable("");
         self.onPattern = ko.observable("");
         self.offPattern = ko.observable("");
-        self.url = ko.observable("");
-        self.section = ko.observable("");
-        self.condition = new Condition();
 
         self.typeChoices = [
             {value: "switch", label: TYPE_LABELS.switch()},
             {value: "selector", label: TYPE_LABELS.selector()},
             {value: "action", label: TYPE_LABELS.action()},
-            {value: "readout", label: TYPE_LABELS.readout()},
-            {value: "link", label: TYPE_LABELS.link()}
+            {value: "readout", label: TYPE_LABELS.readout()}
         ];
         self.typeLabel = (type) => (TYPE_LABELS[type] ? TYPE_LABELS[type]() : "");
 
         self.isSwitch = ko.pureComputed(() => self.type() === "switch");
-        self.isLink = ko.pureComputed(() => self.type() === "link");
-        self.hasStatus = ko.pureComputed(() => self.type() !== "link");
-        self.hasSection = ko.pureComputed(() => self.type() === "link");
 
         // a control that reads through another plugin or MQTT keeps its read as saved; its status is not edited
         self.readCall = ko.observable(undefined);
@@ -571,14 +587,9 @@ $(function () {
             if (!read) return "";
             return read.mqtt ? "MQTT: " + read.mqtt : window.SceModel.describeRun(read);
         });
-        self.hasRead = ko.pureComputed(() => self.hasStatus() && !!self.readCall());
+        self.hasRead = ko.pureComputed(() => !!self.readCall());
 
         self.title = ko.pureComputed(() => (self.editing() ? gettext("Edit control") : gettext("Add control")));
-
-        self.sectionChoices = ko.pureComputed(() => {
-            const names = owner.dividerNames().map((name) => ({value: name, label: name}));
-            return [{value: "", label: gettext("End of menu")}].concat(names);
-        });
 
         // a control's key is hidden: it comes from the name, and a rename makes a new one; it must not match another
         // control or any entry but this control's own readout placements
@@ -594,14 +605,7 @@ $(function () {
             if (self.type() !== "readout" || self.readCall()) return "";
             return self.status().trim() ? "" : gettext("A status command is required for a readout.");
         });
-        self.urlError = ko.pureComputed(() => {
-            if (self.type() !== "link") return "";
-            return self.url().trim() ? "" : gettext("A URL is required for a link.");
-        });
-        self.valid = ko.pureComputed(
-            () => !self.nameError() && !self.statusError() && !self.urlError() &&
-                !(self.isLink() && self.condition.error())
-        );
+        self.valid = ko.pureComputed(() => !self.nameError() && !self.statusError());
 
         self.toDevice = () => {
             const type = self.type();
@@ -613,20 +617,15 @@ $(function () {
                 icon_color: self.iconColor(),
                 icon_invert: self.iconInvert() || undefined
             };
-            if (type !== "link") {
-                if (self.readCall()) {
-                    device.read = self.readCall();
-                } else {
-                    device.status = self.status().trim();
-                }
+            if (self.readCall()) {
+                device.read = self.readCall();
+            } else {
+                device.status = self.status().trim();
             }
             if (type === "switch") {
                 device.on_pattern = self.onPattern().trim();
                 device.off_pattern = self.offPattern().trim();
             }
-            if (type === "link") device.url = self.url().trim();
-            if (type === "link") device.section = self.section();
-            if (type === "link") device.when = self.condition.toWhen();
             const original = self._original();
             if (original && original.preset) device.preset = original.preset;
             if (original && original.live !== undefined) device.live = original.live;
@@ -651,9 +650,6 @@ $(function () {
             self.readCall(device.read);
             self.onPattern(device.on_pattern || "");
             self.offPattern(device.off_pattern || "");
-            self.url(device.url || "");
-            self.section(device.section || "");
-            self.condition.load(device.when);
 
             owner.deviceDialog.modal("show");
             window.setTimeout(() => {
@@ -799,7 +795,7 @@ $(function () {
         };
         // a plugin preset's row, labelled with its control's type
         const pluginRow = (preset) => _.extend(rowOf(preset, presentBy(preset.preset)), {
-            type: TYPE_LABELS[preset.control.type] ? TYPE_LABELS[preset.control.type]() : "",
+            type: preset.control && TYPE_LABELS[preset.control.type] ? TYPE_LABELS[preset.control.type]() : "",
             label: pluginLabel(preset)
         });
 
@@ -821,31 +817,41 @@ $(function () {
 
         // a plugin preset's control, then its commands in the Plugin devices section (made when missing);
         // each command keeps its run call or shell command, its role and icon, and its group is the control's key
+        // a command-only preset (no control) adds standalone commands: no group, no role, and a link keeps its url
         const addPlugin = (preset) => {
             const control = preset.control;
-            const deviceId = keyFor(control.name, undefined, "control", controlTaken);
-            const device = {
-                id: deviceId, type: control.type, name: control.name, icon: control.icon,
-                read: control.read, preset: preset.preset
-            };
-            if (control.status) device.status = control.status;
-            if (control.on_pattern) device.on_pattern = control.on_pattern;
-            if (control.off_pattern) device.off_pattern = control.off_pattern;
-            if (control.type === "link") device.url = control.url;
-            owner.devices.push(device);
+            let deviceId = null;
+            if (control) {
+                deviceId = keyFor(control.name, undefined, "control", controlTaken);
+                const device = {
+                    id: deviceId, type: control.type, name: control.name, icon: control.icon,
+                    read: control.read, preset: preset.preset
+                };
+                if (control.status) device.status = control.status;
+                if (control.on_pattern) device.on_pattern = control.on_pattern;
+                if (control.off_pattern) device.off_pattern = control.off_pattern;
+                owner.devices.push(device);
+            }
             const commands = preset.commands || [];
             if (!commands.length) return;
             const items = commands.map((command) => {
-                const action = keyFor(`${preset.name} ${command.name}`, undefined, "command", (key) => owner.actionInUse(key));
-                const entry = {
-                    action: action, name: command.name, role: command.role,
-                    group: deviceId, preset: preset.preset
-                };
+                const label = control ? `${preset.name} ${command.name}` : command.name;
+                const action = keyFor(label, undefined, "command", (key) => owner.actionInUse(key));
+                const entry = {action: action, name: command.name, preset: preset.preset};
+                if (deviceId) {
+                    entry.role = command.role;
+                    entry.group = deviceId;
+                }
+                if (command.url) {
+                    entry.url = command.url;
+                } else if (command.command) {
+                    // a shell line is the command; anything else is a run call. Never both.
+                    entry.command = command.command;
+                } else {
+                    entry.run = command.run;
+                }
                 if (command.when) entry.when = command.when;
                 if (command.when_control) entry.when_control = command.when_control;
-                // a shell line is the command; anything else is a run call. Never both.
-                if (command.command) entry.command = command.command;
-                else entry.run = command.run;
                 if (command.icon) entry.icon = command.icon;
                 if (command.async) entry.async = true;
                 if (command.confirm) entry.confirm = command.confirm;
@@ -1567,7 +1573,7 @@ $(function () {
         };
 
         // the run text of a list entry, as the menu's confirmation and the row's code column show it
-        self.runTextOf = (entry) => textOf(entry.command, entry.run);
+        self.runTextOf = runTextOf;
 
         // a control's row removes all its member commands, not the control itself (that stays in Controls)
         self.remove = (entry) => {

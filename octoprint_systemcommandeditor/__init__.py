@@ -35,7 +35,7 @@ from .adapters import (
     run_with_timeout,
     state_word,
 )
-from .convert import command_count, convert, place_readouts
+from .convert import command_count, convert, link_devices, place_readouts
 from .presets import (
     SYSTEM_SWITCHES,
     action_of,
@@ -44,6 +44,7 @@ from .presets import (
     detect_maintenance,
     first_start_presets,
     harvest,
+    key_for,
     mark_presets,
     maintenance_actions,
     octoprint_presets,
@@ -57,6 +58,7 @@ from .status import check_devices, run_status
 API_ENTRY_KEYS = (
     "name",
     "command",
+    "url",
     "confirm",
     "async",
     "fresh_credentials",
@@ -137,7 +139,7 @@ class SystemCommandEditorPlugin(
         }
 
     def get_settings_version(self):
-        return 4
+        return 5
 
     def get_api_commands(self):
         return {"status": ["ids"], "presets": [], "run": ["action"], "states": []}
@@ -388,6 +390,18 @@ class SystemCommandEditorPlugin(
             self._place_readouts()
         if current is None or current < 4:
             self._mark_presets()
+        if current is None or current < 5:
+            self._link_devices()
+
+    def _link_devices(self):
+        devices = copy.deepcopy(self._settings.get(["devices"]) or [])
+        actions = copy.deepcopy(self._settings.global_get(["system", "actions"]) or [])
+        new_devices, new_actions, changed = link_devices(devices, actions, key_for)
+        if not changed:
+            return
+        self._settings.global_set(["system", "actions"], new_actions)
+        self._settings.set(["devices"], new_devices)
+        self._logger.info("Turned the link controls into standalone link commands")
 
     def _mark_presets(self):
         devices = copy.deepcopy(self._settings.get(["devices"]) or [])

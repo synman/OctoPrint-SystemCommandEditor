@@ -155,7 +155,7 @@ def test_v3_readout_without_section_goes_to_end(tmp_path):
 def test_v3_keeps_readout_order_and_strips_section_only_from_readouts(tmp_path):
     devices = [
         readout("one", "Status"),
-        {"id": "docs", "type": "link", "name": "Docs", "url": "https://x", "section": "Status"},
+        {"id": "docs", "type": "switch", "name": "Docs", "section": "Status"},
         readout("two", "Status"),
     ]
     plugin = make_plugin(tmp_path, [{"action": "divider", "name": "Status"}], None, devices=devices)
@@ -164,7 +164,7 @@ def test_v3_keeps_readout_order_and_strips_section_only_from_readouts(tmp_path):
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     assert config["devices"] == [
         readout("one"),
-        {"id": "docs", "type": "link", "name": "Docs", "url": "https://x", "section": "Status"},
+        {"id": "docs", "type": "switch", "name": "Docs", "section": "Status"},
         readout("two"),
     ]
     assert plugin._settings.config["system"]["actions"] == [
@@ -275,3 +275,54 @@ def test_v4_skipped_when_already_at_4(tmp_path):
     plugin = make_plugin(tmp_path, [], None, devices=devices)
     plugin.on_settings_migrate(4, 4)
     assert "preset" not in plugin._settings.config["plugins"]["systemcommandeditor"]["devices"][0]
+
+
+def link_device(id_, name, **extra):
+    return {"id": id_, "type": "link", "name": name, "icon": "fa-solid fa-camera", "url": "http://cam/" + id_, **extra}
+
+
+def test_v5_turns_each_link_device_into_a_standalone_link_command_at_the_end(tmp_path):
+    when = {"mode": "only", "states": ["ready"], "effect": "hide"}
+    devices = [
+        {"id": "host", "type": "switch", "name": "Host", "icon": "", "preset": "host"},
+        link_device("webcam_snapshot", "Webcam snapshot", icon_color="#00ff00", icon_invert=True, when=when,
+                    preset="octoprint:snapshot"),
+        {"id": "fan", "type": "switch", "name": "Fan", "icon": "", "status": "x"},
+        link_device("cam", "Cam"),
+    ]
+    actions = [cmd("a"), {"action": "divider", "name": "Status"}]
+    plugin = make_plugin(tmp_path, actions, None, devices=devices)
+    plugin.on_settings_migrate(5, 4)
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert config["devices"] == [devices[0], devices[2]]
+    assert plugin._settings.config["system"]["actions"] == [
+        cmd("a"),
+        {"action": "divider", "name": "Status"},
+        {"action": "webcam_snapshot", "name": "Webcam snapshot", "url": "http://cam/webcam_snapshot",
+         "icon": "fa-solid fa-camera", "icon_color": "#00ff00", "icon_invert": True, "when": when,
+         "preset": "octoprint:snapshot"},
+        {"action": "cam", "name": "Cam", "url": "http://cam/cam", "icon": "fa-solid fa-camera"},
+    ]
+
+
+def test_v5_key_for_a_link_takes_a_key_already_in_use(tmp_path):
+    devices = [link_device("x", "A")]
+    plugin = make_plugin(tmp_path, [cmd("a")], None, devices=devices)
+    plugin.on_settings_migrate(5, 4)
+    assert plugin._settings.config["system"]["actions"][-1]["action"] == "a_2"
+
+
+def test_v5_leaves_a_config_with_no_link_device_untouched(tmp_path):
+    devices = [{"id": "fan", "type": "switch", "name": "Fan", "icon": ""}]
+    plugin = make_plugin(tmp_path, [cmd("a")], None, devices=devices)
+    plugin.on_settings_migrate(5, 4)
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == devices
+    assert plugin._settings.global_sets == []
+
+
+def test_v5_skipped_when_already_at_5(tmp_path):
+    devices = [link_device("cam", "Cam")]
+    plugin = make_plugin(tmp_path, [], None, devices=devices)
+    plugin.on_settings_migrate(5, 5)
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == devices
+    assert plugin._settings.global_sets == []

@@ -654,9 +654,9 @@ def octoprint_presets(snapshot_url=None):
         read={"printer": "temperatures"},
     )
     gcode = action(
-        "Send G-code",
+        "G-code macros",
         "fa-solid fa-terminal",
-        [{"name": "Send", "run": {"gcode": ["M117 Hello from System Commands"]}, "role": "run",
+        [{"name": "Show a message", "run": {"gcode": ["M117 Hello from System Commands"]}, "role": "run",
           "icon": "fa-solid fa-paper-plane", "confirm": "Send this G-code?"}],
     )
     event = action(
@@ -669,7 +669,7 @@ def octoprint_presets(snapshot_url=None):
         ("octoprint:connection", "Printer connection", (connection, connection_commands)),
         ("octoprint:job", "Print job", job),
         ("octoprint:printer", "Printer", printer),
-        ("octoprint:gcode", "Send G-code", gcode),
+        ("octoprint:gcode", "G-code macros", gcode),
         ("octoprint:event", "Custom event", event),
     ]
     presets = [
@@ -677,8 +677,10 @@ def octoprint_presets(snapshot_url=None):
         for key, name, (control, commands) in entries
     ]
     if isinstance(snapshot_url, str) and snapshot_url:
-        snapshot = {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera", "url": snapshot_url}
-        presets.append({"preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": snapshot, "commands": []})
+        presets.append({
+            "preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": None,
+            "commands": [{"name": "Webcam snapshot", "url": snapshot_url, "icon": "fa-solid fa-camera"}],
+        })
     return {"plugin": "octoprint", "name": "OctoPrint", "presets": presets}
 
 
@@ -809,16 +811,75 @@ def _entry_keys(actions):
     return {entry.get("action") for entry in actions if entry.get("action") not in (None, DIVIDER)}
 
 
+def _section_end(actions, name):
+    """The index just past the last item of the section headed ``name``, or None when there is no such heading."""
+    start = next((i for i, e in enumerate(actions) if e.get("action") == DIVIDER and e.get("name") == name), None)
+    if start is None:
+        return None
+    end = start + 1
+    while end < len(actions) and actions[end].get("action") != DIVIDER:
+        end += 1
+    return end
+
+
+def _place_in_plugin_section(actions, entries):
+    """Put ``entries`` after the last item of the Plugin devices section, the divider made at the end when missing."""
+    end = _section_end(actions, PLUGIN_DIVIDER)
+    if end is None:
+        actions.append({"action": DIVIDER, "name": PLUGIN_DIVIDER})
+        actions.extend(entries)
+    else:
+        actions[end:end] = entries
+
+
+def _command_entry(preset, command, key, group):
+    """One command's ``system.actions`` entry. A command with ``group`` is a control's member; without, standalone."""
+    entry = {"action": key, "name": command["name"]}
+    if group is not None:
+        entry["group"] = group
+        entry["role"] = command["role"]
+    entry["preset"] = preset["preset"]
+    # a link goes in as its url, a shell line as the command, anything else as a run call. Never more than one.
+    if command.get("url"):
+        entry["url"] = command["url"]
+    elif command.get("command"):
+        entry["command"] = command["command"]
+    else:
+        entry["run"] = command["run"]
+    if command.get("icon"):
+        entry["icon"] = command["icon"]
+    if command.get("async"):
+        entry["async"] = True
+    if command.get("confirm"):
+        entry["confirm"] = command["confirm"]
+    if command.get("when"):
+        entry["when"] = copy.deepcopy(command["when"])
+    if command.get("when_control"):
+        entry["when_control"] = copy.deepcopy(command["when_control"])
+    return entry
+
+
 def add_plugin_preset(preset, devices, actions):
     """Return ``(devices, actions)`` with one plugin preset added, as the picker's addPlugin adds it.
 
-    The control goes at the end of ``devices``; its commands go at the end of ``actions``, under one Plugin devices
-    divider made when missing. The inputs are not modified.
+    A preset with a control adds the control at the end of ``devices``, and its commands at the end of ``actions``
+    under one Plugin devices divider made when missing. A command-only preset (``control`` None) adds no device;
+    each command is standalone and goes at the end of the Plugin devices section, the divider made when missing.
+    The inputs are not modified.
     """
     preset = copy.deepcopy(preset)
     control = preset["control"]
     devices = list(devices)
     actions = list(actions)
+    commands = preset.get("commands") or []
+
+    if control is None:
+        entries = []
+        for command in commands:
+            key = key_for(command["name"], "command", _entry_keys(actions) | {e["action"] for e in entries})
+            entries.append(_command_entry(preset, command, key, None))
+        _place_in_plugin_section(actions, entries)
+        return devices, actions
 
     taken = {device.get("id") for device in devices} | _entry_keys(actions)
     device_id = key_for(control["name"], "control", taken)
@@ -832,39 +893,16 @@ def add_plugin_preset(preset, devices, actions):
         device["on_pattern"] = control["on_pattern"]
     if control.get("off_pattern"):
         device["off_pattern"] = control["off_pattern"]
-    if control["type"] == "link":
-        device["url"] = control["url"]
     devices.append(device)
 
-    commands = preset.get("commands") or []
     if not commands:
         return devices, actions
-    if not any(entry.get("action") == DIVIDER and entry.get("name") == PLUGIN_DIVIDER for entry in actions):
-        actions.append({"action": DIVIDER, "name": PLUGIN_DIVIDER})
+    entries = []
     for command in commands:
-        entry = {
-            "action": key_for("{} {}".format(preset["name"], command["name"]), "command", _entry_keys(actions)),
-            "name": command["name"],
-            "role": command["role"],
-            "group": device_id,
-            "preset": preset["preset"],
-        }
-        # a shell line goes in as the command; anything else is a run call. Never both.
-        if command.get("command"):
-            entry["command"] = command["command"]
-        else:
-            entry["run"] = command["run"]
-        if command.get("icon"):
-            entry["icon"] = command["icon"]
-        if command.get("async"):
-            entry["async"] = True
-        if command.get("confirm"):
-            entry["confirm"] = command["confirm"]
-        if command.get("when"):
-            entry["when"] = copy.deepcopy(command["when"])
-        if command.get("when_control"):
-            entry["when_control"] = copy.deepcopy(command["when_control"])
-        actions.append(entry)
+        label = "{} {}".format(preset["name"], command["name"])
+        key = key_for(label, "command", _entry_keys(actions) | {e["action"] for e in entries})
+        entries.append(_command_entry(preset, command, key, device_id))
+    _place_in_plugin_section(actions, entries)
     return devices, actions
 
 
@@ -920,7 +958,8 @@ def state_list(spec, plugin_manager):
 def first_start_presets(groups):
     """The presets first start adds: the OctoPrint connection, then every switch preset of the other groups.
 
-    A preset whose ``available`` is False is left out; a preset with no ``available`` key counts as available.
+    A preset whose ``available`` is False is left out; a preset with no ``available`` key counts as available. A
+    command-only preset (``control`` None) is never added on first start.
     """
     connection = [
         preset
@@ -930,6 +969,6 @@ def first_start_presets(groups):
     switches = [
         preset
         for group in groups if group.get("plugin") != "octoprint"
-        for preset in group["presets"] if preset["control"]["type"] == "switch"
+        for preset in group["presets"] if preset["control"] and preset["control"]["type"] == "switch"
     ]
     return [preset for preset in connection + switches if preset.get("available") is not False]

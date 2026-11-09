@@ -647,12 +647,15 @@ def test_octoprint_printer_reads_temperatures_and_confirms_only_the_emergency_st
     assert all("confirm" not in command for command in preset["commands"][:2])
 
 
-def test_octoprint_gcode_and_event_have_no_read_and_one_run_each():
-    by_id = octoprint_by_id()
-    gcode = by_id["octoprint:gcode"]
-    assert "read" not in gcode["control"] and gcode["control"]["icon"] == "fa-solid fa-terminal"
-    assert gcode["commands"] == [{"name": "Send", "run": {"gcode": ["M117 Hello from System Commands"]},
+def test_octoprint_gcode_is_a_g_code_macros_action_control_with_one_named_macro():
+    gcode = octoprint_by_id()["octoprint:gcode"]
+    assert gcode["control"] == {"type": "action", "name": "G-code macros", "icon": "fa-solid fa-terminal"}
+    assert gcode["commands"] == [{"name": "Show a message", "run": {"gcode": ["M117 Hello from System Commands"]},
                                   "role": "run", "icon": "fa-solid fa-paper-plane", "confirm": "Send this G-code?"}]
+
+
+def test_octoprint_event_has_no_read_and_one_run():
+    by_id = octoprint_by_id()
     event = by_id["octoprint:event"]
     assert "read" not in event["control"] and event["control"]["icon"] == "fa-solid fa-bullhorn"
     assert event["commands"] == [{"name": "Fire", "run": {"event": "systemcommandeditor_custom", "payload": {}},
@@ -670,14 +673,13 @@ def test_octoprint_snapshot_preset_is_absent_without_a_url():
     assert "octoprint:snapshot" not in {p["preset"] for p in octoprint_presets("")["presets"]}
 
 
-def test_octoprint_snapshot_preset_is_a_link_with_its_url_and_no_commands_and_comes_last():
+def test_octoprint_snapshot_preset_is_a_command_only_link_with_its_url_and_comes_last():
     group = octoprint_presets("http://printer.local/webcam/?action=snapshot")
     preset = group["presets"][-1]
     assert preset == {
-        "preset": "octoprint:snapshot", "name": "Webcam snapshot",
-        "control": {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera",
-                    "url": "http://printer.local/webcam/?action=snapshot"},
-        "commands": [],
+        "preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": None,
+        "commands": [{"name": "Webcam snapshot", "url": "http://printer.local/webcam/?action=snapshot",
+                      "icon": "fa-solid fa-camera"}],
     }
     assert [p["preset"] for p in group["presets"][:-1]] == [
         "octoprint:connection", "octoprint:job", "octoprint:printer", "octoprint:gcode", "octoprint:event",
@@ -750,18 +752,43 @@ def test_add_plugin_preset_takes_a_control_id_already_used_by_a_device_or_a_comm
     assert devices[-1]["id"] == "printer_power_2"
 
 
-def test_add_plugin_preset_for_a_link_with_no_commands_adds_no_divider():
-    link = {
-        "preset": "octoprint:snapshot", "name": "Webcam snapshot",
-        "control": {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera",
-                    "url": "http://printer.local/snap"},
-        "commands": [],
+def snapshot_only(url="http://printer.local/snap"):
+    return {
+        "preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": None,
+        "commands": [{"name": "Webcam snapshot", "url": url, "icon": "fa-solid fa-camera"}],
     }
-    devices, actions = add_plugin_preset(link, [], [])
-    assert devices == [{"id": "webcam_snapshot", "type": "link", "name": "Webcam snapshot",
-                        "icon": "fa-solid fa-camera", "preset": "octoprint:snapshot",
-                        "url": "http://printer.local/snap"}]
-    assert actions == []
+
+
+def test_add_plugin_preset_with_no_control_adds_one_standalone_link_and_no_device():
+    devices, actions = add_plugin_preset(snapshot_only(), [], [])
+    assert devices == []
+    assert actions == [
+        {"action": "divider", "name": "Plugin devices"},
+        {"action": "webcam_snapshot", "name": "Webcam snapshot", "url": "http://printer.local/snap",
+         "icon": "fa-solid fa-camera", "preset": "octoprint:snapshot"},
+    ]
+    assert "group" not in actions[1] and "role" not in actions[1] and "command" not in actions[1]
+
+
+def test_add_plugin_preset_with_no_control_goes_at_the_end_of_the_plugin_devices_section():
+    actions = [
+        {"action": "divider", "name": "Plugin devices"},
+        {"action": "psu_on", "name": "On", "command": "x", "group": "psu", "role": "on"},
+        {"action": "divider", "name": "Status"},
+        {"action": "readout", "name": "Readout", "device": "readout"},
+    ]
+    _, actions = add_plugin_preset(snapshot_only(), [], actions)
+    assert [a["action"] for a in actions] == ["divider", "psu_on", "webcam_snapshot", "divider", "readout"]
+
+
+def test_add_plugin_preset_with_no_control_takes_a_key_already_used():
+    _, actions = add_plugin_preset(snapshot_only(), [], [{"action": "webcam_snapshot", "name": "Mine"}])
+    assert actions[-1]["action"] == "webcam_snapshot_2"
+
+
+def test_first_start_presets_skips_a_command_only_preset():
+    group = {"plugin": "webcam", "name": "Webcam", "presets": [snapshot_only()]}
+    assert first_start_presets([group, octoprint_presets()]) == [octoprint_by_id()["octoprint:connection"]]
 
 
 def test_first_start_presets_picks_connection_first_then_plugin_switches_only():
@@ -977,14 +1004,15 @@ def test_every_plugin_and_octoprint_control_and_command_has_its_table_icon():
             "fa-solid fa-house", "fa-solid fa-snowflake", "fa-solid fa-hand"]),
         "octoprint:gcode": ("fa-solid fa-terminal", ["fa-solid fa-paper-plane"]),
         "octoprint:event": ("fa-solid fa-bullhorn", ["fa-solid fa-bullhorn"]),
-        "octoprint:snapshot": ("fa-solid fa-camera", []),
+        "octoprint:snapshot": (None, ["fa-solid fa-camera"]),
     }
     seen = {}
     for group in groups:
         for preset in group["presets"]:
             icons = [c["icon"] for c in preset["commands"]]
-            seen[preset["preset"]] = (preset["control"]["icon"], icons)
-            assert preset["control"]["icon"], preset["preset"]
+            control_icon = preset["control"]["icon"] if preset["control"] else None
+            seen[preset["preset"]] = (control_icon, icons)
+            assert control_icon or preset["control"] is None, preset["preset"]
             assert all(icons), preset["preset"]
     assert seen == expected
 

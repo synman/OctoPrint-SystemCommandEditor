@@ -134,7 +134,7 @@
 <h3>{{ _('System Commands') }}</h3>
 
 <p class="muted">
-    {{ _('Controls show a state and gather the commands that drive it: switches, selectors, actions, readouts and links. Built-in commands are OctoPrint\'s own. Custom commands are yours, with section headings and placed readouts, in menu order. Changes take effect when you click Save.') }}
+    {{ _('Controls show a state and gather the commands that drive it: switches, selectors, actions and readouts. Built-in commands are OctoPrint\'s own. Custom commands are yours, with section headings and placed readouts, in menu order. Changes take effect when you click Save.') }}
 </p>
 
 <div class="sce-options">
@@ -387,7 +387,28 @@
                 </div>
             </div>
             <!-- /ko -->
-            <!-- ko ifnot: runCall -->
+            <!-- ko if: canChooseKind -->
+            <div class="control-group">
+                <label class="control-label" for="sce-editor-kind">{{ _('Kind') }}</label>
+                <div class="controls">
+                    <select id="sce-editor-kind" class="input-block-level" data-bind="value: kind">
+                        <option value="shell">{{ _('Shell command') }}</option>
+                        <option value="link">{{ _('Link') }}</option>
+                    </select>
+                </div>
+            </div>
+            <!-- /ko -->
+            <!-- ko if: isLinkKind -->
+            <div class="control-group" data-bind="css: { error: urlError() }">
+                <label class="control-label" for="sce-editor-url">{{ _('URL') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-editor-url" class="input-block-level" data-bind="textInput: url" placeholder="{{ _('e.g. http://printer.local/webcam/?action=snapshot')|edq }}">
+                    <span class="help-block">{{ _('Opens in a new tab. Nothing is sent to OctoPrint.') }}</span>
+                    <span class="help-block" data-bind="text: urlError, visible: urlError"></span>
+                </div>
+            </div>
+            <!-- /ko -->
+            <!-- ko if: !isLinkKind() && !runCall() -->
             <div class="control-group" data-bind="css: { error: commandError() }">
                 <label class="control-label" for="sce-editor-command">{{ _('Command') }}</label>
                 <div class="controls">
@@ -551,7 +572,7 @@
 
             {{ icon_field('sce-device-icon', 'fa-solid fa-plug') }}
 
-            <!-- ko if: hasStatus() && !hasRead() -->
+            <!-- ko if: !hasRead() -->
             <div class="control-group" data-bind="css: { error: statusError() }">
                 <label class="control-label" for="sce-device-status">{{ _('Status command') }}</label>
                 <div class="controls">
@@ -588,29 +609,6 @@
             </div>
             <!-- /ko -->
 
-            <!-- ko if: isLink -->
-            <div class="control-group" data-bind="css: { error: urlError() }">
-                <label class="control-label" for="sce-device-url">{{ _('URL') }}</label>
-                <div class="controls">
-                    <input type="text" id="sce-device-url" class="input-block-level" data-bind="textInput: url">
-                    <span class="help-block" data-bind="text: urlError, visible: urlError"></span>
-                </div>
-            </div>
-            <!-- /ko -->
-
-            <!-- ko if: hasSection -->
-            <div class="control-group">
-                <label class="control-label" for="sce-device-section">{{ _('Section') }}</label>
-                <div class="controls">
-                    <select id="sce-device-section" class="input-block-level" data-bind="options: sectionChoices, optionsValue: 'value', optionsText: 'label', value: section"></select>
-                    <span class="help-block">{{ _('The divider in the System menu this control is shown under.') }}</span>
-                </div>
-            </div>
-            <!-- /ko -->
-
-            <!-- ko if: isLink -->
-            {{ condition_block() }}
-            <!-- /ko -->
             <button type="submit" class="hide"></button>
         </form>
     </div>

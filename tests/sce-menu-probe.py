@@ -29,8 +29,8 @@ DEVICES = [
      "section": "Machine"},
     {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "icon_color": "#ff0000",
      "status": "disk-state"},
-    {"id": "cam", "type": "link", "name": "Camera", "icon": "fa-solid fa-video", "url": "http://example.test/cam",
-     "section": "Machine"},
+    # a control whose only member is a link command: its run button opens the page in a new tab
+    {"id": "camtools", "type": "action", "name": "Camera tools", "icon": "fa-solid fa-video", "section": "Machine"},
     {"id": "nost", "type": "switch", "name": "No-status switch", "icon": "fa-solid fa-plug",
      "on_pattern": "", "off_pattern": "", "section": "Machine"},
     {"id": "ghost", "type": "switch", "name": "Ghost switch", "icon": "fa-solid fa-ghost", "status": "ghost-state",
@@ -145,6 +145,10 @@ CUSTOM_LIST = [
     {"action": "res_720", "name": "720p", "command": "res-720-cmd"},
     {"action": "nost_on", "name": "No-status on", "command": "nost-on-cmd"},
     {"action": "nost_off", "name": "No-status off", "command": "nost-off-cmd"},
+    {"action": "cam_page", "name": "Camera page", "url": "http://example.test/cam"},
+    {"action": "cam_open", "name": "Open camera page", "url": "http://example.test/cam", "group": "camtools",
+     "role": "run"},
+    {"action": "cam_busy", "name": "Camera page while idle", "url": "http://example.test/busy"},
     {"action": "divider", "name": "Tools"},
     {"action": "bkup_run", "name": "Back up now", "command": "bkup-cmd"},
     {"action": "sync_action", "name": "Sync action", "command": "sync-cmd"},
@@ -167,6 +171,16 @@ CUSTOM_LIST = [
     {"action": "divider", "name": "Status"},
     {"action": "upt", "name": "Uptime", "device": "upt"},
 ]
+
+# link commands: a standalone one, a run button in the Camera tools control, and a standalone one a printer when
+# disables while printing
+ENTRIES.update({
+    "cam_page": {"name": "Camera page", "url": "http://example.test/cam", "icon": "fa-solid fa-video"},
+    "cam_open": {"name": "Open camera page", "url": "http://example.test/cam", "group": "camtools", "role": "run",
+                 "icon": "fa-solid fa-video"},
+    "cam_busy": {"name": "Camera page while idle", "url": "http://example.test/busy", "icon": "fa-solid fa-video",
+                 "when": {"mode": "never", "states": ["printing"], "effect": "disable"}},
+})
 
 CORE_LIST = [{"action": "restart", "name": "Restart OctoPrint", "confirm": "Restart OctoPrint?"}]
 
@@ -426,6 +440,9 @@ def run_probe():
         page.route(PLUGIN_URL, handle_plugin)
         page.route(COMMANDS_URL, handle_commands)
         page.route(RUN_URL, handle_run)
+        # a link opens a new tab on this page; the tab answers with a stub so the popup has a page to land on
+        page.context.route("http://example.test/**", lambda route, request: route.fulfill(
+            status=200, content_type="text/html", body="<p>page</p>"))
 
         page.goto(BASE + "/", wait_until="domcontentloaded")
         page.wait_for_function("typeof ko !== 'undefined' && document.querySelector('#navbar_systemmenu') !== null",
@@ -543,14 +560,27 @@ def run_probe():
         check("the action button runs its member through the custom command endpoint",
               "bkup_run" in calls, "calls=%s" % calls)
 
-        # H. link href and target
-        link = page.evaluate("""() => {
-            const a = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="cam"] a');
-            return a ? {href: a.getAttribute('href'), target: a.getAttribute('target'),
-                         rel: a.getAttribute('rel')} : null;
-        }""")
-        check("link href and target", link is not None and link["href"] == "http://example.test/cam"
-              and link["target"] == "_blank", json.dumps(link))
+        # H. a standalone link command and a link run button each open their url in a new tab, and post nothing
+        posts_before = len(calls)
+        open_menu()
+        with page.context.expect_page() as popup_info:
+            page.get_by_role("link", name="Camera page", exact=True).click()
+        popup = popup_info.value
+        popup.wait_for_load_state()
+        check("a standalone link command opens its url in a new tab", popup.url == "http://example.test/cam",
+              "url=%s" % popup.url)
+        popup.close()
+        open_menu()
+        with page.context.expect_page() as popup_info:
+            page.locator('#navbar_systemmenu li.sce-device[data-device-id="camtools"] button[title="Open camera page"]'
+                         ).first.click()
+        popup = popup_info.value
+        popup.wait_for_load_state()
+        check("a link run button opens its url in a new tab", popup.url == "http://example.test/cam",
+              "url=%s" % popup.url)
+        popup.close()
+        check("link clicks post nothing to the custom command endpoint", len(calls) == posts_before,
+              "calls=%s" % calls)
 
         # H2. a switch with no status command shows no dot and no word and both buttons; a switch with no member
         #     in core's command list draws no row
@@ -637,6 +667,20 @@ def run_probe():
         disabled_ok = disabled.count() == 1 and "disabled" in (disabled.first.get_attribute("class") or "")
         check("printing disables the conditioned button and its title says why", found and disabled_ok,
               "printer VM found=%s buttons=%s" % (found, json.dumps(page.evaluate(PRINT_STATE))))
+
+        # M2. a link whose printer when disables it while printing is grayed, and its click opens nothing
+        open_menu()
+        busy_class = page.evaluate("""() => {
+            const a = [...document.querySelectorAll('#navbar_systemmenu a')]
+                .find(x => x.textContent.trim() === 'Camera page while idle');
+            return a ? a.closest('li').className : null;
+        }""")
+        pages_before = len(page.context.pages)
+        page.get_by_role("link", name="Camera page while idle", exact=True).click(force=True)
+        pump(600)
+        check("a link a printer when disables is grayed while printing and its click opens nothing",
+              busy_class is not None and "disabled" in busy_class and len(page.context.pages) == pages_before,
+              "class=%r pages=%d->%d" % (busy_class, pages_before, len(page.context.pages)))
 
         # N. re-render leaves no duplicate nodes
         before = count_added()

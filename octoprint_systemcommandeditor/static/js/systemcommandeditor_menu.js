@@ -230,6 +230,17 @@
         return payload === undefined || payload === null ? head : head + " " + sortedJson(payload);
     }
 
+    // a link command: a system.actions entry with a url and no command or run. Core lists it but cannot run it, so the
+    // menu opens the url itself; standing alone it is a menu item, inside a control a run button
+    function isLink(entry) {
+        return !!entry && typeof entry.url === "string" && entry.url !== "" && !entry.command && !entry.run;
+    }
+
+    // the text a command's run text shows for a link: "Link: <url>"; "" for any entry that is not a link
+    function linkText(entry) {
+        return isLink(entry) ? "Link: " + entry.url : "";
+    }
+
     const ESCAPES = {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"};
 
     function escapeHtml(s) {
@@ -413,6 +424,8 @@
         statusKind: statusKind,
         hasStatusCheck: hasStatusCheck,
         describeRun: describeRun,
+        isLink: isLink,
+        linkText: linkText,
         isPlacement: isPlacement,
         conditionEffect: conditionEffect,
         stateWord: stateWord,
@@ -620,9 +633,15 @@ $(function () {
         };
 
         self._run = (source, action) => {
+            const entry = self._entry(source, action) || {};
+            // core cannot run a link command: it answers 500 to an entry with no command. The page opens in a new tab
+            // and nothing is posted to OctoPrint
+            if (SceModel.isLink(entry)) {
+                window.open(entry.url, "_blank", "noopener");
+                return;
+            }
             const spec = self._spec(source, action);
             if (!spec) return;
-            const entry = self._entry(source, action) || {};
             const isRun = !!entry.run;
             const command = isRun ? SceModel.describeRun(entry.run)
                 : (source === "core" ? (self._data.core_commands || {})[action] : entry.command);
@@ -1061,22 +1080,6 @@ $(function () {
                     const anchor = placedAt[SceModel.placementOf(d.id, entries)];
                     if (anchor) anchor.before(li);
                     return;
-                }
-                if (d.type === "link") {
-                    const cond = self._condition(d.when);
-                    if (cond.effect === "hide") li.addClass(HIDDEN);
-                    const a = node("a", ["sce-device-row"]).attr({href: d.url || "#", target: "_blank", rel: "noopener"});
-                    if (cond.effect === "disable") {
-                        a.addClass("disabled");
-                        a.attr("title", cond.reason);
-                    }
-                    a.append(icon(d.icon, d.icon_color, d.icon_invert), node("span", ["sce-device-name"]).text(d.name));
-                    a.on("click", (ev) => {
-                        ev.stopPropagation();
-                        if (a.hasClass("disabled")) ev.preventDefault();
-                    });
-                    li.append(a);
-                    place(d.section, li);
                 }
             });
         };

@@ -99,15 +99,15 @@ PLUGINS = [
               "icon": "fa-solid fa-power-off"},
              {"name": "Restart", "command": "sudo systemctl restart ustreamer", "role": "restart",
               "icon": "fa-solid fa-rotate-right"}]}]},
-    # the OctoPrint group, as octoprint_presets() builds it with a snapshot URL: a webcam link, and Send G-code
+    # the OctoPrint group, as octoprint_presets() builds it with a snapshot URL: a command-only webcam link, and the
+    # G-code macros control with its one named macro
     {"plugin": "octoprint", "name": "OctoPrint", "presets": [
-        {"preset": "octoprint:snapshot", "name": "Webcam snapshot",
-         "control": {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera", "url": SNAPSHOT_URL},
-         "commands": []},
-        {"preset": "octoprint:gcode", "name": "Send G-code",
-         "control": {"type": "action", "name": "Send G-code", "icon": "fa-solid fa-terminal"},
-         "commands": [{"name": "Send", "run": {"gcode": ["M117 Hello from System Commands"]}, "role": "run",
-                       "confirm": "Send this G-code?"}]}]},
+        {"preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": None,
+         "commands": [{"name": "Webcam snapshot", "url": SNAPSHOT_URL, "icon": "fa-solid fa-camera"}]},
+        {"preset": "octoprint:gcode", "name": "G-code macros",
+         "control": {"type": "action", "name": "G-code macros", "icon": "fa-solid fa-terminal"},
+         "commands": [{"name": "Show a message", "run": {"gcode": ["M117 Hello from System Commands"]}, "role": "run",
+                       "icon": "fa-solid fa-paper-plane", "confirm": "Send this G-code?"}]}]},
 ]
 
 FIXTURE_ACTIONS = [
@@ -842,21 +842,11 @@ def run_probe():
         page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
         wait_hidden("#sce-editor")
 
-        # 3. a link with a URL and a condition, and a readout with no condition
+        # 3. the control editor no longer offers Link; a readout with no condition still goes in
         page.get_by_role("button", name="Add control").click()
         wait_visible("#sce-device-editor")
-        page.select_option("#sce-device-type", value="link")
-        page.fill("#sce-device-name", "Camera")
-        page.fill("#sce-device-url", "http://example.test/cam")
-        page.check("#sce-device-editor label:has-text('Limit to printer states') input")
-        page.check("#sce-device-editor .sce-state-picks " + STATE_PICK.format("Printing"))
-        summary = page.locator("#sce-device-editor .sce-condition-summary").text_content().strip()
-        check("link condition summary reads the picked condition in words",
-              summary == "Grayed out unless the printer is Printing.", "summary=%r" % summary)
-        modal_done("#sce-device-editor")
-
-        page.get_by_role("button", name="Add control").click()
-        wait_visible("#sce-device-editor")
+        check("the control editor no longer offers Link",
+              page.locator("#sce-device-type option[value='link']").count() == 0)
         page.select_option("#sce-device-type", value="readout")
         page.fill("#sce-device-name", "Load")
         page.fill("#sce-device-status", "uptime")
@@ -879,12 +869,11 @@ def run_probe():
             check("core shutdown carries group and role and no condition",
                   shutdown.get("group") == "power" and shutdown.get("role") == "off" and not shutdown.get("when"),
                   json.dumps(shutdown))
-            camera, load = devices.get("camera", {}), devices.get("load", {})
-            check("link device carries url and condition",
-                  camera.get("url") == "http://example.test/cam" and camera.get("when") ==
-                  {"mode": "only", "states": ["printing"], "effect": "disable"}, json.dumps(camera))
+            load = devices.get("load", {})
             check("readout device added without a condition carries no when",
                   load.get("type") == "readout" and "when" not in load, json.dumps(load))
+            check("no device of type link is written",
+                  not [d for d in plugin.get("devices") or [] if d.get("type") == "link"])
 
         # Phase C: delete the switch device; its group and role leave both commands
         open_settings()
@@ -1136,14 +1125,15 @@ def run_probe():
               and not [a for a in left_actions if a == {"action": "divider", "name": "Plugin devices"}],
               json.dumps({"devices": left_devices, "actions": left_actions[-3:]}))
 
-        # Phase D4: the OctoPrint group. Webcam snapshot is a link control; Send G-code is editable G-code
+        # Phase D4: the OctoPrint group. Webcam snapshot is a command-only link; G-code macros is an action control
         open_settings()
         page.get_by_role("button", name="Add from presets").click()
         wait_visible("#sce-presets .sce-plugin-row")
         snap_row = page.locator("#sce-presets .sce-plugin-row", has_text="Webcam snapshot")
-        send_row = page.locator("#sce-presets .sce-plugin-row", has_text="Send G-code")
+        send_row = page.locator("#sce-presets .sce-plugin-row", has_text="G-code macros")
         check("the picker's OctoPrint group offers Webcam snapshot, unticked",
               snap_row.count() == 1 and not snap_row.locator("input").is_checked())
+        check("the G-code preset row reads G-code macros", send_row.count() == 1)
         snap_row.locator("input").check()
         send_row.locator("input").check()
         page.locator("#sce-presets .modal-footer .btn-primary").click()
@@ -1153,16 +1143,19 @@ def run_probe():
             check("save after OctoPrint pick posts the settings", False, "no POST captured")
         else:
             devices = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
-            snap = [d for d in devices if d.get("preset") == "octoprint:snapshot"]
-            check("ticking Webcam snapshot and saving posts a link control with its url and its marker",
-                  len(snap) == 1 and snap[0].get("type") == "link" and snap[0].get("url") == SNAPSHOT_URL,
-                  json.dumps(snap))
+            system_actions = (body.get("system") or {}).get("actions") or []
+            snap_device = [d for d in devices if d.get("preset") == "octoprint:snapshot"]
+            snap = [a for a in system_actions if a.get("preset") == "octoprint:snapshot"]
+            check("ticking Webcam snapshot and saving adds a standalone link with its marker and no control",
+                  not snap_device and len(snap) == 1 and snap[0].get("url") == SNAPSHOT_URL and
+                  "group" not in snap[0] and "role" not in snap[0] and "command" not in snap[0],
+                  json.dumps({"devices": snap_device, "actions": snap}))
 
-        # the Send command opens with its G-code lines in a textarea; replacing them saves the new lines
+        # the Show a message macro opens with its G-code lines in a textarea; replacing them saves the new lines
         open_settings()
-        edit_command("Send")
+        edit_command("Show a message")
         gcode_before = page.locator("#sce-editor-gcode").input_value()
-        check("a Send G-code command opens with a G-code textarea holding its lines",
+        check("a G-code macro opens with a G-code textarea holding its lines",
               gcode_before == "M117 Hello from System Commands", "gcode=%r" % gcode_before)
         page.fill("#sce-editor-gcode", "G28\nM117 done\n\n")
         modal_done("#sce-editor")
@@ -1177,7 +1170,7 @@ def run_probe():
 
         # clearing every G-code line shows the error and disables Done
         open_settings()
-        edit_command("Send")
+        edit_command("Show a message")
         page.fill("#sce-editor-gcode", "  \n\n")
         page.wait_for_timeout(200)
         error_text = page.locator("#sce-editor").inner_text()
@@ -1187,6 +1180,34 @@ def run_probe():
               "done_disabled=%s" % done_disabled)
         page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
         wait_hidden("#sce-editor")
+
+        # Phase D6: a new command of kind Link saves its url and no command; an empty URL shows the error and
+        # disables Done; its row shows the link as its run text
+        open_settings()
+        page.get_by_role("button", name="Add command").click()
+        wait_visible("#sce-editor")
+        page.fill("#sce-editor-name", "Open printer page")
+        page.select_option("#sce-editor-kind", value="link")
+        page.fill("#sce-editor-url", "")
+        page.wait_for_timeout(200)
+        error_text = page.locator("#sce-editor").inner_text()
+        done_disabled = page.locator("#sce-editor .modal-footer .btn-primary").is_disabled()
+        check("an empty URL shows the error and disables Done",
+              "A URL is required for a link." in error_text and done_disabled, "done_disabled=%s" % done_disabled)
+        page.fill("#sce-editor-url", "http://printer.local/page")
+        modal_done("#sce-editor")
+        code = command_row("Open printer page").locator("code.sce-cmd").text_content().strip()
+        check("the Custom commands row shows the link as Link: <url>",
+              code == "Link: http://printer.local/page", "code=%r" % code)
+        body = save_settings()
+        if body is None:
+            check("save after the Link command posts the settings", False, "no POST captured")
+        else:
+            saved = next((a for a in (body.get("system") or {}).get("actions") or []
+                          if a.get("name") == "Open printer page"), {})
+            check("a new Link command saves its url and no command or run",
+                  saved.get("url") == "http://printer.local/page" and "command" not in saved and "run" not in saved,
+                  json.dumps(saved))
 
         # Phase D5: an undetected webcam preset shows its label and stays tickable; PSU and Grbl (no available key)
         # show no label; ticking Grbl and the webcam preset posts Grbl's icon-bearing command and the webcam switch

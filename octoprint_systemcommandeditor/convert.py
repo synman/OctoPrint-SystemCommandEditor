@@ -97,6 +97,37 @@ def convert(system_actions, legacy_actions):
     return actions, report
 
 
+LINK_FIELDS = ("name", "url", "icon", "icon_color", "icon_invert")
+
+
+def link_devices(devices, actions, key_for):
+    """Settings v5: every device of type ``link`` becomes a standalone link command at the end of ``actions``.
+
+    ``key_for(name, fallback, taken)`` makes each command's action key (the picker's key rule, passed in so this
+    module needs no import of presets). Returns ``(devices, actions, changed)``. The other devices and entries are
+    kept as they are, in order; a config with no link device is returned untouched.
+    """
+    if not any(isinstance(d, dict) and d.get("type") == "link" for d in devices or []):
+        return devices, actions, False
+    actions = [dict(entry) for entry in actions or []]
+    taken = {entry.get("action") for entry in actions if _valid(entry) and not _is_divider(entry)}
+    kept = []
+    for device in devices:
+        if not (isinstance(device, dict) and device.get("type") == "link"):
+            kept.append(device)
+            continue
+        key = key_for(device.get("name") or "", "link", taken)
+        taken.add(key)
+        entry = {"action": key}
+        entry.update({field: device[field] for field in LINK_FIELDS if field in device})
+        if device.get("when"):
+            entry["when"] = device["when"]
+        if device.get("preset"):
+            entry["preset"] = device["preset"]
+        actions.append(entry)
+    return kept, actions, True
+
+
 def command_count(actions):
     return sum(1 for entry in actions or [] if _valid(entry) and not _is_divider(entry) and "command" in entry)
 

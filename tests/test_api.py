@@ -485,8 +485,8 @@ def test_first_start_marks_readout_placement_with_its_readout(monkeypatch):
     assert [d for d in config["devices"] if d["id"] == "disk"][0]["preset"] == "disk"
 
 
-def test_settings_version_is_4():
-    assert SystemCommandEditorPlugin().get_settings_version() == 4
+def test_settings_version_is_5():
+    assert SystemCommandEditorPlugin().get_settings_version() == 5
 
 
 def printer_in(state):
@@ -815,7 +815,7 @@ def test_presets_api_offers_the_snapshot_from_classicwebcam_first(monkeypatch):
         body = plugin.on_api_command("presets", {}).get_json()
     presets = body["plugins"][-1]["presets"]
     assert presets[-1]["preset"] == "octoprint:snapshot"
-    assert presets[-1]["control"]["url"] == "http://printer.local/classic"
+    assert presets[-1]["commands"][0]["url"] == "http://printer.local/classic"
 
 
 def test_presets_api_offers_the_snapshot_from_the_webcam_setting_when_classicwebcam_is_unset(monkeypatch):
@@ -827,7 +827,7 @@ def test_presets_api_offers_the_snapshot_from_the_webcam_setting_when_classicweb
     plugin._settings.config["webcam"] = {"snapshot": "http://printer.local/own"}
     with request_context():
         body = plugin.on_api_command("presets", {}).get_json()
-    assert body["plugins"][-1]["presets"][-1]["control"]["url"] == "http://printer.local/own"
+    assert body["plugins"][-1]["presets"][-1]["commands"][0]["url"] == "http://printer.local/own"
 
 
 def test_presets_api_has_no_snapshot_preset_without_either_setting(monkeypatch):
@@ -851,7 +851,7 @@ def test_presets_api_skips_a_blank_classicwebcam_snapshot_and_trims_the_one_it_u
     plugin._settings.config["webcam"] = {"snapshot": " http://printer.local/own "}
     with request_context():
         body = plugin.on_api_command("presets", {}).get_json()
-    assert body["plugins"][-1]["presets"][-1]["control"]["url"] == "http://printer.local/own"
+    assert body["plugins"][-1]["presets"][-1]["commands"][0]["url"] == "http://printer.local/own"
 
 
 def psu_group():
@@ -1108,6 +1108,16 @@ def test_run_treats_an_errored_control_read_as_unknown_even_when_it_carries_text
     assert response.status_code == 200
     assert response.get_json() == {"ok": True, "output": "ran", "error": None}
     assert calls == ["boot"]
+
+
+def test_get_carries_a_link_commands_url_to_the_menu(monkeypatch):
+    allow(monkeypatch)
+    entry = {"action": "webcam_snapshot", "name": "Webcam snapshot", "url": "http://cam/snap", "icon": "fa-solid fa-camera"}
+    plugin = make_plugin(system_actions=[entry])
+    with request_context():
+        body = plugin.on_api_get(None).get_json()
+    assert body["entries"]["webcam_snapshot"]["url"] == "http://cam/snap"
+    assert "command" not in body["entries"]["webcam_snapshot"]
 
 
 def test_get_carries_when_control_on_each_entry_for_the_menu(monkeypatch):
