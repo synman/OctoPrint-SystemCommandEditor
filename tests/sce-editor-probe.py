@@ -625,6 +625,65 @@ def list_ops_checks():
     page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
     wait_hidden("#sce-editor")
 
+    # renaming a preset-made control unlinks it: every control and entry of that preset loses its marker
+    set_list([
+        {"action": "pc_a", "name": "Preset a", "group": "pc", "role": "run", "command": "echo a", "preset": "pcset"},
+        {"action": "pc_b", "name": "Preset b", "group": "pc", "role": "run", "command": "echo b", "preset": "pcset"},
+    ], [{"id": "pc", "type": "action", "name": "Preset ctl", "icon": "fa-solid fa-play", "preset": "pcset"}])
+    page.wait_for_timeout(200)
+    page.evaluate("() => { const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor')); vm.editDevice(vm.devices()[0]); }")
+    wait_visible("#sce-device-editor")
+    page.fill("#sce-device-name", "Preset ctl renamed")
+    modal_done("#sce-device-editor")
+    state_now = list_state()
+    still = [x.get("name") for x in state_now["entries"] + state_now["devices"] if x.get("preset") == "pcset"]
+    check("renaming a preset-made control drops the marker from every record of its preset", still == [],
+          "still marked=%s" % still)
+
+    # the confirmation preview shows the G-code lines as typed in the box now, not the saved run
+    set_list([{"action": "gcx", "name": "Macro typed", "run": {"gcode": ["M117 saved"]}}], [])
+    page.wait_for_timeout(200)
+    edit_command("Macro typed")
+    page.check("#sce-editor label.checkbox:has-text('Ask for confirmation') input")
+    page.fill("#sce-editor-gcode", "M117 typed\nG4 P1")
+    page.wait_for_timeout(200)
+    typed_preview = page.locator("#sce-editor .sce-preview-command").first.text_content() or ""
+    check("the confirmation preview shows the G-code lines typed in the box, not the saved run",
+          "M117 typed" in typed_preview and "G4 P1" in typed_preview and "M117 saved" not in typed_preview,
+          "preview=%r" % typed_preview)
+    page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
+    wait_hidden("#sce-editor")
+
+    # a heading's Move buttons are block moves: the last heading cannot move down, the first cannot move up
+    set_list([
+        {"action": "divider", "name": "S"},
+        {"action": "s_only", "name": "Only S", "command": "echo s"},
+        {"action": "divider", "name": "T"},
+        {"action": "t_only", "name": "Only T", "command": "echo t"},
+    ], [])
+    page.wait_for_timeout(200)
+    last_down = heading_row("T").locator("button[title='Move down']").is_disabled()
+    first_up = heading_row("S").locator("button[title='Move up']").is_disabled()
+    first_down = heading_row("S").locator("button[title='Move down']").is_disabled()
+    check("the last heading's Move down is disabled, and the first heading's Move up is disabled",
+          last_down and first_up and not first_down,
+          "last_down=%s first_up=%s first_down=%s" % (last_down, first_up, first_down))
+
+    # duplicating a placed readout control: its new placement is keyed by the copy's id, as placementKey gives it
+    set_list([{"action": "rdo", "name": "Readout one", "device": "rdo"}],
+             [{"id": "rdo", "type": "readout", "name": "Readout one", "icon": "fa-solid fa-hard-drive", "status": "echo r"}])
+    page.wait_for_timeout(200)
+    page.evaluate("() => { const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor')); vm.editDevice(vm.devices()[0]); }")
+    wait_visible("#sce-device-editor")
+    page.locator("#sce-device-editor .modal-footer button:has-text('Duplicate')").click()
+    wait_hidden("#sce-device-editor")
+    state_now = list_state()
+    copy_dev = [d for d in state_now["devices"] if d.get("name") == "Copy of Readout one"]
+    placements = [e for e in state_now["entries"] if copy_dev and e.get("device") == copy_dev[0]["id"]]
+    check("a duplicated readout's placement is keyed by the copy's id",
+          len(placements) == 1 and placements[0].get("action") == copy_dev[0]["id"],
+          "device=%s placements=%s" % (copy_dev, placements))
+
 
 
 def run_probe():
