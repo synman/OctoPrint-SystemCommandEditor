@@ -8,7 +8,8 @@ the MQTT plugin's own setting), and these test records in its config:
 devices p8_psu (switch, read psucontrol get_psu_state, ^true$/^false$), p8_grbl (action, read bettergrblsupport
 state field state), p8_mqtt (readout, read {"mqtt": "sce/p8/state"}); system.actions p8_psu_on and p8_psu_off
 (run psucontrol turn_psu_on/off, group p8_psu) and p8_never_printing (run turn_psu_off, when only printing,
-disable).
+disable), p8_gcode (run {"gcode": ["M117 sce proof"]}); a device p8_state (readout, read {"printer": "state"}); and
+plugins.classicwebcam.snapshot set to http://127.0.0.1/sce-proof-snapshot.jpg.
 """
 import json
 import os
@@ -69,15 +70,29 @@ for _ in range(20):
         break
 time.sleep(2)
 
-ids = ["p8_psu", "p8_grbl", "p8_mqtt"]
+ids = ["p8_psu", "p8_grbl", "p8_mqtt", "p8_state"]
 code, body = cmd("status", ids=ids)
 res = body.get("results", {}) if code == 200 else {}
+check("a printer-state readout reads Operational while connected", (res.get("p8_state") or {}).get("output") == "Operational",
+      res.get("p8_state"))
+code, body = cmd("run", action="p8_gcode")
+check("a G-code command sends while connected", code == 200 and body.get("ok") is True, (code, body))
+code, body = cmd("presets")
+snap = [p for g in (body.get("plugins") or []) for p in g.get("presets", []) if p.get("preset") == "octoprint:snapshot"]
+check("the snapshot preset is a link to the configured snapshot URL",
+      len(snap) == 1 and snap[0]["control"] == {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera",
+                                                "url": "http://127.0.0.1/sce-proof-snapshot.jpg"}, snap)
 check("PSU switch reads off through PSU Control's helper", (res.get("p8_psu") or {}).get("state") == "off", res.get("p8_psu"))
 check("Grbl action reads its state field through Better Grbl Support's helper",
       (res.get("p8_grbl") or {}).get("exit") == 0 and (res.get("p8_grbl") or {}).get("output") not in (None, ""), res.get("p8_grbl"))
 check("MQTT readout is unknown before any message", (res.get("p8_mqtt") or {}).get("output") == "", res.get("p8_mqtt"))
 
 requests.post(BASE + "/api/connection", headers=H, data=json.dumps({"command": "disconnect"}))
+
+time.sleep(2)
+code, body = cmd("run", action="p8_gcode")
+check("a G-code command is refused while the printer is not connected",
+      code == 200 and body.get("ok") is False and body.get("error") == "The printer is not connected", (code, body))
 
 code, body = cmd("run", action="p8_psu_on")
 check("run p8_psu_on answers ok", code == 200 and body.get("ok") is True, (code, body))
