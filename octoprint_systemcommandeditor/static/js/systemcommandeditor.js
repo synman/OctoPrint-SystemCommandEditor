@@ -402,8 +402,8 @@ $(function () {
                 role: device ? self.role() : "",
                 value: device && self.role() === "choice" ? self.value().trim() : "",
                 when: self.isSection() ? null : self.condition.toWhen(),
-                // a built-in command never carries when_control: the server cannot check it
-                when_control: self.isSection() || self.isCore() ? null : self.control.toWhen()
+                // the template never offers the control block on a built-in command, so toWhen stays null there
+                when_control: self.isSection() ? null : self.control.toWhen()
             };
         };
 
