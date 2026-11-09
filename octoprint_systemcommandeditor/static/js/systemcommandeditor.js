@@ -366,7 +366,9 @@ $(function () {
 
         self.deviceChoices = ko.pureComputed(() => {
             const choices = [{id: "", name: gettext("None")}];
-            return choices.concat(owner.devices().filter((d) => d.type === "switch" || d.type === "selector" || d.type === "action"));
+            // a link inside a control is a run button, which only an action control draws
+            const types = self.isLinkKind() ? ["action"] : ["switch", "selector", "action"];
+            return choices.concat(owner.devices().filter((d) => types.includes(d.type)));
         });
         self.selectedDevice = ko.pureComputed(() => _.find(owner.devices(), (d) => d.id === self.device()));
         self.roleChoices = ko.pureComputed(() => {

@@ -1203,6 +1203,19 @@ def run_probe():
         check("an empty URL shows the error and disables Done",
               "A URL is required for a link." in error_text and done_disabled, "done_disabled=%s" % done_disabled)
         page.fill("#sce-editor-url", "http://printer.local/page")
+        # a link joins only an action control, as its run button
+        offered = page.evaluate("""() => {
+            const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            const ids = Array.from(document.querySelectorAll('#sce-editor-device option')).map(o => o.value).filter(v => v);
+            return ids.map(id => (vm.devices().find(d => d.id === id) || {}).type);
+        }""")
+        check("a Link command's Control list offers only action controls",
+              len(offered) > 0 and all(t == "action" for t in offered), "types=%s" % offered)
+        page.select_option("#sce-editor-device", index=1)
+        page.wait_for_timeout(200)
+        roles = page.locator("#sce-editor .sce-role option").evaluate_all("os => os.map(o => o.value)")
+        check("a Link command in a control offers only the run role", roles == ["", "run"], "roles=%s" % roles)
+        page.select_option("#sce-editor-device", value="")
         modal_done("#sce-editor")
         code = command_row("Open printer page").locator("code.sce-cmd").text_content().strip()
         check("the Custom commands row shows the link as Link: <url>",
