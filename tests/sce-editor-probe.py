@@ -502,25 +502,28 @@ def run_probe():
         cpu = rows.filter(has_text="CPU temperature")
         throttle = rows.filter(has_text="Throttling")
         disk_row = rows.filter(has_text="Disk free")
-        check("throttle is disabled with Not available on this system",
-              throttle.locator("input").is_disabled() and
-              throttle.filter(has_text="Not available on this system").count() == 1)
-        check("disk is disabled and checked with Added",
-              disk_row.locator("input").is_disabled() and disk_row.locator("input").is_checked() and
-              disk_row.filter(has_text="Added").count() == 1)
-        check("cpu readout starts ticked", cpu.locator("input").is_checked())
+        check("an undetected readout stays pickable and shows Not detected on this system",
+              throttle.locator("input").is_enabled() and not throttle.locator("input").is_checked() and
+              throttle.filter(has_text="Not detected on this system").count() == 1)
+        check("disk is enabled and ticked because it is already a device",
+              disk_row.locator("input").is_enabled() and disk_row.locator("input").is_checked())
+        check("cpu readout starts unticked", cpu.locator("input").is_enabled() and not cpu.locator("input").is_checked())
         cpu.locator("input").check()
         mrows = page.locator("#sce-presets [data-group=maintenance] .sce-preset-row")
         check("presets modal lists three maintenance rows", mrows.count() == 3, "rows=%d" % mrows.count())
         backup = mrows.filter(has_text="Back up OctoPrint now")
         webcam = mrows.filter(has_text="Restart the webcam")
         clock = mrows.filter(has_text="Sync the clock")
-        check("backup sample starts ticked and enabled",
-              backup.locator("input").is_checked() and backup.locator("input").is_enabled())
-        check("webcam shows the sudo note and starts unticked",
-              webcam.filter(has_text="Needs passwordless sudo").count() == 1 and not webcam.locator("input").is_checked())
-        check("clock is disabled with Not available on this system",
-              clock.locator("input").is_disabled() and clock.filter(has_text="Not available on this system").count() == 1)
+        check("backup is enabled and unticked until picked",
+              backup.locator("input").is_enabled() and not backup.locator("input").is_checked())
+        backup.locator("input").check()
+        check("webcam shows the sudo note, stays enabled and unticked",
+              webcam.filter(has_text="Needs passwordless sudo").count() == 1 and webcam.locator("input").is_enabled()
+              and not webcam.locator("input").is_checked())
+        check("clock stays enabled and shows its note or Not detected on this system",
+              clock.locator("input").is_enabled() and
+              clock.filter(has_text="Not detected on this system").count() + clock.filter(has_text="Needs passwordless sudo").count() >= 1)
+        disk_row.locator("input").uncheck()
         page.locator("#sce-presets .modal-footer .btn-primary").click()
         wait_hidden("#sce-presets")
         body = save_settings()
@@ -533,8 +536,8 @@ def run_probe():
                   len(cpu_entry) == 1 and set(cpu_entry[0]) == {"id", "type", "name", "icon", "status", "section"}
                   and cpu_entry[0].get("section") == "Status" and cpu_entry[0].get("type") == "readout",
                   json.dumps(cpu_entry))
-            check("POST has no second disk device",
-                  len([d for d in devices if d.get("id") == "disk"]) == 1, json.dumps([d.get("id") for d in devices]))
+            check("unticking an added readout and applying removes it from the POST",
+                  len([d for d in devices if d.get("id") == "disk"]) == 0, json.dumps([d.get("id") for d in devices]))
             saved = list((body.get("system") or {}).get("actions") or [])
             check("POST system.actions ends with the Maintenance divider and the ticked backup command",
                   len(saved) >= 2 and saved[-2] == {"action": "divider", "name": "Maintenance"}

@@ -567,17 +567,15 @@ $(function () {
         self.failed = ko.observable(false);
         self.readouts = ko.observableArray([]);
         self.maintenance = ko.observableArray([]);
-        self.canAdd = ko.pureComputed(() =>
-            self.readouts().some((row) => row.checkable && row.checked()) ||
-            self.maintenance().some((row) => row.checkable && row.checked())
-        );
+        // a row differs when its tick no longer matches whether it is present
+        const differs = (row) => row.checked() !== row.added;
+        self.canApply = ko.pureComputed(() => self.readouts().some(differs) || self.maintenance().some(differs));
 
-        // a row starts ticked when this system offers it as a sample and it is not already present
+        // the picker is a checklist of what is present: present rows start ticked, every other row starts unticked
         const rowOf = (item, added) => ({
             item: item,
             added: added,
-            checkable: !added && !!item.available,
-            checked: ko.observable(added || (!!item.sample && !!item.available)),
+            checked: ko.observable(added),
             note: item.note || ""
         });
 
@@ -601,35 +599,53 @@ $(function () {
                 .always(() => self.loading(false));
         };
 
+        // an undetected row stays pickable; it shows its note, or the generic line when it has none
         self.label = (row) => {
-            if (row.added) return gettext("Added");
-            if (!row.item.available) return gettext("Not available on this system");
-            return "";
+            if (row.item.available) return "";
+            return row.note || gettext("Not detected on this system");
         };
 
-        self.add = () => {
+        // removes the Maintenance divider when the removals left it with nothing under it
+        const pruneEmptyMaintenance = () => {
+            const entries = owner.entries();
+            const kept = entries.filter((entry, i) => !(
+                entry.action === DIVIDER && entry.name === "Maintenance" &&
+                (i + 1 === entries.length || isSection(entries[i + 1]))
+            ));
+            if (kept.length !== entries.length) owner.entries(kept);
+        };
+
+        self.apply = () => {
             self.readouts().forEach((row) => {
-                if (!row.checkable || !row.checked()) return;
-                const preset = row.item;
-                owner.devices.push({
-                    id: preset.id,
-                    type: preset.type,
-                    name: preset.name,
-                    icon: preset.icon,
-                    status: preset.status,
-                    section: preset.section
-                });
+                if (row.checked() && !row.added) {
+                    const preset = row.item;
+                    owner.devices.push({
+                        id: preset.id,
+                        type: preset.type,
+                        name: preset.name,
+                        icon: preset.icon,
+                        status: preset.status,
+                        section: preset.section
+                    });
+                } else if (!row.checked() && row.added) {
+                    owner.devices.remove((device) => device.id === row.item.id);
+                }
             });
+            const removed = self.maintenance().filter((row) => row.added && !row.checked()).map((row) => row.item.action);
             const picked = self.maintenance()
-                .filter((row) => row.checkable && row.checked())
+                .filter((row) => row.checked() && !row.added)
                 .map((row) => entryOf(row.item));
+            if (removed.length) {
+                owner.entries.remove((entry) => !isSection(entry) && removed.includes(entry.action));
+                pruneEmptyMaintenance();
+            }
             if (picked.length) {
                 if (!owner.dividerNames().includes("Maintenance")) {
                     owner.entries.push({action: DIVIDER, name: "Maintenance"});
                 }
                 picked.forEach((entry) => owner.entries.push(entry));
-                owner.changed();
             }
+            if (removed.length || picked.length) owner.changed();
             owner.presetDialog.modal("hide");
         };
 

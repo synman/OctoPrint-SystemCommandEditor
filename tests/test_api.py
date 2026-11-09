@@ -38,7 +38,10 @@ class FakeSettings:
         return bool(self.get(path))
 
     def set(self, path, value):
-        self.config["plugins"]["systemcommandeditor"][path[0]] = value
+        node = self.config["plugins"]["systemcommandeditor"]
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+        node[path[-1]] = value
         self.calls.append(("set", path[0], value))
 
     def global_set(self, path, value):
@@ -153,7 +156,8 @@ def test_startup_loads_presets_in_background_until_done(monkeypatch):
     assert len(started) == 1
 
 
-def test_load_sample_presets_fills_empty_devices_and_marks_done():
+def test_load_sample_presets_fills_empty_devices_and_marks_done(monkeypatch):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
     detected = [
         {**device_of(CATALOG[0]), "sample": True, "available": True, "value": "5G free"},
         {**device_of(CATALOG[7]), "sample": False, "available": True, "value": "-50 dBm"},
@@ -161,16 +165,24 @@ def test_load_sample_presets_fills_empty_devices_and_marks_done():
     plugin = make_plugin()
     plugin._load_sample_presets(detector=lambda: detected, maintenance_detector=lambda: [])
     devices = plugin._settings.config["plugins"]["systemcommandeditor"]["devices"]
-    assert devices == [device_of(CATALOG[0])]
+    assert devices[:2] == [
+        {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server"},
+        {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print"},
+    ]
+    assert devices[2:] == [device_of(CATALOG[0])]
     assert ("set", "presets_loaded", True) in plugin._settings.calls
     assert plugin._settings.calls[-1] == ("save",)
 
 
-def test_load_sample_presets_keeps_existing_devices():
+def test_load_sample_presets_keeps_existing_devices(monkeypatch):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
     existing = [{"id": "mine", "type": "switch"}]
     plugin = make_plugin(devices=existing)
     plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: [])
-    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == existing
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == [
+        {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server"},
+        {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print"},
+    ] + existing
     assert ("set", "presets_loaded", True) in plugin._settings.calls
     assert plugin._settings.calls[-1] == ("save",)
 
@@ -277,3 +289,58 @@ def test_load_sample_presets_adds_no_maintenance_when_a_custom_command_exists():
     plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: maintenance_listing({}))
     assert plugin._settings.config["system"]["actions"] == existing
     assert not [call for call in plugin._settings.calls if call[0] == "global_set"]
+
+
+def sample_disk(available=True):
+    return [{**device_of(CATALOG[0]), "sample": True, "available": available, "value": "5G free"}]
+
+
+def test_load_sample_presets_does_not_load_unavailable_maintenance_sample():
+    plugin = make_plugin()
+    plugin._load_sample_presets(
+        detector=lambda: [],
+        maintenance_detector=lambda: maintenance_listing({"backup_now": 1, "webcam_restart": 1}),
+    )
+    assert plugin._settings.config["system"]["actions"] == []
+    assert not [call for call in plugin._settings.calls if call[0] == "global_set"]
+
+
+def test_first_start_skins_host_and_octoprint_devices_and_core_entries(monkeypatch):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
+    plugin = make_plugin(core=SystemCommandEditorPlugin().get_settings_defaults()["core"])
+    plugin._load_sample_presets(detector=sample_disk, maintenance_detector=lambda: [])
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert [device["id"] for device in config["devices"]] == ["host", "octoprint", "disk"]
+    assert config["devices"][0] == {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server"}
+    assert config["devices"][1] == {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print"}
+    core = config["core"]
+    assert (core["reboot"]["group"], core["reboot"]["role"]) == ("host", "restart")
+    assert (core["shutdown"]["group"], core["shutdown"]["role"]) == ("host", "off")
+    assert (core["restart"]["group"], core["restart"]["role"]) == ("octoprint", "restart")
+    assert (core["restart_safe"]["group"], core["restart_safe"]["role"]) == ("octoprint", "safe_restart")
+    assert core["reboot"]["heading"] == "" and core["shutdown"]["heading"] == "System"
+
+
+def test_first_start_leaves_core_alone_when_an_entry_already_has_a_group(monkeypatch):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
+    core = SystemCommandEditorPlugin().get_settings_defaults()["core"]
+    core["restart"]["group"] = "mine"
+    plugin = make_plugin(core=core)
+    plugin._load_sample_presets(detector=sample_disk, maintenance_detector=lambda: [])
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert [device["id"] for device in config["devices"]] == ["disk"]
+    assert config["core"]["restart"]["group"] == "mine"
+    assert config["core"]["reboot"]["group"] == ""
+    assert config["core"]["reboot"]["role"] == ""
+
+
+def test_first_start_skips_skin_when_host_device_exists(monkeypatch):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
+    core = SystemCommandEditorPlugin().get_settings_defaults()["core"]
+    existing = [{"id": "host", "type": "switch", "name": "Mine", "icon": "fa-solid fa-star"}]
+    plugin = make_plugin(devices=existing, core=core)
+    plugin._load_sample_presets(detector=sample_disk, maintenance_detector=lambda: [])
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert config["devices"] == existing
+    assert config["core"]["reboot"]["group"] == ""
+    assert config["core"]["restart"]["group"] == ""

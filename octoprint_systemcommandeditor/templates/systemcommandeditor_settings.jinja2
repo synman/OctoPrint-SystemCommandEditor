@@ -322,7 +322,7 @@
 <div id="sce-presets" class="modal hide" data-bind="with: presets">
     <div class="modal-header">
         <a href="javascript:void(0)" class="close" data-bind="click: cancel">&times;</a>
-        <h3>{{ _('Add devices from presets') }}</h3>
+        <h3>{{ _('Presets') }}</h3>
     </div>
     <div class="modal-body">
         <div data-bind="visible: loading" class="muted">
@@ -334,7 +334,7 @@
             <!-- ko foreach: readouts -->
             <div class="sce-row sce-preset-row">
                 <label>
-                    <input type="checkbox" data-bind="checked: checked, enable: checkable">
+                    <input type="checkbox" data-bind="checked: checked">
                 </label>
                 <span class="sce-icon"><i data-bind="css: $data.item.icon || ''"></i></span>
                 <span class="sce-text">
@@ -350,12 +350,12 @@
             <!-- ko foreach: maintenance -->
             <div class="sce-row sce-preset-row">
                 <label>
-                    <input type="checkbox" data-bind="checked: checked, enable: checkable">
+                    <input type="checkbox" data-bind="checked: checked">
                 </label>
                 <span class="sce-icon"><i data-bind="css: $data.item.icon || ''"></i></span>
                 <span class="sce-text">
                     <span class="sce-name" data-bind="text: $data.item.name"></span>
-                    <span class="muted" data-bind="text: $data.note, visible: $data.note"></span>
+                    <span class="muted" data-bind="text: $data.note, visible: $data.note && $data.item.available"></span>
                 </span>
                 <span class="muted" data-bind="text: $parent.label($data), visible: $parent.label($data)"></span>
             </div>
@@ -364,7 +364,7 @@
     </div>
     <div class="modal-footer">
         <button type="button" class="btn" data-bind="click: cancel">{{ _('Cancel') }}</button>
-        <button type="button" class="btn btn-primary" data-bind="click: add, enable: canAdd">{{ _('Add selected') }}</button>
+        <button type="button" class="btn btn-primary" data-bind="click: apply, enable: canApply">{{ _('Apply') }}</button>
     </div>
 </div>
 

@@ -7,6 +7,7 @@ __license__ = "GNU Affero General Public License http://www.gnu.org/licenses/agp
 import copy
 import io
 import os
+import socket
 import sys
 import threading
 import time
@@ -42,6 +43,15 @@ CORE_COMMAND_SETTINGS = {
     "reboot": "systemRestartCommand",
     "restart": "serverRestartCommand",
     "restart_safe": "serverRestartCommand",
+}
+
+
+# On first start, OctoPrint's own System menu entries are grouped under the host and OctoPrint devices
+SYSTEM_GROUPS = {
+    "reboot": ("host", "restart"),
+    "shutdown": ("host", "off"),
+    "restart": ("octoprint", "restart"),
+    "restart_safe": ("octoprint", "safe_restart"),
 }
 
 
@@ -105,11 +115,32 @@ class SystemCommandEditorPlugin(
             "logs": getter("logs"),
         }
 
+    def _skin_system_entries(self, devices):
+        # returns the host and OctoPrint devices to put first, or nothing when the operator has already set this up
+        core = self._settings.get(["core"]) or {}
+        if any(device.get("id") in ("host", "octoprint") for device in devices):
+            return []
+        if any((core.get(action) or {}).get("group") for action in SYSTEM_GROUPS):
+            return []
+        for action, (group, role) in SYSTEM_GROUPS.items():
+            self._settings.set(["core", action, "group"], group)
+            self._settings.set(["core", action, "role"], role)
+        host = socket.gethostname().split(".")[0] or "Host"
+        return [
+            {"id": "host", "type": "switch", "name": host, "icon": "fa-solid fa-server"},
+            {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print"},
+        ]
+
     def _load_sample_presets(self, detector=detect, maintenance_detector=None):
-        if not (self._settings.get(["devices"]) or []):
+        devices = self._settings.get(["devices"]) or []
+        fresh = not devices
+        skin = self._skin_system_entries(devices)
+        if fresh:
             added = sample_devices(detector())
-            self._settings.set(["devices"], added)
+            self._settings.set(["devices"], skin + added)
             self._logger.info("Added sample devices: %s", [device["id"] for device in added])
+        elif skin:
+            self._settings.set(["devices"], skin + devices)
         if maintenance_detector is None:
             def maintenance_detector():
                 return detect_maintenance(self._maintenance_env())
