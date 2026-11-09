@@ -58,13 +58,13 @@ SEED = {
         {"action": "mode_a", "name": "Mode A", "command": f"echo a > {D}/mode", "group": "mode", "role": "choice", "value": "a"},
         {"action": "mode_b", "name": "Mode B", "command": f"echo b > {D}/mode", "group": "mode", "role": "choice", "value": "b"},
         {"action": "bg_job", "name": "Background job", "command": "sleep 1", "async": True},
+        {"action": "docs", "name": "Proof link", "url": BASE.rstrip("/") + "/robots.txt"},
     ]},
     "plugins": {"systemcommandeditor": {"core": core, "devices": [
         {"id": "host", "type": "switch", "name": "This machine"},
         {"id": "lamp", "type": "switch", "name": "Lamp", "icon": "fa-solid fa-lightbulb", "status": f"test -f {D}/lamp"},
         {"id": "mode", "type": "selector", "name": "Mode", "status": f"cat {D}/mode"},
         {"id": "disk", "type": "readout", "name": "Free space", "status": "df -h / | tail -1 | awk '{print $4}'"},
-        {"id": "docs", "type": "link", "name": "OctoPrint docs", "url": "https://docs.octoprint.org", "section": "Test"},
     ]}},
 }
 open(f"{D}/mode", "w").write("a\n")
@@ -150,8 +150,13 @@ try:
 
         disk = row("disk").locator(".sce-state").inner_text().strip()
         check("readout shows the real free space", bool(disk) and disk != "Unknown", disk)
-        href = row("docs").locator("a").get_attribute("href")
-        check("link opens its URL", href == "https://docs.octoprint.org", href)
+        open_menu()
+        with page.context.expect_page() as popup_info:
+            page.locator(f"{menu} li", has_text="Proof link").locator("a").first.click()
+        popup = popup_info.value
+        popup.wait_for_load_state()
+        check("a link command opens its URL in a new tab", popup.url == BASE.rstrip("/") + "/robots.txt", popup.url)
+        popup.close()
 
         bg = page.locator(f"{menu} li", has_text="Background job").locator("a").first
         bg.click()

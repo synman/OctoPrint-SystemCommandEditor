@@ -79,9 +79,10 @@ code, body = cmd("run", action="p8_gcode")
 check("a G-code command sends while connected", code == 200 and body.get("ok") is True, (code, body))
 code, body = cmd("presets")
 snap = [p for g in (body.get("plugins") or []) for p in g.get("presets", []) if p.get("preset") == "octoprint:snapshot"]
-check("the snapshot preset is a link to the configured snapshot URL",
-      len(snap) == 1 and snap[0]["control"] == {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera",
-                                                "url": "http://127.0.0.1/sce-proof-snapshot.jpg"}, snap)
+check("the snapshot preset is a link command to the configured snapshot URL",
+      len(snap) == 1 and snap[0]["control"] is None
+      and snap[0]["commands"] == [{"name": "Webcam snapshot", "url": "http://127.0.0.1/sce-proof-snapshot.jpg",
+                                   "icon": "fa-solid fa-camera"}], snap)
 check("PSU switch reads off through PSU Control's helper", (res.get("p8_psu") or {}).get("state") == "off", res.get("p8_psu"))
 check("Grbl action reads its state field through Better Grbl Support's helper",
       (res.get("p8_grbl") or {}).get("exit") == 0 and (res.get("p8_grbl") or {}).get("output") not in (None, ""), res.get("p8_grbl"))
