@@ -484,6 +484,21 @@ test("describeRun: no run gives empty text", () => {
     assert.strictEqual(M.describeRun(null), "");
 });
 
+test("describeRun: G-code lists its lines one per line", () => {
+    assert.strictEqual(M.describeRun({gcode: ["G28", "M117 Hi"]}), "G-code: G28\nM117 Hi");
+    assert.strictEqual(M.describeRun({gcode: "G28"}), "G-code: G28");
+});
+
+test("describeRun: an OctoPrint printer call names the call", () => {
+    assert.strictEqual(M.describeRun({printer: "emergency_stop"}), "OctoPrint: emergency_stop");
+});
+
+test("describeRun: an event names the event, with its payload's sorted JSON only when it has keys", () => {
+    assert.strictEqual(M.describeRun({event: "e", payload: {}}), "Event: e");
+    assert.strictEqual(M.describeRun({event: "e"}), "Event: e");
+    assert.strictEqual(M.describeRun({event: "e", payload: {b: 2, a: "x"}}), "Event: e {\"a\":\"x\",\"b\":2}");
+});
+
 test("hasStatusCheck: a shell status or a plugin read gives a check; neither gives none", () => {
     assert.strictEqual(M.hasStatusCheck({status: "laser-state"}), true);
     assert.strictEqual(M.hasStatusCheck({read: {plugin: "psucontrol", helper: "get_psu_state"}}), true);

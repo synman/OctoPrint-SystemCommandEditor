@@ -172,3 +172,112 @@ def read_outcome(spec, plugin_manager, timeout=10, call=run_call, mqtt=None):
         return (None if error else 0), output, error
     output, error = run_with_timeout(spec, plugin_manager, timeout, call)
     return (None if error else 0), output, error
+
+
+# Built-in kinds run against OctoPrint itself: G-code, a printer call, a custom event; and the printer readouts.
+NOT_CONNECTED = "The printer is not connected"
+HOME_AXES = ["x", "y", "z"]
+BUILTIN_RUN_KEYS = ("gcode", "printer", "event")
+
+
+def is_builtin_run(spec):
+    return isinstance(spec, dict) and any(key in spec for key in BUILTIN_RUN_KEYS)
+
+
+def is_run_spec(spec):
+    return is_plugin_run(spec) or is_builtin_run(spec)
+
+
+def is_builtin_read(spec):
+    return isinstance(spec, dict) and "printer" in spec
+
+
+def _cool_down(printer):
+    for heater in printer.get_current_temperatures():
+        printer.set_temperature(heater, 0)
+
+
+# a printer call and what it does; the ones not in UNCONNECTED_OK need a connected printer first
+PRINTER_CALLS = {
+    "connect": lambda printer: printer.connect(),
+    "disconnect": lambda printer: printer.disconnect(),
+    "emergency_stop": lambda printer: printer.commands(["M112"], force=True),
+    "pause": lambda printer: printer.pause_print(),
+    "resume": lambda printer: printer.resume_print(),
+    "cancel": lambda printer: printer.cancel_print(),
+    "home": lambda printer: printer.home(list(HOME_AXES)),
+    "cool_down": _cool_down,
+}
+UNCONNECTED_OK = ("connect", "disconnect", "emergency_stop")
+
+
+def _send_gcode(gcode, printer):
+    if not printer.is_operational():
+        return "", NOT_CONNECTED
+    lines = [line for line in ([gcode] if isinstance(gcode, str) else gcode or []) if line.strip()]
+    if not lines:
+        return "", "No G-code to send"
+    printer.commands(lines)
+    return "", None
+
+
+def _printer_call(call, printer):
+    if call not in PRINTER_CALLS:
+        return "", "Unknown printer call {}".format(call)
+    if call not in UNCONNECTED_OK and not printer.is_operational():
+        return "", NOT_CONNECTED
+    PRINTER_CALLS[call](printer)
+    return "", None
+
+
+def run_builtin(spec, printer, event_manager):
+    """Run one built-in run kind. Returns ``(output_text, error)``; ``error`` is None on success, and it never raises.
+
+    ``{"gcode": [...]}`` sends the non-blank lines; ``{"printer": call}`` makes one printer call; ``{"event": name,
+    "payload": {...}}`` fires the event and does not wait for its listeners.
+    """
+    try:
+        if "gcode" in spec:
+            return _send_gcode(spec["gcode"], printer)
+        if "event" in spec:
+            event_manager.fire(spec["event"], spec.get("payload") or {})
+            return "", None
+        return _printer_call(spec["printer"], printer)
+    except Exception as e:
+        return "", _first_line("{}: {}".format(type(e).__name__, e))
+
+
+def _heater_text(label, reading):
+    actual = round(reading["actual"])
+    target = reading.get("target")
+    return "{} {}".format(label, actual) if target is None else "{} {}/{}".format(label, actual, round(target))
+
+
+def _temperatures_text(temperatures):
+    # tools in name order, then the bed; a heater with no target shows its actual only
+    tools = sorted(name for name in temperatures if name.startswith("tool"))
+    parts = [_heater_text("T" + name[len("tool"):], temperatures[name]) for name in tools]
+    if "bed" in temperatures:
+        parts.append(_heater_text("Bed", temperatures["bed"]))
+    return " · ".join(parts)
+
+
+def _progress_text(data):
+    # no job means no completion to show
+    completion = ((data or {}).get("progress") or {}).get("completion")
+    return "" if completion is None else "{}%".format(round(completion))
+
+
+def read_builtin(spec, printer):
+    """Run one built-in read live. Returns ``(text, error)``; it never raises."""
+    kind = spec.get("printer")
+    try:
+        if kind == "state":
+            return printer.get_state_string(), None
+        if kind == "temperatures":
+            return _temperatures_text(printer.get_current_temperatures()), None
+        if kind == "progress":
+            return _progress_text(printer.get_current_data()), None
+        return "", "Unknown printer read {}".format(kind)
+    except Exception as e:
+        return "", _first_line("{}: {}".format(type(e).__name__, e))

@@ -16,10 +16,22 @@ import time
 import flask
 import yaml
 
+import octoprint.events
 import octoprint.plugin
 from octoprint.access.permissions import Permissions
 
-from .adapters import MqttCache, carried, is_plugin_run, read_outcome, run_call, run_with_timeout
+from .adapters import (
+    MqttCache,
+    carried,
+    is_builtin_read,
+    is_builtin_run,
+    is_run_spec,
+    read_builtin,
+    read_outcome,
+    run_builtin,
+    run_call,
+    run_with_timeout,
+)
 from .convert import command_count, convert, place_readouts
 from .presets import (
     SYSTEM_SWITCHES,
@@ -29,6 +41,7 @@ from .presets import (
     harvest,
     mark_presets,
     maintenance_actions,
+    octoprint_presets,
     sample_devices,
     system_switches,
 )
@@ -146,7 +159,7 @@ class SystemCommandEditorPlugin(
                 presets=detect(),
                 maintenance=detect_maintenance(self._maintenance_env()),
                 switches=system_switches(socket.gethostname()),
-                plugins=self._plugin_presets(),
+                plugins=self._plugin_presets() + [octoprint_presets()],
             )
 
     def _status(self, ids, live):
@@ -171,7 +184,11 @@ class SystemCommandEditorPlugin(
 
         def runner(command, timeout):
             if command in reads:
-                return read_outcome(reads[command], self._plugin_manager, timeout, call, self._mqtt)
+                spec = reads[command]
+                if is_builtin_read(spec):
+                    text, error = read_builtin(spec, self._printer)
+                    return (None if error else 0), text, error
+                return read_outcome(spec, self._plugin_manager, timeout, call, self._mqtt)
             return run_status(command, timeout)
 
         entries = self._action_entries() + self._core_entries()
@@ -187,14 +204,17 @@ class SystemCommandEditorPlugin(
         if entry is None or entry.get("run") is None:
             flask.abort(404)
         spec = entry["run"]
-        if not is_plugin_run(spec):
+        if not is_run_spec(spec):
             flask.abort(400, description="unsupported run kind")
         state = printer_state(self._printer)
         if condition_effect(entry.get("when"), state):
             response = flask.jsonify(ok=False, error="Not available while the printer is {}".format(state))
             response.status_code = 409
             return response
-        output, error = run_with_timeout(spec, self._plugin_manager, call=carried(run_call))
+        if is_builtin_run(spec):
+            output, error = run_builtin(spec, self._printer, octoprint.events.eventManager())
+        else:
+            output, error = run_with_timeout(spec, self._plugin_manager, call=carried(run_call))
         return flask.jsonify(ok=error is None, output=output, error=error)
 
     def _plugin_presets(self):

@@ -22,6 +22,7 @@ from octoprint_systemcommandeditor.presets import (  # noqa: E402
     sample_devices,
 )
 from octoprint_systemcommandeditor.status import run_status  # noqa: E402
+from octoprint_systemcommandeditor.presets import octoprint_presets  # noqa: E402
 
 IDS = ["disk", "memory", "load", "uptime", "cpu_temp", "throttle", "ip", "wifi"]
 
@@ -579,3 +580,72 @@ def test_harvest_never_copies_a_credential_field():
     text = json.dumps(harvest(Plugins("tplinksmartplug"), settings))
     for secret in ("hunter", "s3cret", "tok123", "k456"):
         assert secret not in text
+
+
+def octoprint_by_id():
+    group = octoprint_presets()
+    return {preset["preset"]: preset for preset in group["presets"]}
+
+
+def test_octoprint_group_is_one_group_named_octoprint_with_five_presets_in_order():
+    group = octoprint_presets()
+    assert group["plugin"] == "octoprint" and group["name"] == "OctoPrint"
+    assert [preset["preset"] for preset in group["presets"]] == [
+        "octoprint:connection", "octoprint:job", "octoprint:printer", "octoprint:gcode", "octoprint:event",
+    ]
+
+
+def test_octoprint_connection_is_a_state_switch_with_connect_and_disconnect():
+    preset = octoprint_by_id()["octoprint:connection"]
+    control = preset["control"]
+    assert preset["name"] == "Printer connection"
+    assert control == {
+        "type": "switch", "name": "Printer connection", "icon": "fa-solid fa-plug",
+        "read": {"printer": "state"},
+        "on_pattern": "^(Operational|Printing|Paused|Pausing|Resuming|Cancelling|Finishing)",
+        "off_pattern": "^(Offline|Closed|Error)",
+    }
+    assert preset["commands"] == [
+        {"name": "Connect", "run": {"printer": "connect"}, "role": "on"},
+        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off"},
+    ]
+
+
+def test_octoprint_job_reads_progress_and_runs_pause_resume_and_a_confirmed_cancel():
+    preset = octoprint_by_id()["octoprint:job"]
+    assert preset["control"] == {"type": "action", "name": "Print job", "icon": "fa-solid fa-print",
+                                 "read": {"printer": "progress"}}
+    assert preset["commands"] == [
+        {"name": "Pause", "run": {"printer": "pause"}, "role": "run"},
+        {"name": "Resume", "run": {"printer": "resume"}, "role": "run"},
+        {"name": "Cancel", "run": {"printer": "cancel"}, "role": "run", "confirm": "Cancel the print?"},
+    ]
+
+
+def test_octoprint_printer_reads_temperatures_and_confirms_only_the_emergency_stop():
+    preset = octoprint_by_id()["octoprint:printer"]
+    assert preset["control"]["read"] == {"printer": "temperatures"}
+    assert [command["name"] for command in preset["commands"]] == ["Home", "Cool down", "Emergency stop"]
+    assert preset["commands"][2] == {
+        "name": "Emergency stop", "run": {"printer": "emergency_stop"}, "role": "run",
+        "confirm": "This sends M112, which halts the printer at once.",
+    }
+    assert all("confirm" not in command for command in preset["commands"][:2])
+
+
+def test_octoprint_gcode_and_event_have_no_read_and_one_run_each():
+    by_id = octoprint_by_id()
+    gcode = by_id["octoprint:gcode"]
+    assert "read" not in gcode["control"] and gcode["control"]["icon"] == "fa-solid fa-terminal"
+    assert gcode["commands"] == [{"name": "Send", "run": {"gcode": ["M117 Hello from System Commands"]},
+                                  "role": "run", "confirm": "Send this G-code?"}]
+    event = by_id["octoprint:event"]
+    assert "read" not in event["control"] and event["control"]["icon"] == "fa-solid fa-bolt"
+    assert event["commands"] == [{"name": "Fire", "run": {"event": "systemcommandeditor_custom", "payload": {}},
+                                  "role": "run"}]
+
+
+def test_octoprint_presets_carry_no_id_or_action_and_no_action_on_commands():
+    for preset in octoprint_presets()["presets"]:
+        assert "id" not in preset["control"] and "action" not in preset["control"]
+        assert all("action" not in command and "group" not in command for command in preset["commands"])

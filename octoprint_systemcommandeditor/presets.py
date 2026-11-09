@@ -590,3 +590,71 @@ def harvest(plugin_manager, get_setting):
         ]
         groups.append({"plugin": plugin_id, "name": label, "presets": presets})
     return groups
+
+
+def octoprint_presets():
+    """OctoPrint's own printer actions and readouts, as one group in the shape ``harvest`` returns. Always present."""
+    connection = {
+        "type": "switch", "name": "Printer connection", "icon": ICON, "read": {"printer": "state"},
+        "on_pattern": "^(Operational|Printing|Paused|Pausing|Resuming|Cancelling|Finishing)",
+        "off_pattern": "^(Offline|Closed|Error)",
+    }
+    connection_commands = [
+        {"name": "Connect", "run": {"printer": "connect"}, "role": "on"},
+        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off"},
+    ]
+
+    def action(name, icon, commands, read=None):
+        control = {"type": "action", "name": name, "icon": icon}
+        if read is not None:
+            control["read"] = read
+        return control, commands
+
+    job = action(
+        "Print job",
+        "fa-solid fa-print",
+        [
+            {"name": "Pause", "run": {"printer": "pause"}, "role": "run"},
+            {"name": "Resume", "run": {"printer": "resume"}, "role": "run"},
+            {"name": "Cancel", "run": {"printer": "cancel"}, "role": "run", "confirm": "Cancel the print?"},
+        ],
+        read={"printer": "progress"},
+    )
+    printer = action(
+        "Printer",
+        "fa-solid fa-temperature-half",
+        [
+            {"name": "Home", "run": {"printer": "home"}, "role": "run"},
+            {"name": "Cool down", "run": {"printer": "cool_down"}, "role": "run"},
+            {
+                "name": "Emergency stop",
+                "run": {"printer": "emergency_stop"},
+                "role": "run",
+                "confirm": "This sends M112, which halts the printer at once.",
+            },
+        ],
+        read={"printer": "temperatures"},
+    )
+    gcode = action(
+        "Send G-code",
+        "fa-solid fa-terminal",
+        [{"name": "Send", "run": {"gcode": ["M117 Hello from System Commands"]}, "role": "run",
+          "confirm": "Send this G-code?"}],
+    )
+    event = action(
+        "Custom event",
+        "fa-solid fa-bolt",
+        [{"name": "Fire", "run": {"event": "systemcommandeditor_custom", "payload": {}}, "role": "run"}],
+    )
+    entries = [
+        ("octoprint:connection", "Printer connection", (connection, connection_commands)),
+        ("octoprint:job", "Print job", job),
+        ("octoprint:printer", "Printer", printer),
+        ("octoprint:gcode", "Send G-code", gcode),
+        ("octoprint:event", "Custom event", event),
+    ]
+    presets = [
+        {"preset": key, "name": name, "control": control, "commands": commands}
+        for key, name, (control, commands) in entries
+    ]
+    return {"plugin": "octoprint", "name": "OctoPrint", "presets": presets}

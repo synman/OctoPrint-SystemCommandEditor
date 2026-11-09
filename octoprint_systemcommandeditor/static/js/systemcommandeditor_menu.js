@@ -162,6 +162,12 @@
     // the consent text for a plugin run: "<plugin>: <helper, api or method>", then the JSON of its args or data when present
     function describeRun(run) {
         if (!run) return "";
+        if (run.gcode !== undefined) return "G-code: " + [].concat(run.gcode).join("\n");
+        if (run.printer !== undefined) return "OctoPrint: " + run.printer;
+        if (run.event !== undefined) {
+            const keys = run.payload ? Object.keys(run.payload) : [];
+            return "Event: " + run.event + (keys.length ? " " + sortedJson(run.payload) : "");
+        }
         const name = run.helper || run.api || run.method || "";
         const payload = run.args !== undefined && run.args !== null ? run.args : run.data;
         const head = (run.plugin || "") + ": " + name;

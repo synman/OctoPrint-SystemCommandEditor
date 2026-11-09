@@ -6,9 +6,14 @@ from octoprint_systemcommandeditor.adapters import (
     MqttCache,
     api_text,
     carried,
+    is_builtin_read,
+    is_builtin_run,
     is_mqtt_read,
     is_plugin_run,
+    is_run_spec,
+    read_builtin,
     read_outcome,
+    run_builtin,
     run_call,
     run_with_timeout,
     to_text,
@@ -275,3 +280,201 @@ def test_an_mqtt_read_is_a_read_not_a_run():
     assert is_mqtt_read({"mqtt": "t"})
     assert not is_mqtt_read({"plugin": "p", "helper": "h"})
     assert not is_plugin_run({"mqtt": "t"})
+
+
+class Printer:
+    """A fake OctoPrint printer that records every call it is asked to make."""
+
+    def __init__(self, operational=True, temperatures=None, state="Operational", data=None, fail=None):
+        self.operational = operational
+        self.temperatures = temperatures or {}
+        self.state = state
+        self.data = data if data is not None else {"progress": {"completion": None}}
+        self.fail = fail
+        self.calls = []
+
+    def _record(self, *call):
+        if self.fail is not None:
+            raise self.fail
+        self.calls.append(call)
+
+    def is_operational(self):
+        return self.operational
+
+    def commands(self, lines, force=False):
+        self._record("commands", list(lines), force)
+
+    def connect(self):
+        self._record("connect")
+
+    def disconnect(self):
+        self._record("disconnect")
+
+    def pause_print(self):
+        self._record("pause")
+
+    def resume_print(self):
+        self._record("resume")
+
+    def cancel_print(self):
+        self._record("cancel")
+
+    def home(self, axes):
+        self._record("home", list(axes))
+
+    def set_temperature(self, heater, target):
+        self._record("set_temperature", heater, target)
+
+    def get_current_temperatures(self):
+        return self.temperatures
+
+    def get_state_string(self):
+        return self.state
+
+    def get_current_data(self):
+        return self.data
+
+
+class Events:
+    def __init__(self):
+        self.fired = []
+
+    def fire(self, name, payload):
+        self.fired.append((name, payload))
+
+
+def test_is_run_spec_takes_a_plugin_call_or_a_builtin_run_kind_only():
+    assert is_run_spec({"plugin": "p", "helper": "h"})
+    assert is_run_spec({"gcode": ["G28"]})
+    assert is_run_spec({"printer": "pause"})
+    assert is_run_spec({"event": "e", "payload": {}})
+    assert not is_run_spec({"helper": "h"})
+    assert not is_run_spec({"nothing": 1})
+    assert not is_run_spec("G28")
+    assert is_builtin_run({"gcode": ["G28"]}) and not is_builtin_run({"plugin": "p", "helper": "h"})
+
+
+def test_is_builtin_read_is_a_printer_key_and_not_a_plugin_call():
+    assert is_builtin_read({"printer": "state"})
+    assert not is_builtin_read({"plugin": "p", "helper": "h"})
+
+
+def test_gcode_is_refused_while_not_operational_and_nothing_is_sent():
+    printer = Printer(operational=False)
+    assert run_builtin({"gcode": ["G28"]}, printer, Events()) == ("", "The printer is not connected")
+    assert printer.calls == []
+
+
+def test_gcode_sends_the_non_blank_lines_as_one_list():
+    printer = Printer()
+    assert run_builtin({"gcode": ["G28", "", "   ", "M117 Hi"]}, printer, Events()) == ("", None)
+    assert printer.calls == [("commands", ["G28", "M117 Hi"], False)]
+
+
+def test_gcode_with_no_lines_is_an_error_and_sends_nothing():
+    for gcode in ([], ["", "  "]):
+        printer = Printer()
+        assert run_builtin({"gcode": gcode}, printer, Events()) == ("", "No G-code to send")
+        assert printer.calls == []
+
+
+def test_gcode_given_as_one_string_is_one_line():
+    printer = Printer()
+    run_builtin({"gcode": "G28"}, printer, Events())
+    assert printer.calls == [("commands", ["G28"], False)]
+
+
+def test_emergency_stop_sends_m112_forced_even_when_not_operational():
+    printer = Printer(operational=False)
+    assert run_builtin({"printer": "emergency_stop"}, printer, Events()) == ("", None)
+    assert printer.calls == [("commands", ["M112"], True)]
+
+
+def test_connect_and_disconnect_need_no_connection():
+    printer = Printer(operational=False)
+    assert run_builtin({"printer": "connect"}, printer, Events()) == ("", None)
+    assert run_builtin({"printer": "disconnect"}, printer, Events()) == ("", None)
+    assert printer.calls == [("connect",), ("disconnect",)]
+
+
+def test_pause_resume_cancel_and_home_run_on_a_connected_printer():
+    printer = Printer()
+    for call in ("pause", "resume", "cancel", "home"):
+        assert run_builtin({"printer": call}, printer, Events()) == ("", None)
+    assert printer.calls == [("pause",), ("resume",), ("cancel",), ("home", ["x", "y", "z"])]
+
+
+def test_printer_calls_needing_a_connection_are_refused_when_not_operational():
+    for call in ("pause", "resume", "cancel", "home", "cool_down"):
+        printer = Printer(operational=False, temperatures={"bed": {"actual": 20, "target": 0}})
+        assert run_builtin({"printer": call}, printer, Events()) == ("", "The printer is not connected")
+        assert printer.calls == []
+
+
+def test_cool_down_sets_zero_on_every_listed_tool_and_the_bed():
+    printer = Printer(temperatures={"tool0": {"actual": 210, "target": 215}, "tool1": {"actual": 30, "target": 0},
+                                    "bed": {"actual": 60, "target": 60}})
+    assert run_builtin({"printer": "cool_down"}, printer, Events()) == ("", None)
+    assert sorted(printer.calls) == [("set_temperature", "bed", 0), ("set_temperature", "tool0", 0),
+                                     ("set_temperature", "tool1", 0)]
+
+
+def test_unknown_printer_call_is_named_and_sends_nothing():
+    printer = Printer()
+    assert run_builtin({"printer": "reboot_board"}, printer, Events()) == ("", "Unknown printer call reboot_board")
+    assert printer.calls == []
+
+
+def test_event_is_fired_with_its_payload_and_answers_ok():
+    events = Events()
+    assert run_builtin({"event": "custom", "payload": {"a": 1}}, Printer(), events) == ("", None)
+    assert run_builtin({"event": "bare"}, Printer(), events) == ("", None)
+    assert events.fired == [("custom", {"a": 1}), ("bare", {})]
+
+
+def test_run_builtin_never_raises_and_names_the_failure():
+    printer = Printer(fail=RuntimeError("boom\nsecond line"))
+    assert run_builtin({"gcode": ["G28"]}, printer, Events()) == ("", "RuntimeError: boom")
+
+
+def test_read_state_is_the_printer_state_string():
+    assert read_builtin({"printer": "state"}, Printer(state="Printing")) == ("Printing", None)
+
+
+def test_read_temperatures_lists_tools_in_name_order_then_the_bed():
+    temperatures = {
+        "bed": {"actual": 60.4, "target": 60.0},
+        "tool1": {"actual": 99.6, "target": 100},
+        "tool0": {"actual": 210.2, "target": 215.0},
+    }
+    assert read_builtin({"printer": "temperatures"}, Printer(temperatures=temperatures)) == (
+        "T0 210/215 · T1 100/100 · Bed 60/60", None)
+
+
+def test_read_temperatures_shows_actual_only_for_a_missing_target():
+    temperatures = {"tool0": {"actual": 21.0, "target": None}, "bed": {"actual": 22.4}}
+    assert read_builtin({"printer": "temperatures"}, Printer(temperatures=temperatures)) == ("T0 21 · Bed 22", None)
+
+
+def test_read_temperatures_without_a_bed_lists_only_the_tools():
+    temperatures = {"tool0": {"actual": 200, "target": 200}}
+    assert read_builtin({"printer": "temperatures"}, Printer(temperatures=temperatures)) == ("T0 200/200", None)
+
+
+def test_read_progress_is_the_completion_rounded_as_a_percentage():
+    printer = Printer(data={"progress": {"completion": 42.3}})
+    assert read_builtin({"printer": "progress"}, printer) == ("42%", None)
+
+
+def test_read_progress_is_empty_when_there_is_no_job():
+    assert read_builtin({"printer": "progress"}, Printer(data={"progress": {"completion": None}})) == ("", None)
+    assert read_builtin({"printer": "progress"}, Printer(data={})) == ("", None)
+
+
+def test_read_names_an_unknown_read_and_never_raises():
+    assert read_builtin({"printer": "nope"}, Printer()) == ("", "Unknown printer read nope")
+    class Gone(Printer):
+        def get_state_string(self):
+            raise RuntimeError("gone")
+
+    assert read_builtin({"printer": "state"}, Gone()) == ("", "RuntimeError: gone")

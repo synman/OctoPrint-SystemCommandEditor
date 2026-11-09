@@ -8,6 +8,7 @@ pytest.importorskip("octoprint")
 import flask  # noqa: E402
 from werkzeug.exceptions import BadRequest, Forbidden, NotFound  # noqa: E402
 
+import octoprint.events  # noqa: E402
 from octoprint.access.permissions import Permissions  # noqa: E402
 
 import octoprint_systemcommandeditor as plugin_module  # noqa: E402
@@ -184,7 +185,7 @@ def test_presets_command_returns_detected_list(monkeypatch):
     with request_context():
         body = plugin.on_api_command("presets", {}).get_json()
     assert body["presets"] == detected and body["maintenance"] == maintenance_listed
-    assert body["plugins"] == []
+    assert [group["plugin"] for group in body["plugins"]] == ["octoprint"]
     # the host and OctoPrint switches, with the roles OctoPrint's own commands take on them, as first start uses
     assert body["switches"] == [
         {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server",
@@ -534,9 +535,9 @@ def test_run_is_404_for_a_command_with_no_run(monkeypatch):
         plugin.on_api_command("run", {"action": "ls"})
 
 
-def test_run_is_400_when_run_is_not_a_plugin_call(monkeypatch):
+def test_run_is_400_when_run_is_no_run_kind(monkeypatch):
     allow(monkeypatch)
-    plugin = make_plugin(system_actions=[run_entry(run={"gcode": "G28"})])
+    plugin = make_plugin(system_actions=[run_entry(run={"helper": "boot"})])
     with request_context(), pytest.raises(BadRequest):
         plugin.on_api_command("run", {"action": "boot"})
 
@@ -663,3 +664,116 @@ def test_status_reads_an_mqtt_topic_and_keeps_its_subscription_on_the_plugin(mon
     assert before["state"] == "unknown"
     assert after["state"] == "on"
     assert [topic for topic, _ in subscriptions] == ["printer/power"]
+
+
+class Recording(FakePrinter):
+    """A FakePrinter that also records the commands the run API sends it."""
+
+    def __init__(self, **flags):
+        super().__init__(**flags)
+        self.calls = []
+
+    def commands(self, lines, force=False):
+        self.calls.append(("commands", list(lines), force))
+
+
+class Events:
+    def __init__(self):
+        self.fired = []
+
+    def fire(self, name, payload):
+        self.fired.append((name, payload))
+
+
+def test_run_sends_gcode_and_answers_ok(monkeypatch):
+    allow(monkeypatch)
+    printer = Recording()
+    plugin = make_plugin(system_actions=[run_entry(run={"gcode": ["G28", ""]})], printer=printer)
+    with request_context():
+        body = plugin.on_api_command("run", {"action": "boot"}).get_json()
+    assert body == {"ok": True, "output": "", "error": None}
+    assert printer.calls == [("commands", ["G28"], False)]
+
+
+def test_run_refuses_gcode_while_offline_and_sends_nothing(monkeypatch):
+    allow(monkeypatch)
+    printer = Recording(operational=False)
+    plugin = make_plugin(system_actions=[run_entry(run={"gcode": ["G28"]})], printer=printer)
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": False, "output": "", "error": "The printer is not connected"}
+    assert printer.calls == []
+
+
+def test_run_checks_the_when_first_for_a_builtin_run(monkeypatch):
+    allow(monkeypatch)
+    printer = Recording(printing=True)
+    when = {"mode": "never", "states": ["printing"], "effect": "hide"}
+    plugin = make_plugin(system_actions=[run_entry(run={"gcode": ["G28"]}, when=when)], printer=printer)
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 409
+    assert printer.calls == []
+
+
+def test_run_fires_a_custom_event_through_the_event_manager(monkeypatch):
+    allow(monkeypatch)
+    events = Events()
+    monkeypatch.setattr(octoprint.events, "eventManager", lambda: events)
+    entry = run_entry(run={"event": "systemcommandeditor_custom", "payload": {"a": 1}})
+    plugin = make_plugin(system_actions=[entry])
+    with request_context():
+        body = plugin.on_api_command("run", {"action": "boot"}).get_json()
+    assert body == {"ok": True, "output": "", "error": None}
+    assert events.fired == [("systemcommandeditor_custom", {"a": 1})]
+
+
+def test_status_reads_the_printer_state_live(monkeypatch):
+    allow(monkeypatch)
+
+    class Operating(FakePrinter):
+        def get_state_string(self):
+            return "Operating"
+
+    plugin = make_plugin(devices=read_devices({"printer": "state"}), printer=Operating())
+    with request_context():
+        body = plugin.on_api_command("status", {"ids": ["d"], "live": True}).get_json()
+    assert body["results"]["d"]["output"] == "Operating"
+    assert body["results"]["d"]["exit"] == 0 and body["results"]["d"]["error"] is None
+
+
+def test_status_reads_temperatures_and_progress(monkeypatch):
+    allow(monkeypatch)
+
+    class Hot(FakePrinter):
+        def get_current_temperatures(self):
+            return {"tool0": {"actual": 210.2, "target": 215.0}, "bed": {"actual": 60, "target": 60}}
+
+        def get_current_data(self):
+            return {"progress": {"completion": 42.3}}
+
+    devices = [
+        {"id": "t", "type": "readout", "read": {"printer": "temperatures"}},
+        {"id": "p", "type": "readout", "read": {"printer": "progress"}},
+    ]
+    plugin = make_plugin(devices=devices, printer=Hot())
+    with request_context():
+        results = plugin.on_api_command("status", {"ids": ["t", "p"]}).get_json()["results"]
+    assert results["t"]["state"] == "T0 210/215 · Bed 60/60"
+    assert results["p"]["state"] == "42%"
+
+
+def test_presets_api_lists_the_octoprint_group_with_its_five_presets(monkeypatch):
+    allow(monkeypatch)
+    monkeypatch.setattr(plugin_module, "detect", lambda: [])
+    monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: [])
+    plugin = make_plugin()
+    plugin._maintenance_env = lambda: {}
+    with request_context():
+        body = plugin.on_api_command("presets", {}).get_json()
+    group = body["plugins"][-1]
+    assert group["plugin"] == "octoprint" and group["name"] == "OctoPrint"
+    assert [preset["preset"] for preset in group["presets"]] == [
+        "octoprint:connection", "octoprint:job", "octoprint:printer", "octoprint:gcode", "octoprint:event",
+    ]
