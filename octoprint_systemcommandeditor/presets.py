@@ -152,6 +152,38 @@ print("%d B" % total if i == 0 else "%.1f %s" % (size, units[i]))
 """
 
 
+# What "Delete old logs" would delete right now: rotated logs at the top of the folder, aged as find's -mtime counts
+# whole days, so the readout and the command always agree.
+OLD_LOGS_SCRIPT = """
+import fnmatch, os, sys, time
+folder, days = sys.argv[1], int(sys.argv[2])
+count = total = 0
+if os.path.isdir(folder):
+    for name in os.listdir(folder):
+        path = os.path.join(folder, name)
+        try:
+            if not os.path.isfile(path) or not fnmatch.fnmatch(name, "*.log.*"):
+                continue
+            if int((time.time() - os.path.getmtime(path)) // 86400) > days:
+                count += 1
+                total += os.path.getsize(path)
+        except OSError:
+            pass
+if not count:
+    print("No old logs")
+else:
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(total)
+    i = 0
+    while size >= 1024 and i < len(units) - 1:
+        size /= 1024
+        i += 1
+    amount = "%d B" % total if i == 0 else "%.1f %s" % (size, units[i])
+    print("%d old log%s, %s" % (count, "" if count == 1 else "s", amount))
+"""
+
+LOG_DAYS = 7
+
 def _python_status(script, folder):
     return "{} -c {} {}".format(shlex.quote(sys.executable), shlex.quote(script), shlex.quote(folder))
 
@@ -199,15 +231,15 @@ def maintenance(env):
         },
         {
             "action": "purge_logs",
-            "name": "Delete logs older than 14 days",
+            "name": "Delete logs older than {} days".format(LOG_DAYS),
             "icon": "fa-solid fa-file-lines",
-            "command": "find {} -maxdepth 1 -type f -name '*.log.*' -mtime +14 -delete".format(logs),
-            "confirm": "This deletes rotated OctoPrint logs older than 14 days.",
+            "command": "find {} -maxdepth 1 -type f -name '*.log.*' -mtime +{} -delete".format(logs, LOG_DAYS),
+            "confirm": "This deletes rotated OctoPrint logs older than {} days.".format(LOG_DAYS),
             "async": False,
             "sample": False,
             "needs_sudo": False,
             "detect": "test -d {}".format(logs),
-            "status": _python_status(FOLDER_SIZE_SCRIPT, env["logs"]),
+            "status": _python_status(OLD_LOGS_SCRIPT, env["logs"]) + " " + str(LOG_DAYS),
         },
         {
             "action": "sync_clock",

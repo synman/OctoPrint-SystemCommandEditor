@@ -1,4 +1,5 @@
 import os
+import subprocess
 import time
 
 import pytest
@@ -234,8 +235,33 @@ def test_backup_age_and_folder_size_status_commands_run_against_a_temp_folder(tm
 
     assert run_status(by_action["backup_now"]["status"]) == (0, "Last backup 2 h ago", None)
     assert run_status(by_action["purge_timelapses"]["status"]) == (0, "1.5 KB", None)
-    # a missing logs folder has nothing in it
-    assert run_status(by_action["purge_logs"]["status"]) == (0, "0 B", None)
+    # a missing logs folder has nothing to delete
+    assert run_status(by_action["purge_logs"]["status"]) == (0, "No old logs", None)
+
+
+def test_old_logs_status_counts_exactly_what_the_command_deletes(tmp_path):
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    now = time.time()
+
+    def log(name, days, size):
+        path = logs / name
+        path.write_bytes(b"z" * size)
+        os.utime(path, (now - days * 86400 - 60, now - days * 86400 - 60))
+
+    log("octoprint.log", 30, 5000)               # live log: never counted, never deleted
+    log("octoprint.log.2026-10-01", 9, 1024)     # old rotated log
+    log("serial.log.2026-10-02_10-00-00", 8, 1024)  # old rotated log
+    log("octoprint.log.2026-11-08", 7, 4096)     # 7 whole days: find -mtime +7 keeps it
+    (logs / "nested").mkdir()
+    env = {**ENV, "logs": str(logs)}
+    preset = [p for p in maintenance(env) if p["action"] == "purge_logs"][0]
+    assert preset["name"] == "Delete logs older than 7 days"
+
+    assert run_status(preset["status"]) == (0, "2 old logs, 2.0 KB", None)
+    subprocess.run(preset["command"], shell=True, check=True)
+    assert sorted(os.listdir(logs)) == ["nested", "octoprint.log", "octoprint.log.2026-11-08"]
+    assert run_status(preset["status"]) == (0, "No old logs", None)
 
 
 def test_backup_age_says_none_when_the_backup_folder_is_empty(tmp_path):
