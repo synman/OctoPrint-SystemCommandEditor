@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import subprocess
@@ -11,6 +12,9 @@ pytest.importorskip("octoprint")
 from octoprint_systemcommandeditor.presets import (  # noqa: E402
     CATALOG,
     action_of,
+    add_plugin_preset,
+    first_start_presets,
+    key_for,
     detect,
     detect_maintenance,
     device_of,
@@ -668,3 +672,98 @@ def test_octoprint_snapshot_preset_is_a_link_with_its_url_and_no_commands_and_co
     assert [p["preset"] for p in group["presets"][:-1]] == [
         "octoprint:connection", "octoprint:job", "octoprint:printer", "octoprint:gcode", "octoprint:event",
     ]
+
+
+def test_key_for_slugs_names_and_takes_the_fallback_when_empty():
+    assert key_for("Printer connection", "control") == "printer_connection"
+    assert key_for("Café Lights!", "control") == "cafe_lights"
+    assert key_for("***", "control") == "control"
+
+
+def test_key_for_never_returns_divider_and_counts_past_taken_keys():
+    assert key_for("divider", "command") == "divider_2"
+    assert key_for("PSU", "control", {"psu"}) == "psu_2"
+    assert key_for("PSU", "control", {"psu", "psu_2"}) == "psu_3"
+
+
+def plugin_switch(name="PSU Control", control_name="Printer power", preset="psucontrol:psu"):
+    return {
+        "preset": preset, "name": name,
+        "control": {"type": "switch", "name": control_name, "icon": "fa-solid fa-plug",
+                    "read": {"plugin": "psucontrol", "helper": "get_psu_state"},
+                    "on_pattern": "^true$", "off_pattern": "^false$"},
+        "commands": [
+            {"name": "On", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"}, "role": "on"},
+            {"name": "Off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"}, "role": "off",
+             "confirm": "Turn it off?"},
+        ],
+    }
+
+
+def test_add_plugin_preset_adds_a_switch_with_its_commands_under_one_divider():
+    preset = plugin_switch()
+    before = copy.deepcopy(preset)
+    devices, actions = add_plugin_preset(preset, [], [])
+    assert preset == before
+    assert devices == [{
+        "id": "printer_power", "type": "switch", "name": "Printer power", "icon": "fa-solid fa-plug",
+        "read": {"plugin": "psucontrol", "helper": "get_psu_state"},
+        "on_pattern": "^true$", "off_pattern": "^false$", "preset": "psucontrol:psu",
+    }]
+    assert actions == [
+        {"action": "divider", "name": "Plugin devices"},
+        {"action": "psu_control_on", "name": "On", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"},
+         "role": "on", "group": "printer_power", "preset": "psucontrol:psu"},
+        {"action": "psu_control_off", "name": "Off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"},
+         "role": "off", "group": "printer_power", "preset": "psucontrol:psu", "confirm": "Turn it off?"},
+    ]
+
+
+def test_add_plugin_preset_reuses_the_plugin_divider_and_does_not_modify_its_inputs():
+    first_devices, first_actions = add_plugin_preset(plugin_switch(), [], [])
+    device_snapshot, action_snapshot = copy.deepcopy(first_devices), copy.deepcopy(first_actions)
+    second = plugin_switch(name="Other", control_name="Other", preset="x:other")
+    devices, actions = add_plugin_preset(second, first_devices, first_actions)
+    assert first_devices == device_snapshot and first_actions == action_snapshot
+    assert [a["action"] for a in actions].count("divider") == 1
+    assert [d["id"] for d in devices] == ["printer_power", "other"]
+    assert [a["action"] for a in actions[len(first_actions):]] == ["other_on", "other_off"]
+    assert actions[len(first_actions)]["group"] == "other"
+
+
+def test_add_plugin_preset_takes_a_control_id_already_used_by_a_device_or_a_command():
+    existing_device = [{"id": "printer_power", "type": "switch", "name": "Mine"}]
+    devices, _ = add_plugin_preset(plugin_switch(), existing_device, [])
+    assert devices[-1]["id"] == "printer_power_2"
+    existing_action = [{"action": "printer_power", "name": "Mine", "command": "true"}]
+    devices, _ = add_plugin_preset(plugin_switch(), [], existing_action)
+    assert devices[-1]["id"] == "printer_power_2"
+
+
+def test_add_plugin_preset_for_a_link_with_no_commands_adds_no_divider():
+    link = {
+        "preset": "octoprint:snapshot", "name": "Webcam snapshot",
+        "control": {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera",
+                    "url": "http://printer.local/snap"},
+        "commands": [],
+    }
+    devices, actions = add_plugin_preset(link, [], [])
+    assert devices == [{"id": "webcam_snapshot", "type": "link", "name": "Webcam snapshot",
+                        "icon": "fa-solid fa-camera", "preset": "octoprint:snapshot",
+                        "url": "http://printer.local/snap"}]
+    assert actions == []
+
+
+def test_first_start_presets_picks_connection_first_then_plugin_switches_only():
+    psu = {"plugin": "psucontrol", "name": "PSU Control", "presets": [
+        plugin_switch(),
+        {"preset": "psucontrol:job", "name": "Job", "control": {"type": "action", "name": "Job", "icon": "i"},
+         "commands": []},
+    ]}
+    picked = [p["preset"] for p in first_start_presets([psu, octoprint_presets()])]
+    assert picked == ["octoprint:connection", "psucontrol:psu"]
+
+
+def test_first_start_presets_offers_only_the_connection_without_a_plugin_switch():
+    assert [p["preset"] for p in first_start_presets([octoprint_presets()])] == ["octoprint:connection"]
+

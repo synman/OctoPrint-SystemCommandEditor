@@ -1,6 +1,9 @@
+import copy
 import os
+import re
 import shlex
 import sys
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 
 from .convert import free_key
@@ -663,3 +666,85 @@ def octoprint_presets(snapshot_url=None):
         snapshot = {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera", "url": snapshot_url}
         presets.append({"preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": snapshot, "commands": []})
     return {"plugin": "octoprint", "name": "OctoPrint", "presets": presets}
+
+
+# The picker's own rules, in Python: add_plugin_preset does what its addPlugin does, and key_for gives the key keyFor gives.
+DIVIDER = "divider"
+PLUGIN_DIVIDER = "Plugin devices"
+_COMBINING = re.compile("[\u0300-\u036f]")
+_NON_KEY = re.compile("[^a-z0-9]+")
+
+
+def key_for(name, fallback, taken=()):
+    """The hidden key of a control or command: its name slugged, then _2, _3... while divider or taken."""
+    text = _COMBINING.sub("", unicodedata.normalize("NFKD", (name or "").lower()))
+    base = _NON_KEY.sub("_", text).strip("_") or fallback
+    candidate, counter = base, 2
+    while candidate == DIVIDER or candidate in taken:
+        candidate = "{}_{}".format(base, counter)
+        counter += 1
+    return candidate
+
+
+def _entry_keys(actions):
+    return {entry.get("action") for entry in actions if entry.get("action") not in (None, DIVIDER)}
+
+
+def add_plugin_preset(preset, devices, actions):
+    """Return ``(devices, actions)`` with one plugin preset added, as the picker's addPlugin adds it.
+
+    The control goes at the end of ``devices``; its commands go at the end of ``actions``, under one Plugin devices
+    divider made when missing. The inputs are not modified.
+    """
+    preset = copy.deepcopy(preset)
+    control = preset["control"]
+    devices = list(devices)
+    actions = list(actions)
+
+    taken = {device.get("id") for device in devices} | _entry_keys(actions)
+    device_id = key_for(control["name"], "control", taken)
+    device = {"id": device_id, "type": control["type"], "name": control["name"], "icon": control["icon"],
+              "preset": preset["preset"]}
+    if control.get("read") is not None:
+        device["read"] = control["read"]
+    if control.get("on_pattern"):
+        device["on_pattern"] = control["on_pattern"]
+    if control.get("off_pattern"):
+        device["off_pattern"] = control["off_pattern"]
+    if control["type"] == "link":
+        device["url"] = control["url"]
+    devices.append(device)
+
+    commands = preset.get("commands") or []
+    if not commands:
+        return devices, actions
+    if not any(entry.get("action") == DIVIDER and entry.get("name") == PLUGIN_DIVIDER for entry in actions):
+        actions.append({"action": DIVIDER, "name": PLUGIN_DIVIDER})
+    for command in commands:
+        entry = {
+            "action": key_for("{} {}".format(preset["name"], command["name"]), "command", _entry_keys(actions)),
+            "name": command["name"],
+            "run": command["run"],
+            "role": command["role"],
+            "group": device_id,
+            "preset": preset["preset"],
+        }
+        if command.get("confirm"):
+            entry["confirm"] = command["confirm"]
+        actions.append(entry)
+    return devices, actions
+
+
+def first_start_presets(groups):
+    """The presets first start adds: the OctoPrint connection, then every switch preset of the other groups."""
+    connection = [
+        preset
+        for group in groups if group.get("plugin") == "octoprint"
+        for preset in group["presets"] if preset["preset"] == "octoprint:connection"
+    ]
+    switches = [
+        preset
+        for group in groups if group.get("plugin") != "octoprint"
+        for preset in group["presets"] if preset["control"]["type"] == "switch"
+    ]
+    return connection + switches

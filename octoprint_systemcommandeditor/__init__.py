@@ -36,8 +36,10 @@ from .convert import command_count, convert, place_readouts
 from .presets import (
     SYSTEM_SWITCHES,
     action_of,
+    add_plugin_preset,
     detect,
     detect_maintenance,
+    first_start_presets,
     harvest,
     mark_presets,
     maintenance_actions,
@@ -262,7 +264,7 @@ class SystemCommandEditorPlugin(
             for switch in system_switches(socket.gethostname())
         ]
 
-    def _load_sample_presets(self, detector=detect, maintenance_detector=None):
+    def _load_sample_presets(self, detector=detect, maintenance_detector=None, plugin_groups=None):
         devices = self._settings.get(["devices"]) or []
         fresh = not devices
         skin = self._skin_system_entries(devices)
@@ -299,8 +301,29 @@ class SystemCommandEditorPlugin(
                 divider = {"action": "divider", "name": "Maintenance"}
                 self._settings.global_set(["system", "actions"], actions + [divider] + samples)
                 self._logger.info("Added maintenance commands: %s", [entry["action"] for entry in samples])
+        if fresh:
+            self._add_ready_made(plugin_groups)
         self._settings.set(["presets_loaded"], True)
         self._settings.save()
+
+    def _add_ready_made(self, plugin_groups=None):
+        # after maintenance, which is skipped once any custom command exists, and these commands are custom commands
+        if plugin_groups is None:
+            plugin_groups = self._plugin_presets() + [octoprint_presets()]
+        devices = self._settings.get(["devices"]) or []
+        actions = self._settings.global_get(["system", "actions"]) or []
+        added = []
+        for preset in first_start_presets(plugin_groups):
+            if any(device.get("preset") == preset["preset"] for device in devices):
+                continue
+            devices, actions = add_plugin_preset(preset, devices, actions)
+            # the control is appended, so it is the last device
+            added.append(devices[-1]["id"])
+        if not added:
+            return
+        self._settings.set(["devices"], devices)
+        self._settings.global_set(["system", "actions"], actions)
+        self._logger.info("Added ready-made controls: %s", added)
 
     def on_api_get(self, request):
         if not Permissions.SYSTEM.can():

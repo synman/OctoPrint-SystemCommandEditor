@@ -207,7 +207,7 @@ def test_loader_places_sample_readouts_under_status(tmp_path):
              "available": True, "value": "2"},
         ]
 
-    plugin._load_sample_presets(detector=detector, maintenance_detector=lambda: [])
+    plugin._load_sample_presets(detector=detector, maintenance_detector=lambda: [], plugin_groups=[])
 
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     readouts = [d for d in config["devices"] if d.get("type") == "readout"]

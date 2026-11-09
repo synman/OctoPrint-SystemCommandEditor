@@ -15,6 +15,7 @@ import octoprint_systemcommandeditor as plugin_module  # noqa: E402
 from octoprint_systemcommandeditor import SystemCommandEditorPlugin  # noqa: E402
 from octoprint_systemcommandeditor import condition_effect, printer_state  # noqa: E402
 from octoprint_systemcommandeditor.presets import CATALOG, action_of, device_of, entry_of, maintenance  # noqa: E402
+from octoprint_systemcommandeditor.presets import octoprint_presets  # noqa: E402
 
 
 class FakeSettings:
@@ -227,7 +228,7 @@ def test_load_sample_presets_fills_empty_devices_and_marks_done(monkeypatch):
         {**device_of(CATALOG[7]), "sample": False, "available": True, "value": "-50 dBm"},
     ]
     plugin = make_plugin()
-    plugin._load_sample_presets(detector=lambda: detected, maintenance_detector=lambda: [])
+    plugin._load_sample_presets(plugin_groups=[], detector=lambda: detected, maintenance_detector=lambda: [])
     devices = plugin._settings.config["plugins"]["systemcommandeditor"]["devices"]
     assert devices[:2] == [
         {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server", "preset": "host"},
@@ -242,7 +243,7 @@ def test_load_sample_presets_keeps_existing_devices(monkeypatch):
     monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
     existing = [{"id": "mine", "type": "switch"}]
     plugin = make_plugin(devices=existing)
-    plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: [])
+    plugin._load_sample_presets(plugin_groups=[], detector=lambda: [], maintenance_detector=lambda: [])
     assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == [
         {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server", "preset": "host"},
         {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print", "preset": "octoprint"},
@@ -349,7 +350,7 @@ def maintenance_listing(exit_by_action):
 
 def test_load_sample_presets_adds_maintenance_divider_when_no_custom_command():
     plugin = make_plugin(system_actions=[{"action": "divider", "name": "Webcam"}])
-    plugin._load_sample_presets(
+    plugin._load_sample_presets(plugin_groups=[], 
         detector=lambda: [],
         maintenance_detector=lambda: maintenance_listing({"webcam_restart": 1}),
     )
@@ -369,7 +370,7 @@ def test_load_sample_presets_adds_maintenance_divider_when_no_custom_command():
 def test_load_sample_presets_adds_no_maintenance_when_a_custom_command_exists():
     existing = [{"action": "laser_on_cmd", "name": "Laser on", "command": "echo on"}]
     plugin = make_plugin(system_actions=existing)
-    plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: maintenance_listing({}))
+    plugin._load_sample_presets(plugin_groups=[], detector=lambda: [], maintenance_detector=lambda: maintenance_listing({}))
     assert plugin._settings.config["system"]["actions"] == existing
     assert not [call for call in plugin._settings.calls if call[0] == "global_set"]
 
@@ -380,7 +381,7 @@ def sample_disk(available=True):
 
 def test_load_sample_presets_does_not_load_unavailable_maintenance_sample():
     plugin = make_plugin()
-    plugin._load_sample_presets(
+    plugin._load_sample_presets(plugin_groups=[], 
         detector=lambda: [],
         maintenance_detector=lambda: maintenance_listing({"backup_now": 1, "webcam_restart": 1}),
     )
@@ -391,7 +392,7 @@ def test_load_sample_presets_does_not_load_unavailable_maintenance_sample():
 def test_first_start_skins_host_and_octoprint_devices_and_core_entries(monkeypatch):
     monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
     plugin = make_plugin(core=SystemCommandEditorPlugin().get_settings_defaults()["core"])
-    plugin._load_sample_presets(detector=sample_disk, maintenance_detector=lambda: [])
+    plugin._load_sample_presets(plugin_groups=[], detector=sample_disk, maintenance_detector=lambda: [])
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     assert [device["id"] for device in config["devices"]] == ["host", "octoprint", "disk"]
     assert config["devices"][0] == {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server",
@@ -411,7 +412,7 @@ def test_first_start_leaves_core_alone_when_an_entry_already_has_a_group(monkeyp
     core = SystemCommandEditorPlugin().get_settings_defaults()["core"]
     core["restart"]["group"] = "mine"
     plugin = make_plugin(core=core)
-    plugin._load_sample_presets(detector=sample_disk, maintenance_detector=lambda: [])
+    plugin._load_sample_presets(plugin_groups=[], detector=sample_disk, maintenance_detector=lambda: [])
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     assert [device["id"] for device in config["devices"]] == ["disk"]
     assert config["core"]["restart"]["group"] == "mine"
@@ -424,7 +425,7 @@ def test_first_start_skips_skin_when_host_device_exists(monkeypatch):
     core = SystemCommandEditorPlugin().get_settings_defaults()["core"]
     existing = [{"id": "host", "type": "switch", "name": "Mine", "icon": "fa-solid fa-star"}]
     plugin = make_plugin(devices=existing, core=core)
-    plugin._load_sample_presets(detector=sample_disk, maintenance_detector=lambda: [])
+    plugin._load_sample_presets(plugin_groups=[], detector=sample_disk, maintenance_detector=lambda: [])
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     assert config["devices"] == existing
     assert config["core"]["reboot"]["group"] == ""
@@ -444,7 +445,7 @@ def test_get_merges_saved_core_entries_over_their_defaults(monkeypatch):
 
 def test_first_start_marks_maintenance_control_and_command_with_their_action(tmp_path):
     plugin = make_plugin()
-    plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: maintenance_listing({"webcam_restart": 1}))
+    plugin._load_sample_presets(plugin_groups=[], detector=lambda: [], maintenance_detector=lambda: maintenance_listing({"webcam_restart": 1}))
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     control = [device for device in config["devices"] if device["id"] == "backup_now"][0]
     command = [entry for entry in plugin._settings.config["system"]["actions"] if entry.get("action") == "backup_now"][0]
@@ -454,7 +455,7 @@ def test_first_start_marks_maintenance_control_and_command_with_their_action(tmp
 def test_first_start_marks_readout_placement_with_its_readout(monkeypatch):
     monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
     plugin = make_plugin(core=SystemCommandEditorPlugin().get_settings_defaults()["core"])
-    plugin._load_sample_presets(detector=sample_disk, maintenance_detector=lambda: [])
+    plugin._load_sample_presets(plugin_groups=[], detector=sample_disk, maintenance_detector=lambda: [])
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     placement = [entry for entry in plugin._settings.config["system"]["actions"] if entry.get("device") == "disk"][0]
     assert placement["preset"] == "disk"
@@ -828,3 +829,76 @@ def test_presets_api_skips_a_blank_classicwebcam_snapshot_and_trims_the_one_it_u
     with request_context():
         body = plugin.on_api_command("presets", {}).get_json()
     assert body["plugins"][-1]["presets"][-1]["control"]["url"] == "http://printer.local/own"
+
+
+def psu_group():
+    # the PSU Control plugin's group as harvest builds it: one switch with On and Off
+    control = {"type": "switch", "name": "Printer power", "icon": "fa-solid fa-plug",
+               "read": {"plugin": "psucontrol", "helper": "get_psu_state"}, "on_pattern": "^true$",
+               "off_pattern": "^false$"}
+    commands = [{"name": "On", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"}, "role": "on"},
+                {"name": "Off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"}, "role": "off"}]
+    return {"plugin": "psucontrol", "name": "PSU Control", "presets": [
+        {"preset": "psucontrol:psu", "name": "PSU Control", "control": control, "commands": commands}]}
+
+
+def test_first_start_adds_ready_made_switches_and_commands_after_maintenance(monkeypatch, caplog):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
+    plugin = make_plugin(core=SystemCommandEditorPlugin().get_settings_defaults()["core"])
+    with caplog.at_level(logging.INFO, logger="test"):
+        plugin._load_sample_presets(
+            detector=sample_disk,
+            maintenance_detector=lambda: maintenance_listing({"webcam_restart": 1}),
+            plugin_groups=[psu_group(), octoprint_presets()],
+        )
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert [device["id"] for device in config["devices"]] == [
+        "host", "octoprint", "disk", "backup_now", "printer_connection", "printer_power",
+    ]
+    actions = plugin._settings.config["system"]["actions"]
+    backup = [preset for preset in maintenance(MAINTENANCE_ENV) if preset["action"] == "backup_now"][0]
+    _, backup_run = action_of(backup, set())
+    assert actions[2:4] == [{"action": "divider", "name": "Maintenance"}, backup_run]
+    assert actions[4:] == [
+        {"action": "divider", "name": "Plugin devices"},
+        {"action": "printer_connection_connect", "name": "Connect", "run": {"printer": "connect"}, "role": "on",
+         "group": "printer_connection", "preset": "octoprint:connection"},
+        {"action": "printer_connection_disconnect", "name": "Disconnect", "run": {"printer": "disconnect"},
+         "role": "off", "group": "printer_connection", "preset": "octoprint:connection"},
+        {"action": "psu_control_on", "name": "On", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"},
+         "role": "on", "group": "printer_power", "preset": "psucontrol:psu"},
+        {"action": "psu_control_off", "name": "Off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"},
+         "role": "off", "group": "printer_power", "preset": "psucontrol:psu"},
+    ]
+    assert ("set", "devices", config["devices"]) in plugin._settings.calls
+    assert ("global_set", ["system", "actions"], actions) in plugin._settings.calls
+    assert "Added ready-made controls: ['printer_connection', 'printer_power']" in caplog.text
+
+
+def test_first_start_with_existing_controls_adds_no_ready_made_switches_or_commands(monkeypatch):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
+    existing = [{"id": "mine", "type": "switch", "name": "Mine", "icon": "fa-solid fa-star"}]
+    plugin = make_plugin(devices=existing)
+    plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: [],
+                                plugin_groups=[psu_group(), octoprint_presets()])
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    ids = [device["id"] for device in config["devices"]]
+    assert "printer_connection" not in ids and "printer_power" not in ids
+    assert ids == ["host", "octoprint", "mine"]
+    assert plugin._settings.config["system"]["actions"] == []
+
+
+def test_first_start_never_adds_the_connection_twice_when_its_marker_is_already_on_a_control(monkeypatch):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
+    plugin = make_plugin(core=SystemCommandEditorPlugin().get_settings_defaults()["core"])
+    # the same OctoPrint group twice: the second connection finds its marker already on the first one's control
+    plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: [],
+                                plugin_groups=[octoprint_presets(), octoprint_presets()])
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    connections = [device for device in config["devices"] if device.get("preset") == "octoprint:connection"]
+    assert [device["id"] for device in connections] == ["printer_connection"]
+    actions = plugin._settings.config["system"]["actions"]
+    assert [entry["action"] for entry in actions if entry.get("group") == "printer_connection"] == [
+        "printer_connection_connect", "printer_connection_disconnect",
+    ]
+
