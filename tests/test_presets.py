@@ -24,6 +24,8 @@ from octoprint_systemcommandeditor.presets import (  # noqa: E402
     maintenance_actions,
     mark_presets,
     sample_devices,
+    WEBCAM_SERVICES,
+    webcam_presets,
 )
 from octoprint_systemcommandeditor.status import run_status  # noqa: E402
 from octoprint_systemcommandeditor.presets import octoprint_presets  # noqa: E402
@@ -436,14 +438,16 @@ def test_psucontrol_is_one_switch_with_on_and_off_commands():
                     "control": {
                         "type": "switch",
                         "name": "Printer power",
-                        "icon": "fa-solid fa-plug",
+                        "icon": "fa-solid fa-power-off",
                         "read": {"plugin": "psucontrol", "helper": "get_psu_state"},
                         "on_pattern": "^true$",
                         "off_pattern": "^false$",
                     },
                     "commands": [
-                        {"name": "On", "role": "on", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"}},
-                        {"name": "Off", "role": "off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"}},
+                        {"name": "On", "role": "on", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"},
+                         "icon": "fa-solid fa-play"},
+                        {"name": "Off", "role": "off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"},
+                         "icon": "fa-solid fa-power-off"},
                     ],
                 }
             ],
@@ -559,7 +563,7 @@ def test_bettergrbl_is_one_action_control_with_four_run_commands_and_confirm_on_
     assert preset["control"] == {
         "type": "action",
         "name": "Grbl",
-        "icon": "fa-solid fa-plug",
+        "icon": "fa-solid fa-crosshairs",
         "read": {"plugin": "bettergrblsupport", "helper": "state", "field": "state"},
     }
     home, unlock, sleep, reset = preset["commands"]
@@ -604,25 +608,26 @@ def test_octoprint_connection_is_a_state_switch_with_connect_and_disconnect():
     control = preset["control"]
     assert preset["name"] == "Printer connection"
     assert control == {
-        "type": "switch", "name": "Printer connection", "icon": "fa-solid fa-plug",
+        "type": "switch", "name": "Printer connection", "icon": "fa-solid fa-link",
         "read": {"printer": "state"},
         "on_pattern": "^(Operational|Printing|Paused|Pausing|Resuming|Cancelling|Finishing)",
         "off_pattern": "^(Offline|Closed|Error)",
     }
     assert preset["commands"] == [
-        {"name": "Connect", "run": {"printer": "connect"}, "role": "on"},
-        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off"},
+        {"name": "Connect", "run": {"printer": "connect"}, "role": "on", "icon": "fa-solid fa-play"},
+        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off", "icon": "fa-solid fa-power-off"},
     ]
 
 
 def test_octoprint_job_reads_progress_and_runs_pause_resume_and_a_confirmed_cancel():
     preset = octoprint_by_id()["octoprint:job"]
-    assert preset["control"] == {"type": "action", "name": "Print job", "icon": "fa-solid fa-print",
+    assert preset["control"] == {"type": "action", "name": "Print job", "icon": "fa-solid fa-hourglass-half",
                                  "read": {"printer": "progress"}}
     assert preset["commands"] == [
-        {"name": "Pause", "run": {"printer": "pause"}, "role": "run"},
-        {"name": "Resume", "run": {"printer": "resume"}, "role": "run"},
-        {"name": "Cancel", "run": {"printer": "cancel"}, "role": "run", "confirm": "Cancel the print?"},
+        {"name": "Pause", "run": {"printer": "pause"}, "role": "run", "icon": "fa-solid fa-pause"},
+        {"name": "Resume", "run": {"printer": "resume"}, "role": "run", "icon": "fa-solid fa-play"},
+        {"name": "Cancel", "run": {"printer": "cancel"}, "role": "run", "icon": "fa-solid fa-stop",
+         "confirm": "Cancel the print?"},
     ]
 
 
@@ -631,7 +636,7 @@ def test_octoprint_printer_reads_temperatures_and_confirms_only_the_emergency_st
     assert preset["control"]["read"] == {"printer": "temperatures"}
     assert [command["name"] for command in preset["commands"]] == ["Home", "Cool down", "Emergency stop"]
     assert preset["commands"][2] == {
-        "name": "Emergency stop", "run": {"printer": "emergency_stop"}, "role": "run",
+        "name": "Emergency stop", "run": {"printer": "emergency_stop"}, "role": "run", "icon": "fa-solid fa-hand",
         "confirm": "This sends M112, which halts the printer at once.",
     }
     assert all("confirm" not in command for command in preset["commands"][:2])
@@ -642,11 +647,11 @@ def test_octoprint_gcode_and_event_have_no_read_and_one_run_each():
     gcode = by_id["octoprint:gcode"]
     assert "read" not in gcode["control"] and gcode["control"]["icon"] == "fa-solid fa-terminal"
     assert gcode["commands"] == [{"name": "Send", "run": {"gcode": ["M117 Hello from System Commands"]},
-                                  "role": "run", "confirm": "Send this G-code?"}]
+                                  "role": "run", "icon": "fa-solid fa-paper-plane", "confirm": "Send this G-code?"}]
     event = by_id["octoprint:event"]
-    assert "read" not in event["control"] and event["control"]["icon"] == "fa-solid fa-bolt"
+    assert "read" not in event["control"] and event["control"]["icon"] == "fa-solid fa-bullhorn"
     assert event["commands"] == [{"name": "Fire", "run": {"event": "systemcommandeditor_custom", "payload": {}},
-                                  "role": "run"}]
+                                  "role": "run", "icon": "fa-solid fa-bullhorn"}]
 
 
 def test_octoprint_presets_carry_no_id_or_action_and_no_action_on_commands():
@@ -766,4 +771,229 @@ def test_first_start_presets_picks_connection_first_then_plugin_switches_only():
 
 def test_first_start_presets_offers_only_the_connection_without_a_plugin_switch():
     assert [p["preset"] for p in first_start_presets([octoprint_presets()])] == ["octoprint:connection"]
+
+
+# Webcam services. A fake runner: a systemd unit's detect (systemctl cat) exits 0 when the unit is installed, the
+# Docker detect exits 0 when docker is set, and sudo -n true exits sudo_ok's code. Other commands exit 1.
+def webcam_runner(installed=(), sudo_ok=True, docker=False, calls=None):
+    def runner(command, timeout=10):
+        if calls is not None:
+            calls.append(command)
+        if command == "sudo -n true":
+            return (0 if sudo_ok else 1), "", None
+        if command.startswith("systemctl cat "):
+            unit = command.split()[2][: -len(".service")]
+            return (0 if unit in installed else 1), "", None
+        if command.startswith("test -d /var/run/s6/"):
+            return (0 if docker else 1), "", None
+        return 1, "", None
+
+    return runner
+
+
+NO_CAMERAS = "/nonexistent/octoprint_cameras"
+
+
+def webcam_by_id(group):
+    return {preset["preset"]: preset for preset in group["presets"]}
+
+
+def test_webcam_group_lists_the_systemd_units_in_order_then_docker():
+    group = webcam_presets(runner=webcam_runner(), cameras_file=NO_CAMERAS)
+    assert group["plugin"] == "webcam" and group["name"] == "Webcam services"
+    ids = [preset["preset"] for preset in group["presets"]]
+    assert ids == ["webcam:" + unit for unit, _name in WEBCAM_SERVICES] + ["webcam:docker-mjpg-streamer"]
+    names = {unit: name for unit, name in WEBCAM_SERVICES}
+    assert names["webcamd"] == "Webcam (webcamd)" and names["rtsp-simple-server"] == "Streams (rtsp-simple-server)"
+    assert group["presets"][0]["name"] == "Webcam (webcamd)"
+
+
+def test_webcam_systemd_entry_has_status_patterns_three_commands_and_detect():
+    calls = []
+    group = webcam_presets(runner=webcam_runner(installed={"motion"}, calls=calls), cameras_file=NO_CAMERAS)
+    by_id = webcam_by_id(group)
+    for unit, name in WEBCAM_SERVICES:
+        preset = by_id["webcam:" + unit]
+        control = preset["control"]
+        assert preset["name"] == name
+        assert control["type"] == "switch" and control["icon"] == "fa-solid fa-video"
+        if unit != "camera-streamer":
+            assert control["status"] == "systemctl is-active {}.service".format(unit)
+        assert control["on_pattern"] == "^active$" and control["off_pattern"] == "^(inactive|failed)$"
+        start, stop, restart = preset["commands"]
+        assert start == {"name": "Start", "command": "sudo systemctl start {}".format(unit), "role": "on",
+                         "icon": "fa-solid fa-play"}
+        assert stop == {"name": "Stop", "command": "sudo systemctl stop {}".format(unit), "role": "off",
+                        "icon": "fa-solid fa-power-off"}
+        assert restart == {"name": "Restart", "command": "sudo systemctl restart {}".format(unit),
+                           "role": "restart", "icon": "fa-solid fa-rotate-right"}
+        assert "run" not in start and "run" not in stop and "run" not in restart
+        assert "systemctl cat {}.service >/dev/null 2>&1".format(unit) in calls
+    assert by_id["webcam:motion"]["available"] is True
+    assert by_id["webcam:webcamd"]["available"] is False
+
+
+def test_camera_streamer_status_reads_its_started_units_and_prints_inactive_when_none_match():
+    preset = webcam_by_id(webcam_presets(runner=webcam_runner(), cameras_file=NO_CAMERAS))["webcam:camera-streamer"]
+    assert preset["control"]["status"] == (
+        "systemctl is-active camera-streamer-libcamera.service 'camera-streamer-usb@*.service' "
+        "| grep -qx active && echo active || echo inactive"
+    )
+    assert preset["control"]["on_pattern"] == "^active$"
+
+
+def test_webcam_sudo_note_only_when_sudo_fails_and_the_unit_is_available():
+    failing = webcam_by_id(webcam_presets(runner=webcam_runner(installed={"webcamd"}, sudo_ok=False),
+                                          cameras_file=NO_CAMERAS))
+    assert failing["webcam:webcamd"]["note"] == "Needs passwordless sudo"
+    assert failing["webcam:motion"]["note"] == ""
+    working = webcam_by_id(webcam_presets(runner=webcam_runner(installed={"webcamd"}, sudo_ok=True),
+                                          cameras_file=NO_CAMERAS))
+    assert working["webcam:webcamd"]["note"] == ""
+    unavailable = webcam_by_id(webcam_presets(runner=webcam_runner(sudo_ok=False), cameras_file=NO_CAMERAS))
+    assert unavailable["webcam:webcamd"]["note"] == ""
+
+
+def test_webcam_deploy_cameras_come_after_systemd_units_and_take_the_first_word(tmp_path):
+    cameras = tmp_path / "octoprint_cameras"
+    cameras.write_text("camera:cam_octo port:8000 udev:true\nnot_a_camera line\ncamera:cam_two port:8001\n")
+    group = webcam_presets(runner=webcam_runner(installed={"cam_octo"}), cameras_file=str(cameras))
+    ids = [preset["preset"] for preset in group["presets"]]
+    assert ids[len(WEBCAM_SERVICES):] == ["webcam:cam_octo", "webcam:cam_two", "webcam:docker-mjpg-streamer"]
+    by_id = webcam_by_id(group)
+    cam = by_id["webcam:cam_octo"]
+    assert cam["name"] == "Webcam (cam_octo)" and cam["available"] is True
+    assert cam["control"]["status"] == "systemctl is-active cam_octo.service"
+    assert cam["commands"][0]["command"] == "sudo systemctl start cam_octo"
+    assert by_id["webcam:cam_two"]["available"] is False
+
+
+def test_webcam_missing_or_unreadable_cameras_file_adds_no_camera(tmp_path):
+    group = webcam_presets(runner=webcam_runner(), cameras_file=NO_CAMERAS)
+    assert len(group["presets"]) == len(WEBCAM_SERVICES) + 1
+    assert webcam_presets(runner=webcam_runner(), cameras_file=str(tmp_path))["presets"] == group["presets"]
+
+
+def test_webcam_deploy_camera_already_listed_is_skipped(tmp_path):
+    cameras = tmp_path / "octoprint_cameras"
+    cameras.write_text("camera:webcamd port:8000\n")
+    group = webcam_presets(runner=webcam_runner(), cameras_file=str(cameras))
+    assert len(group["presets"]) == len(WEBCAM_SERVICES) + 1
+
+
+def test_webcam_docker_preset_is_last_s6_with_no_sudo():
+    calls = []
+    group = webcam_presets(runner=webcam_runner(docker=True, calls=calls), cameras_file=NO_CAMERAS)
+    docker = group["presets"][-1]
+    assert docker["preset"] == "webcam:docker-mjpg-streamer" and docker["name"] == "Webcam (OctoPrint Docker)"
+    assert docker["control"]["status"] == "s6-svstat /var/run/s6/services/mjpg-streamer"
+    assert docker["control"]["on_pattern"] == "^up" and docker["control"]["off_pattern"] == "^down"
+    assert [c["command"] for c in docker["commands"]] == [
+        "s6-svc -u /var/run/s6/services/mjpg-streamer",
+        "s6-svc -d /var/run/s6/services/mjpg-streamer",
+        "s6-svc -r /var/run/s6/services/mjpg-streamer",
+    ]
+    assert [c["role"] for c in docker["commands"]] == ["on", "off", "restart"]
+    assert docker["available"] is True and docker["note"] == ""
+    assert "test -d /var/run/s6/services/mjpg-streamer" in calls
+
+
+def test_webcam_every_command_carries_its_role_icon_and_no_run():
+    group = webcam_presets(runner=webcam_runner(), cameras_file=NO_CAMERAS)
+    icons = {"on": "fa-solid fa-play", "off": "fa-solid fa-power-off", "restart": "fa-solid fa-rotate-right"}
+    for preset in group["presets"]:
+        for command in preset["commands"]:
+            assert command["icon"] == icons[command["role"]]
+            assert "run" not in command
+
+
+def test_add_plugin_preset_copies_a_shell_command_with_its_icon_and_async_never_a_run():
+    preset = {
+        "preset": "webcam:webcamd", "name": "Webcam (webcamd)",
+        "control": {"type": "switch", "name": "Webcam (webcamd)", "icon": "fa-solid fa-video",
+                    "status": "systemctl is-active webcamd.service", "on_pattern": "^active$",
+                    "off_pattern": "^(inactive|failed)$"},
+        "commands": [
+            {"name": "Start", "command": "sudo systemctl start webcamd", "role": "on", "icon": "fa-solid fa-play",
+             "async": True},
+            {"name": "Stop", "command": "sudo systemctl stop webcamd", "role": "off", "icon": "fa-solid fa-power-off"},
+        ],
+    }
+    devices, actions = add_plugin_preset(preset, [], [])
+    assert devices[0]["status"] == "systemctl is-active webcamd.service"
+    start, stop = actions[1], actions[2]
+    assert start == {"action": "webcam_webcamd_start", "name": "Start", "command": "sudo systemctl start webcamd",
+                     "role": "on", "group": "webcam_webcamd", "preset": "webcam:webcamd", "icon": "fa-solid fa-play",
+                     "async": True}
+    assert stop["command"] == "sudo systemctl stop webcamd" and "async" not in stop
+    assert all("run" not in entry for entry in (start, stop))
+
+
+def test_add_plugin_preset_still_copies_a_run_call_and_no_status_for_a_plugin_control():
+    devices, actions = add_plugin_preset(plugin_switch(), [], [])
+    assert "status" not in devices[0]
+    assert "command" not in actions[1] and actions[1]["run"] == {"plugin": "psucontrol", "helper": "turn_psu_on"}
+
+
+def test_first_start_presets_skips_an_unavailable_preset_and_keeps_one_without_the_key():
+    group = {"plugin": "webcam", "name": "Webcam services", "presets": [
+        {**plugin_switch(name="Up", preset="webcam:up"), "available": True},
+        {**plugin_switch(name="Down", preset="webcam:down"), "available": False},
+        plugin_switch(name="Harvested", preset="x:harvested"),
+    ]}
+    picked = [p["preset"] for p in first_start_presets([group])]
+    assert picked == ["webcam:up", "x:harvested"]
+
+
+def test_every_plugin_and_octoprint_control_and_command_has_its_table_icon():
+    settings = settings_of(
+        tplinksmartplug={"arrSmartplugs": [{"ip": "10.0.0.5", "label": "Printer"}]},
+        tasmota={"arrSmartplugs": [{"ip": "10.0.0.6", "idx": 1, "label": "Fan"}]},
+        octorelay={"r1": {"active": True, "label_text": "Light"}},
+        gpiocontrol={"gpio_configurations": [{"name": "Fan"}]},
+        usbrelaycontrol={"usbrelay_configurations": [{"name": "Lamp"}]},
+    )
+    groups = harvest(Plugins("psucontrol", "tplinksmartplug", "tasmota", "octorelay", "gpiocontrol",
+                             "usbrelaycontrol", "bettergrblsupport"), settings)
+    groups.append(octoprint_presets("http://printer.local/snap"))
+    expected = {
+        "psucontrol:psu": ("fa-solid fa-power-off", ["fa-solid fa-play", "fa-solid fa-power-off"]),
+        "tplinksmartplug:10.0.0.5": ("fa-solid fa-plug", ["fa-solid fa-play", "fa-solid fa-power-off"]),
+        "tasmota:10.0.0.6/1": ("fa-solid fa-plug", ["fa-solid fa-play", "fa-solid fa-power-off"]),
+        "octorelay:r1": ("fa-solid fa-toggle-on", ["fa-solid fa-play", "fa-solid fa-power-off"]),
+        "gpiocontrol:0": ("fa-solid fa-microchip", ["fa-solid fa-play", "fa-solid fa-power-off"]),
+        "usbrelaycontrol:0": ("fa-brands fa-usb", ["fa-solid fa-play", "fa-solid fa-power-off"]),
+        "bettergrblsupport:grbl": ("fa-solid fa-crosshairs", [
+            "fa-solid fa-house", "fa-solid fa-lock-open", "fa-solid fa-moon", "fa-solid fa-rotate-left"]),
+        "octoprint:connection": ("fa-solid fa-link", ["fa-solid fa-play", "fa-solid fa-power-off"]),
+        "octoprint:job": ("fa-solid fa-hourglass-half", [
+            "fa-solid fa-pause", "fa-solid fa-play", "fa-solid fa-stop"]),
+        "octoprint:printer": ("fa-solid fa-temperature-half", [
+            "fa-solid fa-house", "fa-solid fa-snowflake", "fa-solid fa-hand"]),
+        "octoprint:gcode": ("fa-solid fa-terminal", ["fa-solid fa-paper-plane"]),
+        "octoprint:event": ("fa-solid fa-bullhorn", ["fa-solid fa-bullhorn"]),
+        "octoprint:snapshot": ("fa-solid fa-camera", []),
+    }
+    seen = {}
+    for group in groups:
+        for preset in group["presets"]:
+            icons = [c["icon"] for c in preset["commands"]]
+            seen[preset["preset"]] = (preset["control"]["icon"], icons)
+            assert preset["control"]["icon"], preset["preset"]
+            assert all(icons), preset["preset"]
+    assert seen == expected
+
+
+def test_no_shared_icon_constant_remains_in_presets():
+    import octoprint_systemcommandeditor.presets as presets_module
+
+    assert not hasattr(presets_module, "ICON")
+
+
+def test_docker_webcam_preset_never_shows_the_sudo_note_even_when_sudo_fails():
+    # Docker runs with no sudo, so its note stays empty when sudo fails and its directory exists
+    group = webcam_presets(runner=webcam_runner(docker=True, sudo_ok=False), cameras_file=NO_CAMERAS)
+    docker = group["presets"][-1]
+    assert docker["available"] is True
+    assert docker["note"] == ""
 

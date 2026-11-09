@@ -46,6 +46,7 @@ from .presets import (
     octoprint_presets,
     sample_devices,
     system_switches,
+    webcam_presets,
 )
 from .status import check_devices, run_status
 
@@ -161,7 +162,7 @@ class SystemCommandEditorPlugin(
                 presets=detect(),
                 maintenance=detect_maintenance(self._maintenance_env()),
                 switches=system_switches(socket.gethostname()),
-                plugins=self._plugin_presets() + [octoprint_presets(self._snapshot_url())],
+                plugins=self._plugin_presets() + [webcam_presets(), octoprint_presets(self._snapshot_url())],
             )
 
     def _status(self, ids, live):
@@ -309,7 +310,7 @@ class SystemCommandEditorPlugin(
     def _add_ready_made(self, plugin_groups=None):
         # after maintenance, which is skipped once any custom command exists, and these commands are custom commands
         if plugin_groups is None:
-            plugin_groups = self._plugin_presets() + [octoprint_presets()]
+            plugin_groups = self._plugin_presets() + [webcam_presets(), octoprint_presets()]
         devices = self._settings.get(["devices"]) or []
         actions = self._settings.global_get(["system", "actions"]) or []
         added = []

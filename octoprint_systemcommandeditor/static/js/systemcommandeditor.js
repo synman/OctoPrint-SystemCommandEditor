@@ -693,13 +693,20 @@ $(function () {
             if (kept.length !== entries.length) owner.entries(kept);
         };
 
+        // a plugin row's label: only a preset that says available === false is undetected; a harvested preset has no
+        // available key, so the readout label rule (a missing key reads as not detected) must not apply to it
+        const pluginLabel = (preset) => {
+            if (preset.available === false) return preset.note || gettext("Not detected on this system");
+            return preset.note || "";
+        };
         // a plugin preset's row, labelled with its control's type
         const pluginRow = (preset) => _.extend(rowOf(preset, presentBy(preset.preset)), {
-            type: TYPE_LABELS[preset.control.type] ? TYPE_LABELS[preset.control.type]() : ""
+            type: TYPE_LABELS[preset.control.type] ? TYPE_LABELS[preset.control.type]() : "",
+            label: pluginLabel(preset)
         });
 
         // a plugin preset's control, then its commands at the end under a Plugin devices divider (made when missing);
-        // each command keeps its run call and role, and its group is the control's key
+        // each command keeps its run call or shell command, its role and icon, and its group is the control's key
         const addPlugin = (preset) => {
             const control = preset.control;
             const deviceId = keyFor(control.name, undefined, "control", controlTaken);
@@ -707,6 +714,7 @@ $(function () {
                 id: deviceId, type: control.type, name: control.name, icon: control.icon,
                 read: control.read, preset: preset.preset
             };
+            if (control.status) device.status = control.status;
             if (control.on_pattern) device.on_pattern = control.on_pattern;
             if (control.off_pattern) device.off_pattern = control.off_pattern;
             if (control.type === "link") device.url = control.url;
@@ -717,9 +725,14 @@ $(function () {
             commands.forEach((command) => {
                 const action = keyFor(`${preset.name} ${command.name}`, undefined, "command", (key) => owner.actionInUse(key));
                 const entry = {
-                    action: action, name: command.name, run: command.run, role: command.role,
+                    action: action, name: command.name, role: command.role,
                     group: deviceId, preset: preset.preset
                 };
+                // a shell line is the command; anything else is a run call. Never both.
+                if (command.command) entry.command = command.command;
+                else entry.run = command.run;
+                if (command.icon) entry.icon = command.icon;
+                if (command.async) entry.async = true;
                 if (command.confirm) entry.confirm = command.confirm;
                 owner.entries.push(entry);
             });

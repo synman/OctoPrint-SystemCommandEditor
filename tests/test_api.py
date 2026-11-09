@@ -16,6 +16,7 @@ from octoprint_systemcommandeditor import SystemCommandEditorPlugin  # noqa: E40
 from octoprint_systemcommandeditor import condition_effect, printer_state  # noqa: E402
 from octoprint_systemcommandeditor.presets import CATALOG, action_of, device_of, entry_of, maintenance  # noqa: E402
 from octoprint_systemcommandeditor.presets import octoprint_presets  # noqa: E402
+from octoprint_systemcommandeditor.presets import webcam_presets  # noqa: E402
 
 
 class FakeSettings:
@@ -180,13 +181,16 @@ def test_presets_command_returns_detected_list(monkeypatch):
     maintenance_listed = [{"action": "backup_now", "available": True, "sample": True, "note": ""}]
     monkeypatch.setattr(plugin_module, "detect", lambda: detected)
     monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: maintenance_listed)
+    webcam = {"plugin": "webcam", "name": "Webcam services", "presets": []}
+    monkeypatch.setattr(plugin_module, "webcam_presets", lambda: webcam)
     plugin = make_plugin()
     plugin._maintenance_env = lambda: {"octoprint": "x", "basedir": "b", "timelapse": "t", "logs": "l"}
     monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
     with request_context():
         body = plugin.on_api_command("presets", {}).get_json()
     assert body["presets"] == detected and body["maintenance"] == maintenance_listed
-    assert [group["plugin"] for group in body["plugins"]] == ["octoprint"]
+    # harvested groups, then the webcam services group, then OctoPrint's own
+    assert [group["plugin"] for group in body["plugins"]] == ["webcam", "octoprint"]
     # the host and OctoPrint switches, with the roles OctoPrint's own commands take on them, as first start uses
     assert body["switches"] == [
         {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server",
@@ -862,9 +866,9 @@ def test_first_start_adds_ready_made_switches_and_commands_after_maintenance(mon
     assert actions[4:] == [
         {"action": "divider", "name": "Plugin devices"},
         {"action": "printer_connection_connect", "name": "Connect", "run": {"printer": "connect"}, "role": "on",
-         "group": "printer_connection", "preset": "octoprint:connection"},
+         "icon": "fa-solid fa-play", "group": "printer_connection", "preset": "octoprint:connection"},
         {"action": "printer_connection_disconnect", "name": "Disconnect", "run": {"printer": "disconnect"},
-         "role": "off", "group": "printer_connection", "preset": "octoprint:connection"},
+         "role": "off", "icon": "fa-solid fa-power-off", "group": "printer_connection", "preset": "octoprint:connection"},
         {"action": "psu_control_on", "name": "On", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"},
          "role": "on", "group": "printer_power", "preset": "psucontrol:psu"},
         {"action": "psu_control_off", "name": "Off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"},
@@ -901,4 +905,71 @@ def test_first_start_never_adds_the_connection_twice_when_its_marker_is_already_
     assert [entry["action"] for entry in actions if entry.get("group") == "printer_connection"] == [
         "printer_connection_connect", "printer_connection_disconnect",
     ]
+
+
+def test_presets_answer_puts_the_webcam_group_between_harvested_groups_and_octoprint(monkeypatch):
+    allow(monkeypatch)
+    monkeypatch.setattr(plugin_module, "detect", lambda: [])
+    monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: [])
+    monkeypatch.setattr(plugin_module, "webcam_presets", lambda: {"plugin": "webcam", "name": "Webcam services",
+                                                                  "presets": []})
+    plugin = make_plugin()
+    plugin._maintenance_env = lambda: {"octoprint": "x", "basedir": "b", "timelapse": "t", "logs": "l"}
+    plugin._plugin_presets = lambda: [psu_group()]
+    with request_context():
+        body = plugin.on_api_command("presets", {}).get_json()
+    assert [group["plugin"] for group in body["plugins"]] == ["psucontrol", "webcam", "octoprint"]
+
+
+def webcam_one_up(command, timeout=10):
+    """Fake runner: only webcamd is installed, and sudo works."""
+    if command == "systemctl cat webcamd.service >/dev/null 2>&1" or command == "sudo -n true":
+        return 0, "", None
+    return 1, "", None
+
+
+def test_first_start_adds_only_the_available_webcam_switch_with_shell_commands(monkeypatch):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
+    group = webcam_presets(runner=webcam_one_up, cameras_file="/nonexistent/octoprint_cameras")
+    group["presets"] = [p for p in group["presets"] if p["preset"] in ("webcam:webcamd", "webcam:ustreamer")]
+    assert [p["available"] for p in group["presets"]] == [True, False]
+    plugin = make_plugin(core=SystemCommandEditorPlugin().get_settings_defaults()["core"])
+    plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: [], plugin_groups=[group])
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert [device["id"] for device in config["devices"]] == ["host", "octoprint", "webcam_webcamd"]
+    device = config["devices"][-1]
+    assert device["preset"] == "webcam:webcamd"
+    assert device["status"] == "systemctl is-active webcamd.service"
+    assert device["on_pattern"] == "^active$" and device["off_pattern"] == "^(inactive|failed)$"
+    actions = plugin._settings.config["system"]["actions"]
+    assert actions == [
+        {"action": "divider", "name": "Plugin devices"},
+        {"action": "webcam_webcamd_start", "name": "Start", "command": "sudo systemctl start webcamd", "role": "on",
+         "icon": "fa-solid fa-play", "group": "webcam_webcamd", "preset": "webcam:webcamd"},
+        {"action": "webcam_webcamd_stop", "name": "Stop", "command": "sudo systemctl stop webcamd", "role": "off",
+         "icon": "fa-solid fa-power-off", "group": "webcam_webcamd", "preset": "webcam:webcamd"},
+        {"action": "webcam_webcamd_restart", "name": "Restart", "command": "sudo systemctl restart webcamd",
+         "role": "restart", "icon": "fa-solid fa-rotate-right", "group": "webcam_webcamd", "preset": "webcam:webcamd"},
+    ]
+
+
+def test_first_start_default_groups_offer_the_webcam_group(monkeypatch):
+    # no groups passed: the default list must include the webcam group, so a real first start offers its switch
+    webcam = {"plugin": "webcam", "name": "Webcam services", "presets": [
+        {"preset": "webcam:webcamd", "name": "Webcam (webcamd)", "available": True, "note": "",
+         "control": {"type": "switch", "name": "Webcam (webcamd)", "icon": "fa-solid fa-video",
+                     "status": "systemctl is-active webcamd.service", "on_pattern": "^active$",
+                     "off_pattern": "^(inactive|failed)$"},
+         "commands": [{"name": "Start", "command": "sudo systemctl start webcamd", "role": "on",
+                       "icon": "fa-solid fa-play"}]}]}
+    monkeypatch.setattr(plugin_module, "webcam_presets", lambda: webcam)
+    monkeypatch.setattr(plugin_module, "octoprint_presets", lambda *args, **kwargs: {"plugin": "octoprint",
+                                                                                    "name": "OctoPrint",
+                                                                                    "presets": []})
+    plugin = make_plugin(core=SystemCommandEditorPlugin().get_settings_defaults()["core"])
+    plugin._plugin_presets = lambda: []
+    plugin._add_ready_made()
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert [device["id"] for device in config["devices"]] == ["webcam_webcamd"]
+    assert config["devices"][0]["status"] == "systemctl is-active webcamd.service"
 

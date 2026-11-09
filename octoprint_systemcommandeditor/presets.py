@@ -414,13 +414,19 @@ def mark_presets(devices, actions, maintenance_action_keys):
 # editor assigns both. Only label, ip, idx, name and active are read from a plugin's settings; never a credential.
 # Each source line cited is the one the reader relies on.
 
-ICON = "fa-solid fa-plug"
+# Role icons: a switch's on, off and restart commands carry these in the saved entries
+ON_ICON = "fa-solid fa-play"
+OFF_ICON = "fa-solid fa-power-off"
+RESTART_ICON = "fa-solid fa-rotate-right"
 
 
-def _switch(name, read, on_pattern, off_pattern, on_run, off_run):
-    control = {"type": "switch", "name": name, "icon": ICON, "read": read, "on_pattern": on_pattern,
+def _switch(name, read, on_pattern, off_pattern, on_run, off_run, icon):
+    control = {"type": "switch", "name": name, "icon": icon, "read": read, "on_pattern": on_pattern,
                "off_pattern": off_pattern}
-    commands = [{"name": "On", "run": on_run, "role": "on"}, {"name": "Off", "run": off_run, "role": "off"}]
+    commands = [
+        {"name": "On", "run": on_run, "role": "on", "icon": ON_ICON},
+        {"name": "Off", "run": off_run, "role": "off", "icon": OFF_ICON},
+    ]
     return control, commands
 
 
@@ -434,6 +440,7 @@ def _psucontrol(get):
         "^false$",
         {"plugin": "psucontrol", "helper": "turn_psu_on"},
         {"plugin": "psucontrol", "helper": "turn_psu_off"},
+        "fa-solid fa-power-off",
     )
     return [("psu", "PSU Control", control, commands)]
 
@@ -455,6 +462,7 @@ def _tplink(get):
             '"currentState": "off"',
             {"plugin": "tplinksmartplug", "helper": "turn_on", "args": args},
             {"plugin": "tplinksmartplug", "helper": "turn_off", "args": args},
+            "fa-solid fa-plug",
         )
         devices.append((ip, label, control, commands))
     return devices
@@ -478,6 +486,7 @@ def _tasmota(get):
             '"currentState": "off"',
             {"plugin": "tasmota", "method": "turn_on", "args": args},
             {"plugin": "tasmota", "method": "turn_off", "args": args},
+            "fa-solid fa-plug",
         )
         devices.append(("{}/{}".format(ip, plug.get("idx")), label, control, commands))
     return devices
@@ -500,12 +509,13 @@ def _octorelay(get):
             '"status": false',
             {"plugin": "octorelay", "api": "update", "data": {"subject": key, "target": True}},
             {"plugin": "octorelay", "api": "update", "data": {"subject": key, "target": False}},
+            "fa-solid fa-toggle-on",
         )
         devices.append((key, label, control, commands))
     return devices
 
 
-def _indexed_relays(get, plugin_id, setting, state_api, on_api, off_api, on_pattern, off_pattern):
+def _indexed_relays(get, plugin_id, setting, state_api, on_api, off_api, on_pattern, off_pattern, icon):
     # gpiocontrol.py:53 gpio_configurations and usbrelaycontrol.py:43 usbrelay_configurations: each entry has name;
     # the id is the list index (gpiocontrol.py:130). Commands answer through on_api_command (gpiocontrol.py:126-139,
     # usbrelaycontrol.py:132-144); the state is a JSON string, so the Response body parses to "on"/"off".
@@ -520,6 +530,7 @@ def _indexed_relays(get, plugin_id, setting, state_api, on_api, off_api, on_patt
             off_pattern,
             {"plugin": plugin_id, "api": on_api, "data": data},
             {"plugin": plugin_id, "api": off_api, "data": data},
+            icon,
         )
         devices.append((str(index), name, control, commands))
     return devices
@@ -527,7 +538,8 @@ def _indexed_relays(get, plugin_id, setting, state_api, on_api, off_api, on_patt
 
 def _gpiocontrol(get):
     return _indexed_relays(
-        get, "gpiocontrol", "gpio_configurations", "getGpioState", "turnGpioOn", "turnGpioOff", "^on$", "^off$"
+        get, "gpiocontrol", "gpio_configurations", "getGpioState", "turnGpioOn", "turnGpioOff", "^on$", "^off$",
+        "fa-solid fa-microchip",
     )
 
 
@@ -541,6 +553,7 @@ def _usbrelaycontrol(get):
         "turnUSBRelayOff",
         "^on$",
         "^off$",
+        "fa-brands fa-usb",
     )
 
 
@@ -548,15 +561,18 @@ def _bettergrblsupport(get):
     # __init__.py:1926-1934 __plugin_helpers__ sleep, unlock, reset, home, state; helper_state returns a dict (:1835),
     # so the state is read from its "state" key. One controller, so no inventory.
     grbl = "bettergrblsupport"
-    control = {"type": "action", "name": "Grbl", "icon": ICON, "read": {"plugin": grbl, "helper": "state", "field": "state"}}
+    control = {"type": "action", "name": "Grbl", "icon": "fa-solid fa-crosshairs",
+               "read": {"plugin": grbl, "helper": "state", "field": "state"}}
     commands = [
-        {"name": "Home", "run": {"plugin": grbl, "helper": "home"}, "role": "run"},
-        {"name": "Unlock", "run": {"plugin": grbl, "helper": "unlock"}, "role": "run"},
-        {"name": "Sleep", "run": {"plugin": grbl, "helper": "sleep"}, "role": "run"},
+        {"name": "Home", "run": {"plugin": grbl, "helper": "home"}, "role": "run", "icon": "fa-solid fa-house"},
+        {"name": "Unlock", "run": {"plugin": grbl, "helper": "unlock"}, "role": "run",
+         "icon": "fa-solid fa-lock-open"},
+        {"name": "Sleep", "run": {"plugin": grbl, "helper": "sleep"}, "role": "run", "icon": "fa-solid fa-moon"},
         {
             "name": "Reset",
             "run": {"plugin": grbl, "helper": "reset"},
             "role": "run",
+            "icon": "fa-solid fa-rotate-left",
             "confirm": "This sends a reset to the Grbl controller.",
         },
     ]
@@ -600,13 +616,13 @@ def octoprint_presets(snapshot_url=None):
 
     With a non-empty ``snapshot_url`` the group also offers a webcam snapshot link, last."""
     connection = {
-        "type": "switch", "name": "Printer connection", "icon": ICON, "read": {"printer": "state"},
+        "type": "switch", "name": "Printer connection", "icon": "fa-solid fa-link", "read": {"printer": "state"},
         "on_pattern": "^(Operational|Printing|Paused|Pausing|Resuming|Cancelling|Finishing)",
         "off_pattern": "^(Offline|Closed|Error)",
     }
     connection_commands = [
-        {"name": "Connect", "run": {"printer": "connect"}, "role": "on"},
-        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off"},
+        {"name": "Connect", "run": {"printer": "connect"}, "role": "on", "icon": ON_ICON},
+        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off", "icon": OFF_ICON},
     ]
 
     def action(name, icon, commands, read=None):
@@ -617,11 +633,12 @@ def octoprint_presets(snapshot_url=None):
 
     job = action(
         "Print job",
-        "fa-solid fa-print",
+        "fa-solid fa-hourglass-half",
         [
-            {"name": "Pause", "run": {"printer": "pause"}, "role": "run"},
-            {"name": "Resume", "run": {"printer": "resume"}, "role": "run"},
-            {"name": "Cancel", "run": {"printer": "cancel"}, "role": "run", "confirm": "Cancel the print?"},
+            {"name": "Pause", "run": {"printer": "pause"}, "role": "run", "icon": "fa-solid fa-pause"},
+            {"name": "Resume", "run": {"printer": "resume"}, "role": "run", "icon": "fa-solid fa-play"},
+            {"name": "Cancel", "run": {"printer": "cancel"}, "role": "run", "icon": "fa-solid fa-stop",
+             "confirm": "Cancel the print?"},
         ],
         read={"printer": "progress"},
     )
@@ -629,12 +646,13 @@ def octoprint_presets(snapshot_url=None):
         "Printer",
         "fa-solid fa-temperature-half",
         [
-            {"name": "Home", "run": {"printer": "home"}, "role": "run"},
-            {"name": "Cool down", "run": {"printer": "cool_down"}, "role": "run"},
+            {"name": "Home", "run": {"printer": "home"}, "role": "run", "icon": "fa-solid fa-house"},
+            {"name": "Cool down", "run": {"printer": "cool_down"}, "role": "run", "icon": "fa-solid fa-snowflake"},
             {
                 "name": "Emergency stop",
                 "run": {"printer": "emergency_stop"},
                 "role": "run",
+                "icon": "fa-solid fa-hand",
                 "confirm": "This sends M112, which halts the printer at once.",
             },
         ],
@@ -644,12 +662,13 @@ def octoprint_presets(snapshot_url=None):
         "Send G-code",
         "fa-solid fa-terminal",
         [{"name": "Send", "run": {"gcode": ["M117 Hello from System Commands"]}, "role": "run",
-          "confirm": "Send this G-code?"}],
+          "icon": "fa-solid fa-paper-plane", "confirm": "Send this G-code?"}],
     )
     event = action(
         "Custom event",
-        "fa-solid fa-bolt",
-        [{"name": "Fire", "run": {"event": "systemcommandeditor_custom", "payload": {}}, "role": "run"}],
+        "fa-solid fa-bullhorn",
+        [{"name": "Fire", "run": {"event": "systemcommandeditor_custom", "payload": {}}, "role": "run",
+          "icon": "fa-solid fa-bullhorn"}],
     )
     entries = [
         ("octoprint:connection", "Printer connection", (connection, connection_commands)),
@@ -666,6 +685,111 @@ def octoprint_presets(snapshot_url=None):
         snapshot = {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera", "url": snapshot_url}
         presets.append({"preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": snapshot, "commands": []})
     return {"plugin": "octoprint", "name": "OctoPrint", "presets": presets}
+
+
+# Webcam services: systemd units and Docker's s6 mjpg-streamer, each a switch. A unit's detect runs `systemctl cat`;
+# a camera listed in the octoprint_deploy file is a unit named for it, treated the same way.
+WEBCAM_SERVICES = (
+    ("webcamd", "Webcam (webcamd)"),
+    ("camera-streamer", "Webcams (camera-streamer)"),
+    ("ffmpeg_hls", "HLS stream (ffmpeg_hls)"),
+    ("mjpg-streamer", "Webcam (mjpg-streamer)"),
+    ("mjpg_streamer", "Webcam (mjpg_streamer)"),
+    ("ustreamer", "Webcam (ustreamer)"),
+    ("crowsnest", "Webcams (crowsnest)"),
+    ("motion", "Webcam (motion)"),
+    ("go2rtc", "Streams (go2rtc)"),
+    ("mediamtx", "Streams (MediaMTX)"),
+    ("rtsp-simple-server", "Streams (rtsp-simple-server)"),
+)
+WEBCAM_CAMERAS_FILE = "/etc/octoprint_cameras"
+# camera-streamer's own unit is a oneshot that stays active, so its state is read from the units it starts
+CAMERA_STREAMER_STATUS = (
+    "systemctl is-active camera-streamer-libcamera.service 'camera-streamer-usb@*.service' "
+    "| grep -qx active && echo active || echo inactive"
+)
+DOCKER_WEBCAM = "/var/run/s6/services/mjpg-streamer"
+
+
+def _deploy_cameras(path):
+    """The camera names in the octoprint_deploy file: the word after ``camera:`` on each such line."""
+    try:
+        with open(path) as handle:
+            lines = handle.read().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    names = []
+    for line in lines:
+        if not line.startswith("camera:"):
+            continue
+        words = line[len("camera:"):].split()
+        if words:
+            names.append(words[0])
+    return names
+
+
+def _unit_preset(unit, name):
+    quoted = shlex.quote(unit)
+    status = (
+        CAMERA_STREAMER_STATUS if unit == "camera-streamer"
+        else "systemctl is-active {}.service".format(quoted)
+    )
+    return {
+        "preset": "webcam:{}".format(unit),
+        "name": name,
+        "control": {"type": "switch", "name": name, "icon": "fa-solid fa-video", "status": status,
+                    "on_pattern": "^active$", "off_pattern": "^(inactive|failed)$"},
+        "commands": [
+            {"name": "Start", "command": "sudo systemctl start {}".format(quoted), "role": "on", "icon": ON_ICON},
+            {"name": "Stop", "command": "sudo systemctl stop {}".format(quoted), "role": "off", "icon": OFF_ICON},
+            {"name": "Restart", "command": "sudo systemctl restart {}".format(quoted), "role": "restart",
+             "icon": RESTART_ICON},
+        ],
+    }
+
+
+def _docker_preset():
+    return {
+        "preset": "webcam:docker-mjpg-streamer",
+        "name": "Webcam (OctoPrint Docker)",
+        "control": {"type": "switch", "name": "Webcam (OctoPrint Docker)", "icon": "fa-solid fa-video",
+                    "status": "s6-svstat {}".format(DOCKER_WEBCAM), "on_pattern": "^up", "off_pattern": "^down"},
+        "commands": [
+            {"name": "Start", "command": "s6-svc -u {}".format(DOCKER_WEBCAM), "role": "on", "icon": ON_ICON},
+            {"name": "Stop", "command": "s6-svc -d {}".format(DOCKER_WEBCAM), "role": "off", "icon": OFF_ICON},
+            {"name": "Restart", "command": "s6-svc -r {}".format(DOCKER_WEBCAM), "role": "restart",
+             "icon": RESTART_ICON},
+        ],
+    }
+
+
+def webcam_presets(runner=run_status, timeout=10, cameras_file=WEBCAM_CAMERAS_FILE):
+    """The webcam services group: one switch per systemd unit, then each deploy camera, then Docker's streamer.
+
+    Each preset carries ``available`` (its detect exited 0) and ``note`` (passwordless sudo is needed and missing).
+    The detects and the one sudo check run in parallel.
+    """
+    units = list(WEBCAM_SERVICES)
+    taken = {unit for unit, _name in units}
+    for camera in _deploy_cameras(cameras_file):
+        if camera not in taken:
+            taken.add(camera)
+            units.append((camera, "Webcam ({})".format(camera)))
+    presets = [_unit_preset(unit, name) for unit, name in units]
+    detects = ["systemctl cat {}.service >/dev/null 2>&1".format(shlex.quote(unit)) for unit, _name in units]
+    detects.append("test -d {}".format(DOCKER_WEBCAM))
+    presets.append(_docker_preset())
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(runner, command, timeout) for command in detects]
+        sudo = pool.submit(runner, SUDO_CHECK, timeout) if units else None
+        results = [future.result() for future in futures]
+        sudo_ok = sudo.result()[0] == 0 if sudo is not None else True
+    for index, preset in enumerate(presets):
+        exit_code = results[index][0]
+        preset["available"] = exit_code == 0
+        needs_sudo = index < len(units)
+        preset["note"] = "Needs passwordless sudo" if preset["available"] and needs_sudo and not sudo_ok else ""
+    return {"plugin": "webcam", "name": "Webcam services", "presets": presets}
 
 
 # The picker's own rules, in Python: add_plugin_preset does what its addPlugin does, and key_for gives the key keyFor gives.
@@ -707,6 +831,8 @@ def add_plugin_preset(preset, devices, actions):
               "preset": preset["preset"]}
     if control.get("read") is not None:
         device["read"] = control["read"]
+    if control.get("status"):
+        device["status"] = control["status"]
     if control.get("on_pattern"):
         device["on_pattern"] = control["on_pattern"]
     if control.get("off_pattern"):
@@ -724,11 +850,19 @@ def add_plugin_preset(preset, devices, actions):
         entry = {
             "action": key_for("{} {}".format(preset["name"], command["name"]), "command", _entry_keys(actions)),
             "name": command["name"],
-            "run": command["run"],
             "role": command["role"],
             "group": device_id,
             "preset": preset["preset"],
         }
+        # a shell line goes in as the command; anything else is a run call. Never both.
+        if command.get("command"):
+            entry["command"] = command["command"]
+        else:
+            entry["run"] = command["run"]
+        if command.get("icon"):
+            entry["icon"] = command["icon"]
+        if command.get("async"):
+            entry["async"] = True
         if command.get("confirm"):
             entry["confirm"] = command["confirm"]
         actions.append(entry)
@@ -736,7 +870,10 @@ def add_plugin_preset(preset, devices, actions):
 
 
 def first_start_presets(groups):
-    """The presets first start adds: the OctoPrint connection, then every switch preset of the other groups."""
+    """The presets first start adds: the OctoPrint connection, then every switch preset of the other groups.
+
+    A preset whose ``available`` is False is left out; a preset with no ``available`` key counts as available.
+    """
     connection = [
         preset
         for group in groups if group.get("plugin") == "octoprint"
@@ -747,4 +884,4 @@ def first_start_presets(groups):
         for group in groups if group.get("plugin") != "octoprint"
         for preset in group["presets"] if preset["control"]["type"] == "switch"
     ]
-    return connection + switches
+    return [preset for preset in connection + switches if preset.get("available") is not False]

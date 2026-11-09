@@ -79,9 +79,23 @@ PLUGINS = [
          "control": {"type": "action", "name": "Grbl", "icon": "fa-solid fa-ruler",
                      "read": {"plugin": "bettergrblsupport", "api": "state", "field": "state"}},
          "commands": [
-             {"name": "Home", "run": {"plugin": "bettergrblsupport", "api": "home"}, "role": "run"},
+             {"name": "Home", "run": {"plugin": "bettergrblsupport", "api": "home"}, "role": "run",
+              "icon": "fa-solid fa-house"},
              {"name": "Reset", "run": {"plugin": "bettergrblsupport", "api": "reset"}, "role": "run",
               "confirm": "Reset the controller?"}]}]},
+    # a webcam services group: one preset not detected (available false), a switch with a status and shell commands
+    {"plugin": "webcam", "name": "Webcam services", "presets": [
+        {"preset": "webcam:ustreamer", "name": "Webcam (ustreamer)", "available": False, "note": "",
+         "control": {"type": "switch", "name": "Webcam (ustreamer)", "icon": "fa-solid fa-video",
+                     "status": "systemctl is-active ustreamer.service",
+                     "on_pattern": "^active$", "off_pattern": "^(inactive|failed)$"},
+         "commands": [
+             {"name": "Start", "command": "sudo systemctl start ustreamer", "role": "on",
+              "icon": "fa-solid fa-play"},
+             {"name": "Stop", "command": "sudo systemctl stop ustreamer", "role": "off",
+              "icon": "fa-solid fa-power-off"},
+             {"name": "Restart", "command": "sudo systemctl restart ustreamer", "role": "restart",
+              "icon": "fa-solid fa-rotate-right"}]}]},
     # the OctoPrint group, as octoprint_presets() builds it with a snapshot URL: a webcam link, and Send G-code
     {"plugin": "octoprint", "name": "OctoPrint", "presets": [
         {"preset": "octoprint:snapshot", "name": "Webcam snapshot",
@@ -742,8 +756,8 @@ def run_probe():
         plugin_rows = page.locator("#sce-presets .sce-plugin-row")
         psu_row = plugin_rows.filter(has_text="PSU Control")
         grbl_row = plugin_rows.filter(has_text="Grbl")
-        check("the presets picker shows a Plugin devices section with all four plugin presets unticked",
-              page.locator("#sce-presets h4", has_text="Plugin devices").count() == 1 and plugin_rows.count() == 4
+        check("the presets picker shows a Plugin devices section with all five plugin presets unticked",
+              page.locator("#sce-presets h4", has_text="Plugin devices").count() == 1 and plugin_rows.count() == 5
               and not psu_row.locator("input").is_checked() and not grbl_row.locator("input").is_checked(),
               "rows=%d" % plugin_rows.count())
         psu_row.locator("input").check()
@@ -914,6 +928,55 @@ def run_probe():
               "done_disabled=%s" % done_disabled)
         page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
         wait_hidden("#sce-editor")
+
+        # Phase D5: an undetected webcam preset shows its label and stays tickable; PSU and Grbl (no available key)
+        # show no label; ticking Grbl and the webcam preset posts Grbl's icon-bearing command and the webcam switch
+        open_settings()
+        page.get_by_role("button", name="Add from presets").click()
+        wait_visible("#sce-presets .sce-plugin-row")
+        webcam_row = page.locator("#sce-presets .sce-plugin-row", has_text="Webcam (ustreamer)")
+        psu_row = page.locator("#sce-presets .sce-plugin-row", has_text="PSU Control")
+        grbl_row = page.locator("#sce-presets .sce-plugin-row", has_text="Grbl")
+        webcam_text = webcam_row.inner_text()
+        check("an undetected webcam preset shows Not detected on this system and stays tickable",
+              "Not detected on this system" in webcam_text and webcam_row.locator("input").is_enabled(),
+              "text=%r" % webcam_text)
+        check("the PSU Control and Grbl rows show no label",
+              "Not detected" not in psu_row.inner_text() and "Not detected" not in grbl_row.inner_text())
+        grbl_row.locator("input").check()
+        webcam_row.locator("input").check()
+        page.locator("#sce-presets .modal-footer .btn-primary").click()
+        wait_hidden("#sce-presets")
+        body = save_settings()
+        if body is None:
+            check("save after Grbl and webcam picks posts the settings", False, "no POST captured")
+        else:
+            plugin = (body.get("plugins") or {}).get("systemcommandeditor") or {}
+            devices = plugin.get("devices") or []
+            saved = list((body.get("system") or {}).get("actions") or [])
+            home = next((a for a in saved if a.get("action") == "grbl_home"), {})
+            check("ticking Grbl and saving posts its Home run with the icon the fixture gives it",
+                  home.get("run") == {"plugin": "bettergrblsupport", "api": "home"}
+                  and home.get("icon") == "fa-solid fa-house", json.dumps(home))
+            web = [d for d in devices if d.get("preset") == "webcam:ustreamer"]
+            check("ticking the webcam preset posts a switch with its status and marker",
+                  len(web) == 1 and web[0].get("type") == "switch"
+                  and web[0].get("status") == "systemctl is-active ustreamer.service", json.dumps(web))
+            web_cmds = [a for a in saved if a.get("preset") == "webcam:ustreamer"]
+            check("the webcam preset's three entries carry command, role and icon, and no run",
+                  len(web_cmds) == 3 and all("run" not in a and a.get("command") and a.get("role")
+                                             and a.get("icon") for a in web_cmds)
+                  and [a.get("role") for a in web_cmds] == ["on", "off", "restart"],
+                  json.dumps(web_cmds))
+        # put the picker back as it was: untick both and save
+        open_settings()
+        page.get_by_role("button", name="Add from presets").click()
+        wait_visible("#sce-presets .sce-plugin-row")
+        page.locator("#sce-presets .sce-plugin-row", has_text="Grbl").locator("input").uncheck()
+        page.locator("#sce-presets .sce-plugin-row", has_text="Webcam (ustreamer)").locator("input").uncheck()
+        page.locator("#sce-presets .modal-footer .btn-primary").click()
+        wait_hidden("#sce-presets")
+        save_settings()
 
         # Phase E: an action control; its command takes the Run role, and the role list is just Run
         open_settings()   # the settings pane closes on each successful save
