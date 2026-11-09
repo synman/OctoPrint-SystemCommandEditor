@@ -153,10 +153,25 @@
     <a href="javascript:void(0)" data-bind="click: showServerSettings">{{ _('Server') }}</a>.
 </p>
 <div class="sce-list sce-core-list">
-    <!-- ko foreach: coreEntries -->
+    <!-- ko foreach: coreRows -->
     <!-- ko if: $data.heading -->
     <div class="sce-row sce-section"><span class="sce-section-label" data-bind="text: $data.heading"></span></div>
     <!-- /ko -->
+    <!-- ko if: $data.kind === 'control' -->
+    <div class="sce-row sce-control">
+        <span class="sce-icon"><i data-bind="css: ($data.device.icon || '') + ($data.device.icon_invert ? ' sce-icon-inverted' : ''), style: $data.device.icon_invert ? { backgroundColor: $data.device.icon_color || '' } : { color: $data.device.icon_color || '' }"></i></span>
+        <span class="sce-text">
+            <span class="sce-name" data-bind="text: $data.device.name"></span>
+            <span class="muted" data-bind="text: $root.typeLabel($data.device.type)"></span>
+        </span>
+        <span class="btn-group sce-buttons">
+            <!-- ko foreach: $data.buttons -->
+            <button type="button" class="btn btn-mini" data-bind="attr: { title: $data.name, 'data-core-action': $data.action }, click: $root.editCoreAction"><i data-bind="css: $data.icon"></i></button>
+            <!-- /ko -->
+        </span>
+    </div>
+    <!-- /ko -->
+    <!-- ko if: $data.kind === 'command' -->
     <div class="sce-row sce-command">
         <span class="sce-icon"><i data-bind="css: ($data.icon || '') + ($data.icon_invert ? ' sce-icon-inverted' : ''), style: $data.icon_invert ? { backgroundColor: $data.icon_color || '' } : { color: $data.icon_color || '' }"></i></span>
         <span class="sce-text"><span class="sce-name" data-bind="text: $data.name"></span></span>
@@ -164,9 +179,10 @@
             <span class="label label-info sce-member" data-bind="visible: $root.badgeFor($data), text: $root.badgeFor($data)"></span>
         </span>
         <span class="btn-group sce-buttons">
-            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit icon, heading, control and condition')|edq }}" data-bind="click: $root.editCore"><i class="fa-solid fa-pencil"></i></button>
+            <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit icon, heading, control and condition')|edq }}" data-bind="attr: { 'data-core-action': $data.action }, click: $root.editCoreAction"><i class="fa-solid fa-pencil"></i></button>
         </span>
     </div>
+    <!-- /ko -->
     <!-- /ko -->
 </div>
 <!-- /ko -->
@@ -180,9 +196,9 @@
         {{ _('You have no custom controls yet. Add one with the buttons below.') }}
     </div>
 
-    <!-- ko foreach: entries -->
+    <!-- ko foreach: customRows -->
     <div class="sce-row" draggable="true"
-         data-bind="css: { 'sce-section': $root.isSection($data), 'sce-command': !$root.isSection($data), 'sce-drag-over': $root.dragOver() === $index() },
+         data-bind="css: { 'sce-section': $root.isSection($data), 'sce-command': !$root.isSection($data) && !$root.isControl($data), 'sce-control': $root.isControl($data), 'sce-drag-over': $root.dragOver() === $data },
                     event: { dragstart: $root.dragStart, dragenter: $root.dragEnterRow, dragover: $root.dragOverRow, dragleave: $root.dragLeave, drop: $root.dropRow, dragend: $root.dragEnd }">
         <span class="sce-handle" title="{{ _('Drag to move')|edq }}"><i class="fa-solid fa-grip-vertical"></i></span>
 
@@ -198,6 +214,19 @@
         <span class="sce-text">
             <span class="sce-name" data-bind="text: $data.name"></span>
             <span class="muted">{{ _('Readout') }}</span>
+        </span>
+        <!-- /ko -->
+
+        <!-- ko if: $root.isControl($data) -->
+        <span class="sce-icon"><i data-bind="css: (($root.controlOf($data) || {}).icon || '') + (($root.controlOf($data) || {}).icon_invert ? ' sce-icon-inverted' : ''), style: ($root.controlOf($data) || {}).icon_invert ? { backgroundColor: ($root.controlOf($data) || {}).icon_color || '' } : { color: ($root.controlOf($data) || {}).icon_color || '' }"></i></span>
+        <span class="sce-text">
+            <span class="sce-name" data-bind="text: $root.controlOf($data).name"></span>
+            <span class="muted" data-bind="text: $root.typeLabel($root.controlOf($data).type)"></span>
+        </span>
+        <span class="btn-group sce-buttons">
+            <!-- ko foreach: $root.buttonsOf($data) -->
+            <button type="button" class="btn btn-mini" data-bind="attr: { title: $data.name, 'data-action': $data.action }, click: $root.editMemberAction"><i data-bind="css: $data.icon"></i></button>
+            <!-- /ko -->
         </span>
         <!-- /ko -->
 
@@ -217,16 +246,18 @@
         <!-- /ko -->
 
         <span class="btn-group sce-buttons">
-            <button type="button" class="btn btn-mini" title="{{ _('Move up')|edq }}" data-bind="click: $root.moveUp, enable: $index() > 0"><i class="fa-solid fa-arrow-up"></i></button>
-            <button type="button" class="btn btn-mini" title="{{ _('Move down')|edq }}" data-bind="click: $root.moveDown, enable: $index() < $root.entries().length - 1"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" class="btn btn-mini" title="{{ _('Move up')|edq }}" data-bind="click: $root.moveUp, enable: $root.canMove($data, -1)"><i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" class="btn btn-mini" title="{{ _('Move down')|edq }}" data-bind="click: $root.moveDown, enable: $root.canMove($data, 1)"><i class="fa-solid fa-arrow-down"></i></button>
             <!-- ko if: $root.isPlacement($data) -->
             <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit this readout in Controls')|edq }}" data-bind="click: $root.editPlacement"><i class="fa-solid fa-pencil"></i></button>
             <button type="button" class="btn btn-mini btn-danger" title="{{ _('Remove from the System menu; the control stays in Controls')|edq }}" data-bind="click: $root.removePlacement"><i class="fa-solid fa-trash"></i></button>
             <!-- /ko -->
             <!-- ko ifnot: $root.isPlacement($data) -->
+            <!-- ko ifnot: $root.isControl($data) -->
             <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit')|edq }}" data-bind="click: $root.edit"><i class="fa-solid fa-pencil"></i></button>
             <!-- ko if: $root.isCommand($data) -->
             <button type="button" class="btn btn-mini" title="{{ _('Duplicate')|edq }}" data-bind="click: $root.duplicate"><i class="fa-solid fa-copy"></i></button>
+            <!-- /ko -->
             <!-- /ko -->
             <button type="button" class="btn btn-mini btn-danger" title="{{ _('Delete')|edq }}" data-bind="click: $root.remove"><i class="fa-solid fa-trash"></i></button>
             <!-- /ko -->

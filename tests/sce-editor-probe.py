@@ -135,12 +135,9 @@ def command_row(name):
 
 
 def core_row(action):
-    index = page.evaluate(
-        """(action) => [...document.querySelectorAll('#settings_plugin_systemcommandeditor .sce-core-list .sce-command')]
-            .findIndex(row => ko.dataFor(row).action === action)""", action)
-    if index < 0:
-        return None
-    return page.locator("#settings_plugin_systemcommandeditor .sce-core-list .sce-command").nth(index)
+    """The edit button of a built-in command: on its control row when grouped, on its own row when not."""
+    button = page.locator("#settings_plugin_systemcommandeditor .sce-core-list button[data-core-action='%s']" % action)
+    return button.first if button.count() else None
 
 
 def open_settings():
@@ -181,8 +178,23 @@ def add_switch_device(name):
     modal_done("#sce-device-editor")
 
 
+def custom_button(name):
+    """The edit button of a custom command on its control row, when the command is grouped; else None."""
+    action = page.evaluate(
+        """(name) => { const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            const e = vm.entries().find(x => x.action !== 'divider' && x.name === name); return e ? e.action : null; }""",
+        name)
+    if action is None:
+        return None
+    button = page.locator("#settings_plugin_systemcommandeditor button[data-action='%s']" % action)
+    return button.first if button.count() else None
+
+
 def edit_command(name, device=None, role=None):
-    command_row(name).locator('button[title="Edit"]').click()
+    button = custom_button(name)
+    if button is None:
+        button = command_row(name).locator('button[title="Edit"]')
+    button.click()
     wait_visible("#sce-editor")
     if device is not None:
         page.select_option("#sce-editor-device", label=device)
@@ -192,16 +204,16 @@ def edit_command(name, device=None, role=None):
 
 def core_actions():
     return page.evaluate(
-        """() => [...document.querySelectorAll('#settings_plugin_systemcommandeditor .sce-core-list .sce-command')]
-            .map(row => ko.dataFor(row).action)""")
+        """() => [...document.querySelectorAll('#settings_plugin_systemcommandeditor .sce-core-list [data-core-action]')]
+            .map(el => el.getAttribute('data-core-action'))""")
 
 
 def core_edit(action, device, role, condition=False):
-    row = core_row(action)
-    if row is None:
+    button = core_row(action)
+    if button is None:
         print("core actions on this rig: %s" % core_actions(), flush=True)
         return False
-    row.locator('button[title^="Edit icon"]').click()
+    button.click()
     wait_visible("#sce-editor")
     page.select_option("#sce-editor-device", label=device)
     page.select_option("#sce-editor .sce-role", value=role)
@@ -344,9 +356,12 @@ def run_probe():
         modal_done("#sce-editor")
         edit_command("Laser off", device="Laser", role="off")
         modal_done("#sce-editor")
-        check("badges show the device and role on both commands",
-              command_row("Laser on").locator(".sce-member", has_text="Laser · On").count() == 1 and
-              command_row("Laser off").locator(".sce-member", has_text="Laser · Off").count() == 1)
+        laser_control = page.locator("#settings_plugin_systemcommandeditor .sce-control", has_text="Laser")
+        check("the Laser control draws one row with a button per command, and the commands have no rows of their own",
+              laser_control.count() == 1 and
+              laser_control.locator("button[data-action='laser_on_cmd'][title='Laser on']").count() == 1 and
+              laser_control.locator("button[data-action='laser_off_cmd'][title='Laser off']").count() == 1 and
+              command_row("Laser on").count() == 0 and command_row("Laser off").count() == 0)
 
         # a second On on the same switch is blocked, and Done re-enables once it is Off
         edit_command("Laser off", role="on")
@@ -387,6 +402,10 @@ def run_probe():
               summary == "Grayed out while the printer is Printing.", "summary=%r" % summary)
         modal_done("#sce-editor")
 
+        # moving the Laser control's row moves both its commands together, above the Webcam divider
+        laser_control.locator('button[title="Move up"]').click()
+        page.wait_for_timeout(200)
+
         # 5b. the first save carries a condition on the one command this probe set, and none on core entries
         body = save_settings()
         if body is None:
@@ -412,6 +431,9 @@ def run_probe():
             core = plugin.get("core") or {}
             check("first save carries no condition on any core entry",
                   not [k for k, v in core.items() if isinstance(v, dict) and v.get("when")], json.dumps(core))
+            order = [a.get("action") for a in (body.get("system") or {}).get("actions") or []]
+            check("moving the Laser control moves both its commands together, above the Webcam divider",
+                  order[:3] == ["laser_on_cmd", "laser_off_cmd", "divider"], json.dumps(order))
 
         # Phase B: a device holding built-in commands; core editor for reboot and shutdown; a link and a readout
         open_settings()
@@ -419,6 +441,14 @@ def run_probe():
         core_ok = core_edit("reboot", "Power", "restart", condition=True)
         core_ok = core_edit("shutdown", "Power", "off") and core_ok
         check("core editor opened for reboot and shutdown", core_ok)
+        power = page.locator("#settings_plugin_systemcommandeditor .sce-core-list .sce-control", has_text="Power")
+        check("Built-in controls draws one Power row with one button per member and no member rows",
+              power.count() == 1 and power.locator("button[data-core-action='reboot']").count() == 1 and
+              power.locator("button[data-core-action='shutdown']").count() == 1 and
+              page.locator("#settings_plugin_systemcommandeditor .sce-core-list .sce-command",
+                           has_text="Reboot system").count() == 0 and
+              page.locator("#settings_plugin_systemcommandeditor .sce-core-list .sce-command",
+                           has_text="Shutdown system").count() == 0)
 
         # 2. kind conflict: a device holding built-in commands cannot take a custom command
         edit_command("Laser off", device="Power")
@@ -574,8 +604,11 @@ def run_probe():
         check("Done enables once the command has the Run role",
               not page.locator("#sce-editor .modal-footer .btn-primary").is_disabled())
         modal_done("#sce-editor")
-        run_badge = command_row("Back up OctoPrint now").locator(".sce-member", has_text="Upkeep · Run").count()
-        check("the command's badge reads Upkeep · Run", run_badge == 1, "badges=%s" % run_badge)
+        upkeep = page.locator("#settings_plugin_systemcommandeditor .sce-control", has_text="Upkeep")
+        check("the Upkeep control's row holds the command's run button, and the command has no row of its own",
+              upkeep.locator("button[data-action='backup_now'][title='Back up OctoPrint now']").count() == 1 and
+              command_row("Back up OctoPrint now").count() == 0,
+              "control buttons=%s" % upkeep.locator("button[data-action]").count())
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)

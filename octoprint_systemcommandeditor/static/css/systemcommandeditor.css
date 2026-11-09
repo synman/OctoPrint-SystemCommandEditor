@@ -89,6 +89,11 @@
   flex: 0 0 auto;
 }
 
+/* a control row: its member buttons sit on one line, like the menu's row */
+#settings_plugin_systemcommandeditor .sce-control .sce-buttons {
+  white-space: nowrap;
+}
+
 #settings_plugin_systemcommandeditor .sce-add-buttons {
   text-align: center;
   margin-top: 10px;

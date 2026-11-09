@@ -179,9 +179,30 @@
         return buttons;
     }
 
+    // a list as move units: each entry alone, except a control's members, which form one unit at the place of its
+    // first member, in list order. deviceIdOf(entry) gives the control id an entry drives, or "" for none.
+    function units(entries, deviceIdOf) {
+        const out = [];
+        const byId = new Map();
+        (entries || []).forEach(function (entry) {
+            const id = deviceIdOf(entry) || "";
+            if (!id) {
+                out.push([entry]);
+                return;
+            }
+            if (!byId.has(id)) {
+                byId.set(id, []);
+                out.push(byId.get(id));
+            }
+            byId.get(id).push(entry);
+        });
+        return out;
+    }
+
     const SceModel = {
         BUTTON_ICON: BUTTON_ICON,
         rowButtons: rowButtons,
+        units: units,
         placementOf: placementOf,
         printerState: printerState,
         statusKind: statusKind,

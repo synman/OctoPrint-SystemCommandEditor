@@ -769,7 +769,7 @@ $(function () {
         // --- readout placements: a custom-list entry that names a readout by device; it runs nothing -------------
 
         self.isPlacement = (entry) => !isSection(entry) && !!entry.device;
-        self.isCommand = (entry) => !isSection(entry) && !entry.device;
+        self.isCommand = (entry) => !isSection(entry) && !entry.device && !self.isControl(entry);
         self.deviceOf = (entry) => _.find(self.devices(), (d) => d.id === entry.device);
         self.isPlaced = (device) => _.some(self.entries(), (entry) => entry.device === device.id);
 
@@ -841,6 +841,76 @@ $(function () {
                 if (entry.role === "choice" && entry.value) role += ": " + entry.value;
             }
             return device.name + role;
+        };
+
+        // --- control rows: a control's members draw as one row, where its first member sits -----------------------
+
+        // the control (device) an entry drives, when it names one that exists; sections and readouts drive none
+        self.controlOf = (entry) => {
+            if (!entry || isSection(entry) || !entry.group) return undefined;
+            return _.find(self.devices(), (d) => d.id === entry.group);
+        };
+        self.isControl = (entry) => !!self.controlOf(entry);
+        const controlIdOf = (entry) => {
+            const device = self.controlOf(entry);
+            return device ? device.id : "";
+        };
+
+        // the buttons of one control's row: every member, in menu order, titled with its name. A member the menu
+        // does not draw (no role, or a second On or Off) still gets a button, so every command stays reachable.
+        const controlButtons = (deviceId, table, isCore) => {
+            const m = isCore ? window.SceModel.members(deviceId, {}, table) : window.SceModel.members(deviceId, table, {});
+            const buttons = window.SceModel.rowButtons(m);
+            const shown = buttons.map((b) => b.action);
+            _.each(table, (entry, action) => {
+                if (entry && entry.group === deviceId && shown.indexOf(action) < 0) {
+                    buttons.push({kind: "plain", action: action, icon: entry.icon || "fa-solid fa-ellipsis"});
+                }
+            });
+            return buttons.map((b) => _.extend({}, b, {name: (table[b.action] || {}).name || b.action}));
+        };
+
+        // the custom list: one row per move unit (see SceModel.units); a control's row is its first member
+        self.customRows = ko.pureComputed(() => window.SceModel.units(self.entries(), controlIdOf).map((unit) => unit[0]));
+        self.buttonsOf = (entry) => {
+            const device = self.controlOf(entry);
+            if (!device) return [];
+            const table = {};
+            self.entries().forEach((e) => {
+                if (!isSection(e)) table[e.action] = e;
+            });
+            return controlButtons(device.id, table, false);
+        };
+        self.editMemberAction = (button) => {
+            const entry = _.find(self.entries(), (e) => !isSection(e) && e.action === button.action);
+            if (entry) self.edit(entry);
+        };
+
+        // the built-in list: a row per ungrouped command, and one row per control drawn at its first member
+        self.coreRows = ko.pureComputed(() => {
+            const entries = self.coreEntries();
+            const table = {};
+            entries.forEach((e) => {
+                table[e.action] = e;
+            });
+            const drawn = {};
+            const rows = [];
+            entries.forEach((entry) => {
+                const device = self.controlOf(entry);
+                if (!device) {
+                    rows.push(_.extend({kind: "command"}, entry));
+                    return;
+                }
+                if (drawn[device.id]) return;
+                drawn[device.id] = true;
+                rows.push({kind: "control", device: device, heading: entry.heading || "",
+                    buttons: controlButtons(device.id, table, true)});
+            });
+            return rows;
+        });
+        self.editCoreAction = (button) => {
+            const entry = _.find(self.coreEntries(), (e) => e.action === button.action);
+            if (entry) self.editCore(entry);
         };
 
         self.typeLabel = (type) => self.deviceEditor.typeLabel(type);
@@ -972,6 +1042,13 @@ $(function () {
                 setField(plugin, "devices", self.devices().map(dropEmpty));
                 self._devicesJson = devicesSnapshot();
             }
+            // a control's members are saved together, right after its first member's place
+            const current = self.entries();
+            const kept = flatten(unitsNow());
+            if (kept.some((entry, i) => entry !== current[i])) {
+                self.entries(kept);
+                self._dirty = true;
+            }
             if (!self._dirty) return;
             self.settingsViewModel.system_actions(self.entries().map(clean));
             self._dirty = false;
@@ -1060,9 +1137,12 @@ $(function () {
             self.changed();
         };
 
+        // a control's row removes all its member commands, not the control itself (that stays in Controls)
         self.remove = (entry) => {
+            const device = self.controlOf(entry);
+            const gone = device ? self.entries().filter((e) => !isSection(e) && e.group === device.id) : [entry];
             const doRemove = () => {
-                self.entries.remove(entry);
+                self.entries(self.entries().filter((e) => gone.indexOf(e) < 0));
                 self.changed();
             };
             if (isSection(entry)) {
@@ -1071,64 +1151,87 @@ $(function () {
             }
             showConfirmationDialog({
                 message: _.sprintf(gettext('This removes the command "%(name)s".'), {
-                    name: _.escape(entry.name)
+                    name: _.escape(device ? device.name : entry.name)
                 }),
                 onproceed: doRemove
             });
         };
 
-        const move = (from, to) => {
-            if (from === to || to < 0 || to >= self.entries().length) return;
-            const list = self.entries().slice();
-            const [entry] = list.splice(from, 1);
-            list.splice(to, 0, entry);
-            self.entries(list);
+        // a control's members move as one unit (SceModel.units); any other entry is a unit of its own
+        const unitsNow = () => window.SceModel.units(self.entries(), controlIdOf);
+        const flatten = (units) => units.reduce((all, unit) => all.concat(unit), []);
+        const unitIndex = (units, entry) => units.findIndex((unit) => unit.indexOf(entry) >= 0);
+
+        self.canMove = (entry, step) => {
+            const units = unitsNow();
+            const i = unitIndex(units, entry);
+            return i >= 0 && i + step >= 0 && i + step < units.length;
+        };
+
+        const moveUnit = (entry, step) => {
+            const units = unitsNow();
+            const i = unitIndex(units, entry);
+            const j = i + step;
+            if (i < 0 || j < 0 || j >= units.length) return;
+            const other = units[j];
+            units[j] = units[i];
+            units[i] = other;
+            self.entries(flatten(units));
             self.changed();
         };
 
-        self.moveUp = (entry) => move(self.entries.indexOf(entry), self.entries.indexOf(entry) - 1);
-        self.moveDown = (entry) => move(self.entries.indexOf(entry), self.entries.indexOf(entry) + 1);
+        self.moveUp = (entry) => moveUnit(entry, -1);
+        self.moveDown = (entry) => moveUnit(entry, 1);
 
         // --- drag and drop ----------------------------------------------------------------------------------------
 
-        self._dragFrom = undefined;
+        self._dragging = undefined;
         self.dragOver = ko.observable(undefined);
 
         self.dragStart = (entry, event) => {
-            self._dragFrom = self.entries.indexOf(entry);
+            self._dragging = entry;
             const dt = event.originalEvent && event.originalEvent.dataTransfer;
             if (dt) {
                 dt.effectAllowed = "move";
-                dt.setData("text/plain", String(self._dragFrom));
+                dt.setData("text/plain", entry.action || "");
             }
             return true;
         };
         // OctoPrint before 1.10 opens its file upload overlay on any dragenter that reaches the document,
         // which covers the list and cancels the drag. Keep our own drags from reaching it.
         self.dragEnterRow = (entry, event) => {
-            if (self._dragFrom !== undefined) event.stopPropagation();
+            if (self._dragging !== undefined) event.stopPropagation();
             return true;
         };
         self.dragOverRow = (entry, event) => {
-            if (self._dragFrom === undefined) return true;
+            if (self._dragging === undefined) return true;
             event.preventDefault();
-            self.dragOver(self.entries.indexOf(entry));
+            self.dragOver(entry);
             return false;
         };
         self.dragLeave = () => {
             self.dragOver(undefined);
             return true;
         };
+        // the dragged unit takes the target unit's place, as a single-entry move does
         self.dropRow = (entry, event) => {
             event.preventDefault();
-            if (self._dragFrom !== undefined) {
-                move(self._dragFrom, self.entries.indexOf(entry));
+            if (self._dragging !== undefined) {
+                const units = unitsNow();
+                const from = unitIndex(units, self._dragging);
+                const to = unitIndex(units, entry);
+                if (from >= 0 && to >= 0 && from !== to) {
+                    const [unit] = units.splice(from, 1);
+                    units.splice(to, 0, unit);
+                    self.entries(flatten(units));
+                    self.changed();
+                }
             }
             self.dragEnd();
             return false;
         };
         self.dragEnd = () => {
-            self._dragFrom = undefined;
+            self._dragging = undefined;
             self.dragOver(undefined);
             return true;
         };

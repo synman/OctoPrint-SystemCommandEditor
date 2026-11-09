@@ -100,6 +100,20 @@ test("members: no matches gives empty members", () => {
     assert.deepStrictEqual(m, {source: null, on: null, off: null, restart: null, safe_restart: null, choices: [], runs: []});
 });
 
+// ---- units: a control's members form one unit at its first member's place; anything else stands alone ----
+test("units: a control's members gather at its first member, in list order", () => {
+    const idOf = (e) => e.group || "";
+    const list = [{action: "a", group: "x"}, {action: "div"}, {action: "b", group: "y"}, {action: "c", group: "x"}];
+    const got = M.units(list, idOf).map((u) => u.map((e) => e.action));
+    assert.deepStrictEqual(got, [["a", "c"], ["div"], ["b"]]);
+});
+
+test("units: ungrouped entries are each a unit of their own, and empty input gives none", () => {
+    const idOf = () => "";
+    assert.deepStrictEqual(M.units([{action: "p"}, {action: "q"}], idOf).map((u) => u.length), [1, 1]);
+    assert.deepStrictEqual(M.units(undefined, idOf), []);
+});
+
 // ---- the first entry with a role wins (a later entry must not overwrite it) ----
 test("members: the first entry with role on wins", () => {
     const entries = {d_on_first: {group: "d", role: "on"}, d_on_second: {group: "d", role: "on"}};
