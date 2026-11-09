@@ -28,6 +28,7 @@ API_ENTRY_KEYS = (
     "fresh_credentials",
     "ignore",
     "icon",
+    "icon_color",
     "group",
     "role",
     "value",
@@ -58,10 +59,10 @@ class SystemCommandEditorPlugin(
         # decoration only; what the entries run stays in OctoPrint's server.commands.
         return {
             "core": {
-                "shutdown": {"icon": "fa-solid fa-power-off", "heading": "System", "group": "", "role": "", "value": "", "when": None},
-                "reboot": {"icon": "fa-solid fa-rotate-right", "heading": "", "group": "", "role": "", "value": "", "when": None},
-                "restart": {"icon": "fa-solid fa-arrows-rotate", "heading": "OctoPrint", "group": "", "role": "", "value": "", "when": None},
-                "restart_safe": {"icon": "fa-solid fa-shield-halved", "heading": "", "group": "", "role": "", "value": "", "when": None},
+                "shutdown": {"icon": "fa-solid fa-power-off", "heading": "System", "icon_color": "", "group": "", "role": "", "value": "", "when": None},
+                "reboot": {"icon": "fa-solid fa-rotate-right", "heading": "", "icon_color": "", "group": "", "role": "", "value": "", "when": None},
+                "restart": {"icon": "fa-solid fa-arrows-rotate", "heading": "OctoPrint", "icon_color": "", "group": "", "role": "", "value": "", "when": None},
+                "restart_safe": {"icon": "fa-solid fa-shield-halved", "heading": "", "icon_color": "", "group": "", "role": "", "value": "", "when": None},
             },
             "devices": [],
             "success_toast": False,

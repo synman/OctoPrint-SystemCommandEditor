@@ -172,8 +172,10 @@ $(function () {
         return $("<" + tag + ">").addClass([ADDED].concat(classes || []).join(" "));
     }
 
-    function icon(cls) {
-        return node("i", [cls || BLANK, "fa-fw", "sce-menu-icon"]);
+    function icon(cls, color) {
+        const i = node("i", [cls || BLANK, "fa-fw", "sce-menu-icon"]);
+        if (/^#[0-9a-f]{6}$/i.test(color || "")) i.css("color", color);
+        return i;
     }
 
     // core-rendered elements we change are marked COND so the next render can undo exactly that
@@ -467,7 +469,7 @@ $(function () {
             if (rowCond.effect === "disable") li.addClass("disabled");
 
             const row = node("a", ["sce-device-row"]).attr("href", "javascript:void(0)");
-            row.append(icon(d.icon), node("span", ["sce-device-name"]).text(d.name));
+            row.append(icon(d.icon, d.icon_color), node("span", ["sce-device-name"]).text(d.name));
             // a re-check keeps the last known state on screen, so opening the menu does not reflow it
             if (self._checking[d.id] && kind === "pending") {
                 row.append(node("span", ["sce-state"]).append(node("i", ["fa-solid fa-spinner fa-spin", "fa-fw"])));
@@ -517,7 +519,7 @@ $(function () {
             li.addClass("dropdown-submenu");
             const row = node("a", ["sce-device-row"]).attr("href", "javascript:void(0)");
             row.append(
-                icon(d.icon),
+                icon(d.icon, d.icon_color),
                 node("span", ["sce-device-name"]).text(d.name),
                 node("span", ["sce-state"]).text(current ? current.name : (shown ? "Unknown" : ""))
             );
@@ -579,7 +581,7 @@ $(function () {
                     if (c && c.heading) {
                         node("li", ["dropdown-header"]).text(c.heading).insertBefore(el);
                     }
-                    icon(c && c.icon).prependTo(el.children("a").first());
+                    icon(c && c.icon, c && c.icon_color).prependTo(el.children("a").first());
                 } else if (action === "divider") {
                     // core puts its own divider before the custom commands; don't draw a second line
                     if (el.prevAll("li").first().hasClass("divider")) el.addClass(DOUBLED);
@@ -588,7 +590,7 @@ $(function () {
                     }
                     return;
                 } else {
-                    icon((entries[action] || {}).icon).prependTo(el.children("a").first());
+                    icon((entries[action] || {}).icon, (entries[action] || {}).icon_color).prependTo(el.children("a").first());
                 }
 
                 const group = self._groupOf(source, action);
@@ -635,7 +637,7 @@ $(function () {
                         ? node("span", ["sce-state"]).append(node("i", ["fa-solid fa-spinner fa-spin", "fa-fw"]))
                         : node("span", ["sce-state"]).text(
                             kind === "nostatus" || kind === "pending" ? "" : kind === "unknown" ? "Unknown" : String(kind));
-                    li.append(icon(d.icon), node("span", ["sce-device-name"]).text(d.name), text);
+                    li.append(icon(d.icon, d.icon_color), node("span", ["sce-device-name"]).text(d.name), text);
                     place(d.section, li);
                     return;
                 }
@@ -647,7 +649,7 @@ $(function () {
                         a.addClass("disabled");
                         a.attr("title", cond.reason);
                     }
-                    a.append(icon(d.icon), node("span", ["sce-device-name"]).text(d.name));
+                    a.append(icon(d.icon, d.icon_color), node("span", ["sce-device-name"]).text(d.name));
                     a.on("click", (ev) => {
                         ev.stopPropagation();
                         if (a.hasClass("disabled")) ev.preventDefault();

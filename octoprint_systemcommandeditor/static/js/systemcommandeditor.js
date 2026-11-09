@@ -70,6 +70,12 @@ $(function () {
         return s;
     }
 
+    // the color input needs a valid color; an empty icon color shows as gray there and stays empty until picked
+    const colorPick = (color) => ko.pureComputed({
+        read: () => color() || "#888888",
+        write: (value) => color(value)
+    });
+
     const slugify = (text) =>
         (text || "")
             .toLowerCase()
@@ -84,7 +90,7 @@ $(function () {
         _.each(entry, (value, key) => {
             if (key === "action") {
                 result[key] = value;
-            } else if (["name", "confirm", "icon", "group", "role", "value"].includes(key) && !value) {
+            } else if (["name", "confirm", "icon", "icon_color", "group", "role", "value"].includes(key) && !value) {
                 // empty, leave out
             } else if (FLAGS.includes(key) && !value) {
                 // false, leave out
@@ -175,6 +181,8 @@ $(function () {
         self.action = ko.observable("");
         self.command = ko.observable("");
         self.icon = ko.observable("");
+        self.iconColor = ko.observable("");
+        self.iconColorPick = colorPick(self.iconColor);
         self.iconSuggest = iconSuggest(self.icon);
         self.useConfirm = ko.observable(false);
         self.confirmMessage = ko.observable("");
@@ -299,7 +307,8 @@ $(function () {
         self.toEntry = () => {
             if (self.isCore()) {
                 return _.extend(
-                    {action: self.action(), name: self.name(), icon: self.icon().trim(), heading: self.heading().trim()},
+                    {action: self.action(), name: self.name(), icon: self.icon().trim(), icon_color: self.iconColor(),
+                     heading: self.heading().trim()},
                     deviceFields()
                 );
             }
@@ -311,6 +320,7 @@ $(function () {
                 name: self.name().trim(),
                 command: self.command().trim(),
                 icon: self.icon().trim(),
+                icon_color: self.iconColor(),
                 confirm: self.useConfirm() ? self.confirmMessage().trim() || gettext("Are you sure?") : "",
                 async: self.async(),
                 fresh_credentials: self.freshCredentials(),
@@ -349,6 +359,7 @@ $(function () {
             self.action(entry.action && entry.action !== DIVIDER ? entry.action : "");
             self.command(entry.command || "");
             self.icon(entry.icon || "");
+            self.iconColor(entry.icon_color || "");
             self.useConfirm(!!entry.confirm);
             self.confirmMessage(entry.confirm || "");
             self.async(!!entry.async);
@@ -398,6 +409,8 @@ $(function () {
         self.name = ko.observable("");
         self.identifier = ko.observable("");
         self.icon = ko.observable("");
+        self.iconColor = ko.observable("");
+        self.iconColorPick = colorPick(self.iconColor);
         self.iconSuggest = iconSuggest(self.icon);
         self.status = ko.observable("");
         self.onPattern = ko.observable("");
@@ -463,7 +476,8 @@ $(function () {
                 id: self.identifier().trim(),
                 type: type,
                 name: self.name().trim(),
-                icon: self.icon().trim()
+                icon: self.icon().trim(),
+                icon_color: self.iconColor()
             };
             if (type !== "link") device.status = self.status().trim();
             if (type === "switch") {
@@ -490,6 +504,7 @@ $(function () {
             self.identifier(device.id || "");
             self.type(device.type || "switch");
             self.icon(device.icon || "");
+            self.iconColor(device.icon_color || "");
             self.status(device.status || "");
             self.onPattern(device.on_pattern || "");
             self.offPattern(device.off_pattern || "");
@@ -636,7 +651,7 @@ $(function () {
         self.coreEntries = ko.pureComputed(() => {
             const settings = self.coreSettings();
             return _.filter(self.systemViewModel.systemActions(), (item) => item.actionSource === "core").map((item) =>
-                _.extend({action: item.action, name: item.name, icon: "", heading: ""}, settings[item.action] || {})
+                _.extend({action: item.action, name: item.name, icon: "", icon_color: "", heading: ""}, settings[item.action] || {})
             );
         });
         self.editCore = (entry) => {
@@ -644,6 +659,7 @@ $(function () {
                 const settings = _.extend({}, self.coreSettings());
                 settings[edited.action] = {
                     icon: edited.icon,
+                    icon_color: edited.icon_color,
                     heading: edited.heading,
                     group: edited.group,
                     role: edited.role,
@@ -797,6 +813,7 @@ $(function () {
                 _.each(self.coreSettings(), (value, action) => {
                     if (core[action]) {
                         setField(core[action], "icon", value.icon || "");
+                        setField(core[action], "icon_color", value.icon_color || "");
                         setField(core[action], "heading", value.heading || "");
                         setField(core[action], "group", value.group || "");
                         setField(core[action], "role", value.role || "");

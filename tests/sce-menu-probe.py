@@ -26,7 +26,8 @@ DEVICES = [
      "on_pattern": "ON", "off_pattern": "OFF", "section": "Machine"},
     {"id": "res", "type": "selector", "name": "Resolution", "icon": "fa-solid fa-ruler", "status": "res-state",
      "section": "Machine"},
-    {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "disk-state",
+    {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "icon_color": "#ff0000",
+     "status": "disk-state",
      "section": "Machine"},
     {"id": "cam", "type": "link", "name": "Camera", "icon": "fa-solid fa-video", "url": "http://example.test/cam",
      "section": "Machine"},
@@ -506,6 +507,14 @@ def run_probe():
         heading = page.evaluate(STATUS_HEADING)
         check("one Status heading exists and the upt row follows it after a re-render",
               heading["heads"] == 1 and heading["rowFollows"], json.dumps(heading))
+
+        # T. an icon color set on a device colors its icon; one without a color keeps the menu's own
+        colors = page.evaluate("""() => ({
+            disk: getComputedStyle(document.querySelector('li.sce-device[data-device-id="disk"] i.sce-menu-icon')).color,
+            diskInline: document.querySelector('li.sce-device[data-device-id="disk"] i.sce-menu-icon').style.color,
+            laserInline: document.querySelector('li.sce-device[data-device-id="laser"] i.sce-menu-icon').style.color})""")
+        check("a device's icon color colors its icon, and others keep the menu's color",
+              colors["disk"] == "rgb(255, 0, 0)" and colors["laserInline"] == "", json.dumps(colors))
 
         # P. live updates are off by default: an open menu sends no further status checks
         open_menu()

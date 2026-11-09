@@ -242,6 +242,18 @@ def icon_picker_checks():
           "input=%r" % icon.input_value())
     check("Escape keeps the modal open", visible("#sce-editor"))
 
+    # per-icon color: picking a color tints the preview and sets icon_color; the clear button empties it
+    page.evaluate("""() => { const i = document.querySelector('#sce-editor .sce-icon-color input[type=color]');
+        i.value = '#00ff00'; i.dispatchEvent(new Event('change', {bubbles: true})); }""")
+    picked = page.evaluate("""() => ({
+        color: ko.dataFor(document.querySelector('#sce-editor-icon')).iconColor(),
+        preview: getComputedStyle(document.querySelector('#sce-editor .sce-icon-input .add-on i')).color})""")
+    check("picking an icon color sets it and tints the preview",
+          picked["color"] == "#00ff00" and picked["preview"] == "rgb(0, 255, 0)", json.dumps(picked))
+    page.locator("#sce-editor .sce-icon-color-clear").click()
+    cleared = page.evaluate("() => ko.dataFor(document.querySelector('#sce-editor-icon')).iconColor()")
+    check("the no-color button clears the icon color", cleared == "", "color=%r" % cleared)
+
     page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
     wait_hidden("#sce-editor")
 

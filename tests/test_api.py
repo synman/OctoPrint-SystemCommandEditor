@@ -168,7 +168,7 @@ def test_load_sample_presets_keeps_existing_devices():
 def test_get_returns_entries_and_core_commands(monkeypatch):
     allow(monkeypatch)
     actions = [
-        {"action": "a", "name": "A", "command": "echo a", "secret_field": "x", "when": "yes"},
+        {"action": "a", "name": "A", "command": "echo a", "secret_field": "x", "when": "yes", "icon_color": "#ff0000"},
         {"action": "divider"},
         {"name": "no action"},
         {"action": "b", "name": "B", "command": "echo b", "group": "g", "role": "choice", "value": "v"},
@@ -195,7 +195,7 @@ def test_get_returns_entries_and_core_commands(monkeypatch):
     assert body["devices"] == [{"id": "d", "type": "switch"}]
     assert body["core"] == {"shutdown": {"icon": "i"}}
     assert body["entries"] == {
-        "a": {"action": "a", "name": "A", "command": "echo a", "when": "yes"},
+        "a": {"action": "a", "name": "A", "command": "echo a", "when": "yes", "icon_color": "#ff0000"},
         "b": {"action": "b", "name": "B", "command": "echo b", "group": "g", "role": "choice", "value": "v"},
     }
     assert body["core_commands"] == {
