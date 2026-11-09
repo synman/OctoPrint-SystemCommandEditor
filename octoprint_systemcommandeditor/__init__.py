@@ -7,6 +7,7 @@ __license__ = "GNU Affero General Public License http://www.gnu.org/licenses/agp
 import copy
 import io
 import os
+import sys
 import threading
 import time
 
@@ -17,7 +18,7 @@ import octoprint.plugin
 from octoprint.access.permissions import Permissions
 
 from .convert import command_count, convert
-from .presets import detect, sample_devices
+from .presets import detect, detect_maintenance, entry_of, sample_devices
 from .status import check_devices
 
 API_ENTRY_KEYS = (
@@ -86,18 +87,41 @@ class SystemCommandEditorPlugin(
             entries = self._action_entries() + self._core_entries()
             return flask.jsonify(results=check_devices(devices, entries, data["ids"]))
         if command == "presets":
-            return flask.jsonify(presets=detect())
+            return flask.jsonify(presets=detect(), maintenance=detect_maintenance(self._maintenance_env()))
 
     def on_after_startup(self):
         if self._settings.get_boolean(["presets_loaded"]):
             return
         threading.Thread(target=self._load_sample_presets, daemon=True).start()
 
-    def _load_sample_presets(self, detector=detect):
+    def _maintenance_env(self):
+        import octoprint.settings
+
+        getter = getattr(self._settings, "getBaseFolder", None) or octoprint.settings.settings().getBaseFolder
+        return {
+            "octoprint": os.path.join(os.path.dirname(sys.executable), "octoprint"),
+            "basedir": getter("base"),
+            "timelapse": getter("timelapse"),
+            "logs": getter("logs"),
+        }
+
+    def _load_sample_presets(self, detector=detect, maintenance_detector=None):
         if not (self._settings.get(["devices"]) or []):
             added = sample_devices(detector())
             self._settings.set(["devices"], added)
             self._logger.info("Added sample devices: %s", [device["id"] for device in added])
+        if maintenance_detector is None:
+            def maintenance_detector():
+                return detect_maintenance(self._maintenance_env())
+        actions = self._settings.global_get(["system", "actions"]) or []
+        if not any(item.get("action") != "divider" for item in actions):
+            samples = [
+                entry_of(preset) for preset in maintenance_detector() if preset["sample"] and preset["available"]
+            ]
+            if samples:
+                divider = {"action": "divider", "name": "Maintenance"}
+                self._settings.global_set(["system", "actions"], actions + [divider] + samples)
+                self._logger.info("Added maintenance commands: %s", [entry["action"] for entry in samples])
         self._settings.set(["presets_loaded"], True)
         self._settings.save()
 

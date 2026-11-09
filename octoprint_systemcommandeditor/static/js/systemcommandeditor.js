@@ -544,32 +544,52 @@ $(function () {
         };
     }
 
-    // "Add from presets": asks the server which readouts this system offers, and adds the ticked ones as devices
+    // "Add from presets": asks the server which readouts and maintenance commands this system offers. The ticked
+    // readouts become devices; the ticked maintenance commands become entries under a Maintenance divider.
     function PresetPicker(owner) {
         const self = this;
 
+        // a system.actions entry for a maintenance command, built the way the server's entry_of builds it
+        const entryOf = (preset) => {
+            const entry = {action: preset.action, name: preset.name, command: preset.command, icon: preset.icon};
+            if (preset.confirm) entry.confirm = preset.confirm;
+            if (preset.async) entry.async = true;
+            return entry;
+        };
+
         self.loading = ko.observable(false);
         self.failed = ko.observable(false);
-        self.rows = ko.observableArray([]);
-        self.canAdd = ko.pureComputed(() => self.rows().some((row) => row.checkable && row.checked()));
+        self.readouts = ko.observableArray([]);
+        self.maintenance = ko.observableArray([]);
+        self.canAdd = ko.pureComputed(() =>
+            self.readouts().some((row) => row.checkable && row.checked()) ||
+            self.maintenance().some((row) => row.checkable && row.checked())
+        );
+
+        // a row starts ticked when this system offers it as a sample and it is not already present
+        const rowOf = (item, added) => ({
+            item: item,
+            added: added,
+            checkable: !added && !!item.available,
+            checked: ko.observable(added || (!!item.sample && !!item.available)),
+            note: item.note || ""
+        });
 
         self.open = () => {
             const existing = owner.devices().map((device) => device.id);
-            self.rows([]);
+            self.readouts([]);
+            self.maintenance([]);
             self.failed(false);
             self.loading(true);
             owner.presetDialog.modal("show");
             OctoPrint.simpleApiCommand("systemcommandeditor", "presets", {})
                 .done((response) => {
-                    self.rows(((response && response.presets) || []).map((preset) => {
-                        const added = existing.includes(preset.id);
-                        return {
-                            preset: preset,
-                            added: added,
-                            checkable: !added && !!preset.available,
-                            checked: ko.observable(added)
-                        };
-                    }));
+                    self.readouts(((response && response.presets) || []).map((preset) =>
+                        rowOf(preset, existing.includes(preset.id))
+                    ));
+                    self.maintenance(((response && response.maintenance) || []).map((preset) =>
+                        rowOf(preset, owner.actionInUse(preset.action))
+                    ));
                 })
                 .fail(() => self.failed(true))
                 .always(() => self.loading(false));
@@ -577,14 +597,14 @@ $(function () {
 
         self.label = (row) => {
             if (row.added) return gettext("Added");
-            if (!row.preset.available) return gettext("Not available on this system");
+            if (!row.item.available) return gettext("Not available on this system");
             return "";
         };
 
         self.add = () => {
-            self.rows().forEach((row) => {
+            self.readouts().forEach((row) => {
                 if (!row.checkable || !row.checked()) return;
-                const preset = row.preset;
+                const preset = row.item;
                 owner.devices.push({
                     id: preset.id,
                     type: preset.type,
@@ -594,6 +614,16 @@ $(function () {
                     section: preset.section
                 });
             });
+            const picked = self.maintenance()
+                .filter((row) => row.checkable && row.checked())
+                .map((row) => entryOf(row.item));
+            if (picked.length) {
+                if (!owner.dividerNames().includes("Maintenance")) {
+                    owner.entries.push({action: DIVIDER, name: "Maintenance"});
+                }
+                picked.forEach((entry) => owner.entries.push(entry));
+                owner.changed();
+            }
             owner.presetDialog.modal("hide");
         };
 

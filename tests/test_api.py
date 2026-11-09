@@ -11,7 +11,7 @@ from octoprint.access.permissions import Permissions  # noqa: E402
 
 import octoprint_systemcommandeditor as plugin_module  # noqa: E402
 from octoprint_systemcommandeditor import SystemCommandEditorPlugin  # noqa: E402
-from octoprint_systemcommandeditor.presets import CATALOG, device_of  # noqa: E402
+from octoprint_systemcommandeditor.presets import CATALOG, device_of, entry_of, maintenance  # noqa: E402
 
 
 class FakeSettings:
@@ -40,6 +40,13 @@ class FakeSettings:
     def set(self, path, value):
         self.config["plugins"]["systemcommandeditor"][path[0]] = value
         self.calls.append(("set", path[0], value))
+
+    def global_set(self, path, value):
+        node = self.config
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+        node[path[-1]] = value
+        self.calls.append(("global_set", list(path), value))
 
     def save(self):
         self.calls.append(("save",))
@@ -115,11 +122,14 @@ def test_settings_default_presets_loaded_off():
 def test_presets_command_returns_detected_list(monkeypatch):
     allow(monkeypatch)
     detected = [{"id": "disk", "available": True, "value": "5G free"}]
+    maintenance_listed = [{"action": "backup_now", "available": True, "sample": True, "note": ""}]
     monkeypatch.setattr(plugin_module, "detect", lambda: detected)
+    monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: maintenance_listed)
     plugin = make_plugin()
+    plugin._maintenance_env = lambda: {"octoprint": "x", "basedir": "b", "timelapse": "t", "logs": "l"}
     with request_context():
         body = plugin.on_api_command("presets", {}).get_json()
-    assert body == {"presets": detected}
+    assert body == {"presets": detected, "maintenance": maintenance_listed}
 
 
 def test_startup_loads_presets_in_background_until_done(monkeypatch):
@@ -149,7 +159,7 @@ def test_load_sample_presets_fills_empty_devices_and_marks_done():
         {**device_of(CATALOG[7]), "sample": False, "available": True, "value": "-50 dBm"},
     ]
     plugin = make_plugin()
-    plugin._load_sample_presets(detector=lambda: detected)
+    plugin._load_sample_presets(detector=lambda: detected, maintenance_detector=lambda: [])
     devices = plugin._settings.config["plugins"]["systemcommandeditor"]["devices"]
     assert devices == [device_of(CATALOG[0])]
     assert ("set", "presets_loaded", True) in plugin._settings.calls
@@ -159,7 +169,7 @@ def test_load_sample_presets_fills_empty_devices_and_marks_done():
 def test_load_sample_presets_keeps_existing_devices():
     existing = [{"id": "mine", "type": "switch"}]
     plugin = make_plugin(devices=existing)
-    plugin._load_sample_presets(detector=lambda: [])
+    plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: [])
     assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == existing
     assert ("set", "presets_loaded", True) in plugin._settings.calls
     assert plugin._settings.calls[-1] == ("save",)
@@ -230,3 +240,40 @@ def test_command_status_without_status_device(monkeypatch):
 
 def test_api_is_declared_protected():
     assert make_plugin().is_api_protected() is True
+
+
+MAINTENANCE_ENV = {"octoprint": "/opt/octo/bin/octoprint", "basedir": "/b", "timelapse": "/t", "logs": "/l"}
+
+
+def maintenance_listing(exit_by_action):
+    """What detect_maintenance returns for the fake outcomes: each action available unless its exit is nonzero."""
+    listed = []
+    for preset in maintenance(MAINTENANCE_ENV):
+        exit_code = exit_by_action.get(preset["action"], 0)
+        listed.append({**{k: preset[k] for k in ("action", "name", "icon", "command", "confirm", "async", "sample")},
+                       "available": exit_code == 0, "note": ""})
+    return listed
+
+
+def test_load_sample_presets_adds_maintenance_divider_when_no_custom_command():
+    plugin = make_plugin(system_actions=[{"action": "divider", "name": "Webcam"}])
+    plugin._load_sample_presets(
+        detector=lambda: [],
+        maintenance_detector=lambda: maintenance_listing({"webcam_restart": 1}),
+    )
+    actions = plugin._settings.config["system"]["actions"]
+    backup = [preset for preset in maintenance(MAINTENANCE_ENV) if preset["action"] == "backup_now"][0]
+    assert actions == [
+        {"action": "divider", "name": "Webcam"},
+        {"action": "divider", "name": "Maintenance"},
+        entry_of(backup),
+    ]
+    assert ("save",) == plugin._settings.calls[-1]
+
+
+def test_load_sample_presets_adds_no_maintenance_when_a_custom_command_exists():
+    existing = [{"action": "laser_on_cmd", "name": "Laser on", "command": "echo on"}]
+    plugin = make_plugin(system_actions=existing)
+    plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: maintenance_listing({}))
+    assert plugin._settings.config["system"]["actions"] == existing
+    assert not [call for call in plugin._settings.calls if call[0] == "global_set"]

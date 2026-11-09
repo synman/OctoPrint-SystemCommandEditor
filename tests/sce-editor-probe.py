@@ -41,6 +41,19 @@ PRESETS = [
      "status": "df -h", "section": "Status", "sample": True, "available": True, "value": "18 GB"},
 ]
 
+# maintenance answer: backup is a sample and available, webcam is available with a sudo note, clock is unavailable
+MAINTENANCE = [
+    {"action": "backup_now", "name": "Back up OctoPrint now", "icon": "fa-solid fa-box-archive",
+     "command": "octoprint --basedir /home/pi/.octoprint plugins backup:backup", "confirm": "", "async": True,
+     "sample": True, "available": True, "note": ""},
+    {"action": "webcam_restart", "name": "Restart the webcam", "icon": "fa-solid fa-video",
+     "command": "sudo systemctl restart camera-streamer", "confirm": "", "async": False,
+     "sample": False, "available": True, "note": "Needs passwordless sudo"},
+    {"action": "sync_clock", "name": "Sync the clock", "icon": "fa-solid fa-clock-rotate-left",
+     "command": "sudo chronyc makestep", "confirm": "", "async": False,
+     "sample": False, "available": False, "note": ""},
+]
+
 FIXTURE_ACTIONS = [
     {"action": "divider", "name": "Webcam"},
     {"action": "laser_on_cmd", "name": "Laser on", "command": "echo on", "icon": "fa-solid fa-lightbulb"},
@@ -90,7 +103,8 @@ def handle_presets(route, request):
     if body.get("command") != "presets":
         route.continue_()
         return
-    route.fulfill(status=200, content_type="application/json", body=json.dumps({"presets": PRESETS}))
+    route.fulfill(status=200, content_type="application/json",
+                  body=json.dumps({"presets": PRESETS, "maintenance": MAINTENANCE}))
 
 
 def handle_commands(route, request):
@@ -477,8 +491,8 @@ def run_probe():
         open_settings()
         page.get_by_role("button", name="Add from presets").click()
         wait_visible("#sce-presets .sce-preset-row")
-        rows = page.locator("#sce-presets .sce-preset-row")
-        check("presets modal lists three rows", rows.count() == 3, "rows=%d" % rows.count())
+        rows = page.locator("#sce-presets [data-group=readouts] .sce-preset-row")
+        check("presets modal lists three readout rows", rows.count() == 3, "rows=%d" % rows.count())
         cpu = rows.filter(has_text="CPU temperature")
         throttle = rows.filter(has_text="Throttling")
         disk_row = rows.filter(has_text="Disk free")
@@ -488,7 +502,19 @@ def run_probe():
         check("disk is disabled and checked with Added",
               disk_row.locator("input").is_disabled() and disk_row.locator("input").is_checked() and
               disk_row.filter(has_text="Added").count() == 1)
+        check("cpu readout starts ticked", cpu.locator("input").is_checked())
         cpu.locator("input").check()
+        mrows = page.locator("#sce-presets [data-group=maintenance] .sce-preset-row")
+        check("presets modal lists three maintenance rows", mrows.count() == 3, "rows=%d" % mrows.count())
+        backup = mrows.filter(has_text="Back up OctoPrint now")
+        webcam = mrows.filter(has_text="Restart the webcam")
+        clock = mrows.filter(has_text="Sync the clock")
+        check("backup sample starts ticked and enabled",
+              backup.locator("input").is_checked() and backup.locator("input").is_enabled())
+        check("webcam shows the sudo note and starts unticked",
+              webcam.filter(has_text="Needs passwordless sudo").count() == 1 and not webcam.locator("input").is_checked())
+        check("clock is disabled with Not available on this system",
+              clock.locator("input").is_disabled() and clock.filter(has_text="Not available on this system").count() == 1)
         page.locator("#sce-presets .modal-footer .btn-primary").click()
         wait_hidden("#sce-presets")
         body = save_settings()
@@ -503,6 +529,12 @@ def run_probe():
                   json.dumps(cpu_entry))
             check("POST has no second disk device",
                   len([d for d in devices if d.get("id") == "disk"]) == 1, json.dumps([d.get("id") for d in devices]))
+            saved = list((body.get("system") or {}).get("actions") or [])
+            check("POST system.actions ends with the Maintenance divider and the ticked backup command",
+                  len(saved) >= 2 and saved[-2] == {"action": "divider", "name": "Maintenance"}
+                  and saved[-1].get("action") == "backup_now" and saved[-1].get("async") is True
+                  and not [a for a in saved if a.get("action") == "webcam_restart"],
+                  json.dumps(saved[-2:]))
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)
