@@ -146,6 +146,12 @@ $(function () {
             return "";
         });
 
+        // live sentence under the editor; the wording lives in the pure model (systemcommandeditor_menu.js)
+        self.summary = ko.pureComputed(() => {
+            if (!self.enabled()) return "";
+            return window.SceModel.conditionSummary(self.mode(), self.states(), self.effect(), gettext);
+        });
+
         self.load = (when) => {
             self.enabled(!!when);
             self.mode(when && when.mode === "never" ? "never" : "only");

@@ -207,7 +207,7 @@ def core_edit(action, device, role, condition=False):
     page.select_option("#sce-editor-device", label=device)
     page.select_option("#sce-editor .sce-role", value=role)
     if condition:
-        page.check("#sce-editor label:has-text('Only allow in some printer states') input")
+        page.check("#sce-editor label:has-text('Limit to printer states') input")
         page.select_option("#sce-editor .sce-condition select >> nth=0", value="never")
         page.check("#sce-editor .sce-state-picks " + STATE_PICK.format("Printing"))
     modal_done("#sce-editor")
@@ -379,10 +379,13 @@ def run_probe():
         wait_hidden("#sce-editor")
 
         edit_command("Laser on")
-        page.check("#sce-editor label:has-text('Only allow in some printer states') input")
+        page.check("#sce-editor label:has-text('Limit to printer states') input")
         page.select_option("#sce-editor .sce-condition select >> nth=0", value="never")
         page.check("#sce-editor .sce-state-picks " + STATE_PICK.format("Printing"))
         page.select_option("#sce-editor .sce-condition select >> nth=1", value="disable")
+        summary = page.locator("#sce-editor .sce-condition-summary").text_content().strip()
+        check("condition summary reads the picked condition in words",
+              summary == "Grayed out while the printer is Printing.", "summary=%r" % summary)
         modal_done("#sce-editor")
 
         # 5b. the first save carries a condition on the one command this probe set, and none on core entries
@@ -433,8 +436,11 @@ def run_probe():
         page.select_option("#sce-device-type", value="link")
         page.fill("#sce-device-name", "Camera")
         page.fill("#sce-device-url", "http://example.test/cam")
-        page.check("#sce-device-editor label:has-text('Only allow in some printer states') input")
+        page.check("#sce-device-editor label:has-text('Limit to printer states') input")
         page.check("#sce-device-editor .sce-state-picks " + STATE_PICK.format("Printing"))
+        summary = page.locator("#sce-device-editor .sce-condition-summary").text_content().strip()
+        check("link condition summary reads the picked condition in words",
+              summary == "Grayed out unless the printer is Printing.", "summary=%r" % summary)
         modal_done("#sce-device-editor")
 
         page.get_by_role("button", name="Add device").click()

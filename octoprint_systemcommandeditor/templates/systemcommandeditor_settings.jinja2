@@ -55,32 +55,42 @@
     </div>
 </div>
 
+{{ condition_block() }}
+<!-- /ko -->
+{% endmacro %}
+
+{% macro condition_block() %}
 <div class="control-group" data-bind="css: { error: condition.error() }">
     <div class="controls">
-        <label class="checkbox"><input type="checkbox" data-bind="checked: condition.enabled"> {{ _('Only allow in some printer states') }}</label>
+        <label class="checkbox"><input type="checkbox" data-bind="checked: condition.enabled"> {{ _('Limit to printer states') }}</label>
         <!-- ko if: condition.enabled -->
         <div class="sce-condition">
-            <select class="input-medium" data-bind="value: condition.mode" aria-label="{{ _('Mode')|edq }}">
-                <option value="only">{{ _('Only when') }}</option>
-                <option value="never">{{ _('Never when') }}</option>
-            </select>
-            <div class="sce-state-picks">
-                <label class="checkbox inline"><input type="checkbox" value="printing" data-bind="checked: condition.states"> {{ _('Printing') }}</label>
-                <label class="checkbox inline"><input type="checkbox" value="paused" data-bind="checked: condition.states"> {{ _('Paused') }}</label>
-                <label class="checkbox inline"><input type="checkbox" value="ready" data-bind="checked: condition.states"> {{ _('Ready') }}</label>
-                <label class="checkbox inline"><input type="checkbox" value="offline" data-bind="checked: condition.states"> {{ _('Offline') }}</label>
-                <label class="checkbox inline"><input type="checkbox" value="error" data-bind="checked: condition.states"> {{ _('Error') }}</label>
-            </div>
-            <select class="input-medium" data-bind="value: condition.effect" aria-label="{{ _('Effect')|edq }}">
-                <option value="disable">{{ _('Gray out') }}</option>
-                <option value="hide">{{ _('Hide') }}</option>
-            </select>
+            <p class="sce-condition-sentence">
+                {{ _('Available') }}
+                <select class="input-medium" data-bind="value: condition.mode" aria-label="{{ _('Mode')|edq }}">
+                    <option value="only">{{ _('only while') }}</option>
+                    <option value="never">{{ _('except while') }}</option>
+                </select>
+                {{ _('the printer is') }}
+                <span class="sce-state-picks">
+                    <label class="checkbox inline"><input type="checkbox" value="printing" data-bind="checked: condition.states"> {{ _('Printing') }}</label>
+                    <label class="checkbox inline"><input type="checkbox" value="paused" data-bind="checked: condition.states"> {{ _('Paused') }}</label>
+                    <label class="checkbox inline"><input type="checkbox" value="ready" data-bind="checked: condition.states"> {{ _('Ready') }}</label>
+                    <label class="checkbox inline"><input type="checkbox" value="offline" data-bind="checked: condition.states"> {{ _('Offline') }}</label>
+                    <label class="checkbox inline"><input type="checkbox" value="error" data-bind="checked: condition.states"> {{ _('Error') }}</label>
+                </span>.
+                {{ _('When it isn\'t available,') }}
+                <select class="input-medium" data-bind="value: condition.effect" aria-label="{{ _('Effect')|edq }}">
+                    <option value="disable">{{ _('gray it out') }}</option>
+                    <option value="hide">{{ _('hide it') }}</option>
+                </select>.
+            </p>
+            <span class="help-block" data-bind="text: condition.error, visible: condition.error"></span>
+            <p class="help-block sce-condition-summary" data-bind="text: condition.summary"></p>
         </div>
-        <span class="help-block" data-bind="text: condition.error, visible: condition.error"></span>
         <!-- /ko -->
     </div>
 </div>
-<!-- /ko -->
 {% endmacro %}
 
 <h3>{{ _('System Commands') }}</h3>
@@ -440,31 +450,7 @@
             <!-- /ko -->
 
             <!-- ko if: isLink -->
-            <div class="control-group" data-bind="css: { error: condition.error() }">
-                <div class="controls">
-                    <label class="checkbox"><input type="checkbox" data-bind="checked: condition.enabled"> {{ _('Only allow in some printer states') }}</label>
-                    <!-- ko if: condition.enabled -->
-                    <div class="sce-condition">
-                        <select class="input-medium" data-bind="value: condition.mode" aria-label="{{ _('Mode')|edq }}">
-                            <option value="only">{{ _('Only when') }}</option>
-                            <option value="never">{{ _('Never when') }}</option>
-                        </select>
-                        <div class="sce-state-picks">
-                            <label class="checkbox inline"><input type="checkbox" value="printing" data-bind="checked: condition.states"> {{ _('Printing') }}</label>
-                            <label class="checkbox inline"><input type="checkbox" value="paused" data-bind="checked: condition.states"> {{ _('Paused') }}</label>
-                            <label class="checkbox inline"><input type="checkbox" value="ready" data-bind="checked: condition.states"> {{ _('Ready') }}</label>
-                            <label class="checkbox inline"><input type="checkbox" value="offline" data-bind="checked: condition.states"> {{ _('Offline') }}</label>
-                            <label class="checkbox inline"><input type="checkbox" value="error" data-bind="checked: condition.states"> {{ _('Error') }}</label>
-                        </div>
-                        <select class="input-medium" data-bind="value: condition.effect" aria-label="{{ _('Effect')|edq }}">
-                            <option value="disable">{{ _('Gray out') }}</option>
-                            <option value="hide">{{ _('Hide') }}</option>
-                        </select>
-                    </div>
-                    <span class="help-block" data-bind="text: condition.error, visible: condition.error"></span>
-                    <!-- /ko -->
-                </div>
-            </div>
+            {{ condition_block() }}
             <!-- /ko -->
             <button type="submit" class="hide"></button>
         </form>

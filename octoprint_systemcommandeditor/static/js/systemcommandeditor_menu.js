@@ -29,6 +29,23 @@
         return null;
     }
 
+    // One sentence under the condition editor: when the command or device is grayed out or hidden.
+    // States are named in STATES order, joined "A", "A or B", "A, B or C". No states picked gives "".
+    const CONDITION_STATES = [["printing", "Printing"], ["paused", "Paused"], ["ready", "Ready"],
+        ["offline", "Offline"], ["error", "Error"]];
+
+    // t translates each fragment; the browser passes gettext, Node tests pass nothing
+    function conditionSummary(mode, states, effect, t) {
+        const tr = t || ((text) => text);
+        const picked = CONDITION_STATES.filter((s) => (states || []).includes(s[0])).map((s) => tr(s[1]));
+        if (picked.length === 0) return "";
+        const joined = picked.length === 1 ? picked[0]
+            : picked.slice(0, -1).join(", ") + " " + tr("or") + " " + picked[picked.length - 1];
+        const verb = effect !== "disable" ? tr("Hidden") : tr("Grayed out");
+        const clause = mode === "never" ? tr("while the printer is") : tr("unless the printer is");
+        return verb + " " + clause + " " + joined + ".";
+    }
+
     function members(deviceId, entries, core) {
         const m = {source: null, on: null, off: null, restart: null, safe_restart: null, choices: []};
         const tables = [["custom", entries || {}], ["core", core || {}]];
@@ -136,6 +153,7 @@
         printerState: printerState,
         statusKind: statusKind,
         conditionEffect: conditionEffect,
+        conditionSummary: conditionSummary,
         members: members,
         switchView: switchView,
         StatusTracker: StatusTracker,
