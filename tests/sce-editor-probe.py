@@ -1109,6 +1109,8 @@ def run_probe():
               any("read" in c and c["read"].get("plugin") == "bettergrblsupport" for c in state_calls),
               json.dumps(state_calls))
 
+        # the save closed the settings dialog; reopen it, as the earlier phases do, before editing the saved command
+        open_settings()
         edit_command("Grbl unlock")
         page.select_option("#sce-editor-device", label="Heater")
         page.wait_for_timeout(300)

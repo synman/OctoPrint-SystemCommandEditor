@@ -310,7 +310,8 @@ $(function () {
         self.value = ko.observable("");
         self.condition = new Condition();
         self.control = new ControlCondition();
-        self.device.subscribe(() => self.control.attach(self.selectedDevice()));
+        // looked up from the new id: selectedDevice is a computed that is notified after this subscriber runs, so reading it here would give the previous control
+        self.device.subscribe((id) => self.control.attach(_.find(owner.devices(), (d) => d.id === id)));
 
         self.title = ko.pureComputed(() => {
             if (self.isCore()) return gettext("Edit built-in command");
