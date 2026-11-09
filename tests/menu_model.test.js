@@ -466,6 +466,38 @@ test("dedupeKeys: works on controls by id, and an empty list gives an empty list
     assert.deepStrictEqual(M.dedupeKeys([], "id"), []);
 });
 
+// ---- plugin-backed run and read ----
+test("describeRun: plugin and helper name, then the args JSON with keys sorted", () => {
+    const run = {plugin: "tplinksmartplug", helper: "turn_on", args: {plugip: "10.0.0.5"}};
+    assert.strictEqual(M.describeRun(run), "tplinksmartplug: turn_on {\"plugip\":\"10.0.0.5\"}");
+    const sorted = {plugin: "p", api: "set", args: {b: 1, a: {d: 2, c: [3, {z: 1, y: 2}]}}};
+    assert.strictEqual(M.describeRun(sorted), "p: set {\"a\":{\"c\":[3,{\"y\":2,\"z\":1}],\"d\":2},\"b\":1}");
+});
+
+test("describeRun: no args gives just the plugin and helper; data is used when there are no args", () => {
+    assert.strictEqual(M.describeRun({plugin: "psucontrol", helper: "turn_psu_on"}), "psucontrol: turn_psu_on");
+    assert.strictEqual(M.describeRun({plugin: "p", method: "go", data: {x: "y"}}), "p: go {\"x\":\"y\"}");
+});
+
+test("describeRun: no run gives empty text", () => {
+    assert.strictEqual(M.describeRun(undefined), "");
+    assert.strictEqual(M.describeRun(null), "");
+});
+
+test("hasStatusCheck: a shell status or a plugin read gives a check; neither gives none", () => {
+    assert.strictEqual(M.hasStatusCheck({status: "laser-state"}), true);
+    assert.strictEqual(M.hasStatusCheck({read: {plugin: "psucontrol", helper: "get_psu_state"}}), true);
+    assert.strictEqual(M.hasStatusCheck({name: "Plain"}), false);
+    assert.strictEqual(M.hasStatusCheck(undefined), false);
+});
+
+test("placementOf: a run entry that names a device is never a readout placement", () => {
+    const entries = {disk_run: {action: "disk_run", run: {plugin: "p", helper: "h"}, device: "disk"}};
+    assert.strictEqual(M.placementOf("disk", entries), "");
+    assert.strictEqual(M.isPlacement(entries.disk_run), false);
+    assert.strictEqual(M.isPlacement({device: "disk"}), true);
+});
+
 const elapsed = Date.now() - STARTED;
 if (failures.length) {
     console.log("FAIL: " + failures.length + " of " + count + " tests");

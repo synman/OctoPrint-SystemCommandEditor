@@ -145,6 +145,29 @@
         return result.state;
     }
 
+    // a control gets status checks when it has a shell status command or a plugin read
+    function hasStatusCheck(d) {
+        return !!d && !!(d.status || d.read);
+    }
+
+    // canonical JSON with object keys sorted at every level, so the consent text reads the same whatever the key order
+    function sortedJson(v) {
+        if (Array.isArray(v)) return "[" + v.map(sortedJson).join(",") + "]";
+        if (v !== null && typeof v === "object") {
+            return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + sortedJson(v[k])).join(",") + "}";
+        }
+        return JSON.stringify(v);
+    }
+
+    // the consent text for a plugin run: "<plugin>: <helper, api or method>", then the JSON of its args or data when present
+    function describeRun(run) {
+        if (!run) return "";
+        const name = run.helper || run.api || run.method || "";
+        const payload = run.args !== undefined && run.args !== null ? run.args : run.data;
+        const head = (run.plugin || "") + ": " + name;
+        return payload === undefined || payload === null ? head : head + " " + sortedJson(payload);
+    }
+
     const ESCAPES = {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"};
 
     function escapeHtml(s) {
@@ -157,11 +180,16 @@
         return confirm + "<pre>" + escapeHtml(command || "") + "</pre>";
     }
 
+    // a placement entry names the readout it draws in the list: it has a device, and it is never a plugin run
+    function isPlacement(e) {
+        return !!e && !!e.device && !e.run;
+    }
+
     // the action key of the placement entry that draws readout deviceId in the menu, or "" when it has none
     function placementOf(deviceId, entries) {
         for (const key of Object.keys(entries || {})) {
             const e = entries[key];
-            if (e && e.device === deviceId) return key;
+            if (isPlacement(e) && e.device === deviceId) return key;
         }
         return "";
     }
@@ -257,6 +285,9 @@
         placementOf: placementOf,
         printerState: printerState,
         statusKind: statusKind,
+        hasStatusCheck: hasStatusCheck,
+        describeRun: describeRun,
+        isPlacement: isPlacement,
         conditionEffect: conditionEffect,
         conditionSummary: conditionSummary,
         members: members,
@@ -291,6 +322,19 @@ $(function () {
     function rejectOutcome(first) {
         const kind = Array.isArray(first) ? first[0] : first;
         return kind === "error" ? "failed" : "cancelled";
+    }
+
+    // the error a plugin run answered with (a 409 carries one); "" when the answer has none
+    function replyError(jqXHR) {
+        let body = jqXHR.responseJSON;
+        if (!body) {
+            try {
+                body = JSON.parse(jqXHR.responseText);
+            } catch (err) {
+                body = {};
+            }
+        }
+        return (body && body.error) || "";
     }
 
     // every element this file creates carries ADDED, so one selector removes them all
@@ -391,7 +435,7 @@ $(function () {
             return (e && e.group) || "";
         };
 
-        self._kindOf = (d) => SceModel.statusKind(!!d.status, self._status.get(d.id));
+        self._kindOf = (d) => SceModel.statusKind(SceModel.hasStatusCheck(d), self._status.get(d.id));
 
         // a device row is drawn only when at least one of its members is in core's command list
         self._hasPresentMember = (id) => {
@@ -434,7 +478,9 @@ $(function () {
             const spec = self._spec(source, action);
             if (!spec) return;
             const entry = self._entry(source, action) || {};
-            const command = source === "core" ? (self._data.core_commands || {})[action] : entry.command;
+            const isRun = !!entry.run;
+            const command = isRun ? SceModel.describeRun(entry.run)
+                : (source === "core" ? (self._data.core_commands || {})[action] : entry.command);
             const isAsync = !!entry.async;
             const token = self._runs.start(action, isAsync);
 
@@ -456,7 +502,8 @@ $(function () {
             const quiet = !isAsync && !(self._data && self._data.success_toast);
             let pending;
             try {
-                pending = quiet ? self._triggerQuietly(runSpec) : self.systemViewModel.triggerCommand(runSpec);
+                if (isRun) pending = self._triggerRun(runSpec, quiet);
+                else pending = quiet ? self._triggerQuietly(runSpec) : self.systemViewModel.triggerCommand(runSpec);
             } catch (err) {
                 settle("failed");
                 return;
@@ -473,36 +520,21 @@ $(function () {
 
         // core's triggerCommand without its success toast: the same consent dialog, fresh login check,
         // error toast and promise outcomes (see OctoPrint's static/js/app/viewmodels/system.js)
-        self._triggerQuietly = (spec) => {
+        // the login check, the consent dialog and fresh credentials, shared by every run path; execute(deferred) makes
+        // the call and settles deferred
+        self._runGated = (spec, execute) => {
             const vm = self.systemViewModel;
             if (!vm.loginState.hasPermission(vm.access.permissions.SYSTEM)) {
                 return $.Deferred().reject().promise();
             }
             const deferred = $.Deferred();
-            const callback = () => {
-                OctoPrint.system.executeCommand(spec.actionSource, spec.action)
-                    .done(function () {
-                        deferred.resolve(["success", arguments]);
-                    })
-                    .fail(function (jqXHR) {
-                        if (spec.ignore) {
-                            deferred.resolve(["ignored", arguments]);
-                            return;
-                        }
-                        let error = "<p>" + _.sprintf(gettext("The command \"%(command)s\" could not be executed."),
-                            {command: _.escape(spec.name)}) + "</p>";
-                        error += pnotifyAdditionalInfo("<pre>" + _.escape(jqXHR.responseText) + "</pre>");
-                        new PNotify({title: gettext("Error"), text: error, type: "error", hide: false});
-                        deferred.reject(["error", arguments]);
-                    });
-            };
             const proceed = () => {
                 if (spec.fresh_credentials) {
-                    vm.loginState.reauthenticateIfNecessary(callback).failed(function () {
+                    vm.loginState.reauthenticateIfNecessary(() => execute(deferred)).failed(function () {
                         deferred.reject(["denied", arguments]);
                     });
                 } else {
-                    callback();
+                    execute(deferred);
                 }
             };
             if (spec.confirm) {
@@ -517,6 +549,62 @@ $(function () {
             return deferred.promise();
         };
 
+        // core's triggerCommand without its success toast: the same consent dialog, fresh login check,
+        // error toast and promise outcomes (see OctoPrint's static/js/app/viewmodels/system.js)
+        self._triggerQuietly = (spec) => self._runGated(spec, (deferred) => {
+            OctoPrint.system.executeCommand(spec.actionSource, spec.action)
+                .done(function () {
+                    deferred.resolve(["success", arguments]);
+                })
+                .fail(function (jqXHR) {
+                    if (spec.ignore) {
+                        deferred.resolve(["ignored", arguments]);
+                        return;
+                    }
+                    let error = "<p>" + _.sprintf(gettext("The command \"%(command)s\" could not be executed."),
+                        {command: _.escape(spec.name)}) + "</p>";
+                    error += pnotifyAdditionalInfo("<pre>" + _.escape(jqXHR.responseText) + "</pre>");
+                    new PNotify({title: gettext("Error"), text: error, type: "error", hide: false});
+                    deferred.reject(["error", arguments]);
+                });
+        });
+
+        // a plugin-backed run goes to this plugin's run command, never to OctoPrint's execute. The answer is
+        // {ok, error} at 200, or 409 with an error when the plugin's condition blocks it; both failures toast the error
+        self._triggerRun = (spec, quiet) => self._runGated(spec, (deferred) => {
+            const failed = (message) => {
+                if (spec.ignore) {
+                    deferred.resolve(["ignored", []]);
+                    return;
+                }
+                let error = "<p>" + _.sprintf(gettext("The command \"%(command)s\" could not be executed."),
+                    {command: _.escape(spec.name)}) + "</p>";
+                // the plugin's error is a short sentence: it goes in the visible text, not behind the "more" link
+                if (message) error += "<p>" + _.escape(message) + "</p>";
+                new PNotify({title: gettext("Error"), text: error, type: "error", hide: false});
+                deferred.reject(["error", []]);
+            };
+            OctoPrint.simpleApiCommand("systemcommandeditor", "run", {action: spec.action})
+                .done(function (response) {
+                    if (!response || !response.ok) {
+                        failed(response && response.error);
+                        return;
+                    }
+                    if (!quiet) {
+                        new PNotify({
+                            title: gettext("Command executed"),
+                            text: _.sprintf(gettext("The command \"%(command)s\" was executed successfully."),
+                                {command: _.escape(spec.name)}),
+                            type: "success"
+                        });
+                    }
+                    deferred.resolve(["success", arguments]);
+                })
+                .fail(function (jqXHR) {
+                    failed(jqXHR.status === 409 ? replyError(jqXHR) : "");
+                });
+        });
+
         // optional: while the System menu stays open, re-check every device with a status on an interval
         self._startLive = () => {
             if (self._liveTimer !== undefined || !(self._data && self._data.live_updates)) return;
@@ -528,13 +616,15 @@ $(function () {
                     return;
                 }
                 if (Object.keys(self._checking).length) return;   // the last check is still running
-                self.checkStatuses(self._devices().map((d) => d.id));
+                self.checkStatuses(self._devices().map((d) => d.id), true);
             }, seconds * 1000);
         };
 
-        self.checkStatuses = (ids) => {
+        // one status check for the named devices. live asks for live answers: a control whose read is not live answers
+        // skipped, and then keeps the result it had
+        self.checkStatuses = (ids, live) => {
             const want = self._devices()
-                .filter((d) => d.status && ids.indexOf(d.id) !== -1)
+                .filter((d) => SceModel.hasStatusCheck(d) && ids.indexOf(d.id) !== -1)
                 .map((d) => d.id);
             if (!want.length) return;
 
@@ -545,11 +635,14 @@ $(function () {
             });
             self.schedule();
 
-            OctoPrint.simpleApiCommand("systemcommandeditor", "status", {ids: want})
+            const payload = {ids: want};
+            if (live) payload.live = true;
+            OctoPrint.simpleApiCommand("systemcommandeditor", "status", payload)
                 .done((response) => {
                     const results = (response && response.results) || {};
                     want.forEach((id) => {
-                        if (results[id] !== undefined) self._status.accept(id, seqs[id], results[id]);
+                        const r = results[id];
+                        if (r !== undefined && !r.skipped) self._status.accept(id, seqs[id], r);
                     });
                 })
                 .always(() => {
@@ -738,7 +831,7 @@ $(function () {
             const firstMember = {};
             // placement entries (a readout's place in the custom list) keyed by action, and the rows they are drawn at
             const placeKeys = Object.create(null);
-            Object.keys(entries).forEach((key) => { if (entries[key] && entries[key].device) placeKeys[key] = true; });
+            Object.keys(entries).forEach((key) => { if (SceModel.isPlacement(entries[key])) placeKeys[key] = true; });
             const placedAt = Object.create(null);
 
             items.forEach((item) => {

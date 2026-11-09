@@ -37,6 +37,12 @@ DEVICES = [
      "section": "Machine"},
     {"id": "upt", "type": "readout", "name": "Uptime", "icon": "fa-solid fa-clock", "status": "upt-state"},
     {"id": "bkup", "type": "action", "name": "Upkeep", "icon": "fa-solid fa-box-archive", "status": "bkup-state"},
+    {"id": "plug", "type": "switch", "name": "Plug", "icon": "fa-solid fa-plug",
+     "read": {"plugin": "psucontrol", "helper": "get_psu_state"}, "on_pattern": "^true$", "off_pattern": "^false$",
+     "section": "Machine"},
+    {"id": "tplink", "type": "switch", "name": "Smart plug", "icon": "fa-solid fa-power-off",
+     "read": {"plugin": "tplinksmartplug", "helper": "get_state", "live": False},
+     "on_pattern": "^on$", "off_pattern": "^off$", "section": "Machine"},
 ]
 
 # devices the menu is expected to draw: "ghost" has no member in core's command list, so it draws no row
@@ -66,6 +72,18 @@ ENTRIES = {
                  "icon": "fa-solid fa-lightbulb", "async": False, "confirm": "", "value": ""},
     "ghost_off": {"name": "Ghost off", "command": "ghost-off-cmd", "group": "ghost", "role": "off",
                   "icon": "fa-solid fa-circle", "async": False, "confirm": "", "value": ""},
+    "plug_on": {"name": "Plug on", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"}, "group": "plug",
+                "role": "on", "icon": "fa-solid fa-lightbulb", "async": False, "confirm": "Turn the plug on?", "value": ""},
+    "plug_off": {"name": "Plug off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"}, "group": "plug",
+                 "role": "off", "icon": "fa-solid fa-circle", "async": False, "confirm": "", "value": ""},
+    "plug_fail": {"name": "Failing plug command", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"},
+                  "group": "", "role": "", "icon": "fa-solid fa-gear", "async": False, "confirm": "", "value": ""},
+    "plug_blocked": {"name": "Blocked plug command", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"},
+                     "group": "", "role": "", "icon": "fa-solid fa-gear", "async": False, "confirm": "", "value": ""},
+    "tplink_on": {"name": "Smart plug on", "command": "tplink-on-cmd", "group": "tplink", "role": "on",
+                  "icon": "fa-solid fa-lightbulb", "async": False, "confirm": "", "value": ""},
+    "tplink_off": {"name": "Smart plug off", "command": "tplink-off-cmd", "group": "tplink", "role": "off",
+                   "icon": "fa-solid fa-circle", "async": False, "confirm": "", "value": ""},
     "sync_action": {"name": "Sync action", "command": "sync-cmd", "group": "", "role": "", "value": "",
                     "icon": "fa-solid fa-gear", "async": False, "confirm": ""},
     "sync_fail": {"name": "Failing sync action", "command": "fail-cmd", "group": "", "role": "", "value": "",
@@ -89,7 +107,12 @@ STATUS = {
     "disk": {"state": "42 GB free", "output": "", "exit": 0, "error": None},
     "upt": {"state": "3 days", "output": "", "exit": 0, "error": None},
     "bkup": {"state": "Last backup 2 h ago", "output": "", "exit": 0, "error": None},
+    "plug": {"state": "off", "output": "", "exit": None, "error": None},
+    "tplink": {"state": "on", "output": "", "exit": None, "error": None},
 }
+
+# controls whose read says live: false: a live check answers them skipped
+NOT_LIVE = {d["id"] for d in DEVICES if d.get("read", {}).get("live") is False}
 
 CUSTOM_LIST = [
     {"action": "divider", "name": "Machine"},
@@ -108,6 +131,12 @@ CUSTOM_LIST = [
      "confirm": "Run the cancel test action?"},
     {"action": "async_action", "name": "Async action", "command": "async-cmd",
      "confirm": "Run the async action now?"},
+    {"action": "plug_on", "name": "Plug on", "confirm": "Turn the plug on?"},
+    {"action": "plug_off", "name": "Plug off"},
+    {"action": "plug_fail", "name": "Failing plug command"},
+    {"action": "plug_blocked", "name": "Blocked plug command"},
+    {"action": "tplink_on", "name": "Smart plug on", "command": "tplink-on-cmd"},
+    {"action": "tplink_off", "name": "Smart plug off", "command": "tplink-off-cmd"},
     # readouts are drawn only at their placement entries: disk under Machine, upt under Status
     {"action": "disk", "name": "Disk", "device": "disk"},
     {"action": "divider", "name": "Status"},
@@ -117,8 +146,10 @@ CUSTOM_LIST = [
 CORE_LIST = [{"action": "restart", "name": "Restart OctoPrint", "confirm": "Restart OctoPrint?"}]
 
 results = []
-calls = []        # custom command actions the page executed
+calls = []        # custom command actions the page executed through OctoPrint's own execute endpoint
+plugin_runs = []  # actions the page sent to this plugin's run command
 status_log = []   # the ids named by each status POST
+status_live = []  # the live flag of each status POST, in order
 released = []     # states of the held status answers, in the order they were delivered
 status_plan = []  # ("hold", seconds, overrides) entries, consumed by the next status POST
 pending = []      # (due, route, http_status, body, tag) answers fulfilled by pump()
@@ -131,9 +162,12 @@ def check(name, ok, detail=""):
     print(("PASS: " if ok else "FAIL: ") + name + suffix, flush=True)
 
 
-def status_body(ids, overrides):
+def status_body(ids, overrides, live=False):
     out = {}
     for i in ids:
+        if live and i in NOT_LIVE:
+            out[i] = {"state": None, "output": "", "exit": None, "error": None, "skipped": True}
+            continue
         row = dict(STATUS.get(i, {"state": None, "output": "", "exit": 0, "error": None}))
         if i in overrides:
             row["state"] = overrides[i]
@@ -147,15 +181,34 @@ SUCCESS_TOASTS = """() => [...document.querySelectorAll('.ui-pnotify')]
     .filter(n => /executed successfully/.test(n.innerText)).length"""
 
 
+def handle_plugin_run(route, action):
+    plugin_runs.append(action)
+    if action == "plug_blocked":
+        route.fulfill(status=409, content_type="application/json", body=json.dumps(
+            {"ok": False, "error": "Not available while the printer is ready"}))
+    elif action == "plug_fail":
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(
+            {"ok": False, "output": "", "error": "plug unreachable"}))
+    else:
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(
+            {"ok": True, "output": "", "error": None}))
+
+
 def handle_plugin(route, request):
     if request.method == "POST":
-        ids = (request.post_data_json or {}).get("ids", [])
+        body = request.post_data_json or {}
+        if body.get("command") == "run":
+            handle_plugin_run(route, body.get("action"))
+            return
+        ids = body.get("ids", [])
+        live = body.get("live") is True
         status_log.append(sorted(ids))
+        status_live.append(live)
         if status_plan:
             _, hold, overrides = status_plan.pop(0)
             pending.append((time.time() + hold, route, 200, status_body(ids, overrides), "held"))
             return
-        route.fulfill(status=200, content_type="application/json", body=status_body(ids, {}))
+        route.fulfill(status=200, content_type="application/json", body=status_body(ids, {}, live))
         return
     route.fulfill(status=200, content_type="application/json", body=json.dumps({
         "devices": DEVICES, "core": CORE, "entries": ENTRIES, "core_commands": CORE_COMMANDS,
@@ -304,6 +357,16 @@ STATUS_HEADING = """() => {
     const row = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="upt"]');
     return {heads: heads.length, rowFollows: heads.length === 1 && row !== null && heads[0].nextElementSibling === row};
 }"""
+
+PLUG_ROW = """() => {
+    const li = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="plug"]');
+    if (!li) return null;
+    return {state: ((li.querySelector('.sce-state') || {}).innerText || '').trim(),
+            titles: [...li.querySelectorAll('button.sce-btn')].map(b => b.title)};
+}"""
+
+# how many toasts on screen carry the given text
+TOAST_COUNT = """(text) => [...document.querySelectorAll('.ui-pnotify')].filter(n => n.innerText.includes(text)).length"""
 
 LASER_OFF = """() => {
     const dot = document.querySelector('li.sce-device[data-device-id="laser"] .sce-dot.sce-off');
@@ -477,7 +540,7 @@ def run_probe():
         status_log.clear()
         page.click(TOGGLE)
         pump(400)
-        expected = sorted(d["id"] for d in DEVICES if d.get("status"))
+        expected = sorted(d["id"] for d in DEVICES if d.get("status") or d.get("read"))
         check("menu open sends a status POST for every device with a status",
               bool(status_log) and status_log[-1] == expected,
               "expected=%s sent=%s" % (expected, status_log))
@@ -573,6 +636,42 @@ def run_probe():
         check("an inverted icon is a light glyph on a badge of its color",
               inv["cls"] and inv["bg"] == "rgb(0, 0, 255)" and inv["fg"] == "rgb(255, 255, 255)", json.dumps(inv))
 
+        # R. a plugin-backed switch: its state comes from its read, and its buttons run through the plugin's run command
+        open_menu()
+        plug_row = page.evaluate(PLUG_ROW)
+        # the Off button is hidden while the state is off, as on any switch; the On button is the one shown
+        check("the Plug row shows Off and its On button",
+              plug_row is not None and plug_row["state"] == "Off" and "Plug on" in plug_row["titles"],
+              json.dumps(plug_row))
+
+        page.locator('li.sce-device[data-device-id="plug"] button[title="Plug on"]').click()
+        dialog = wait_until(lambda: page.evaluate(DIALOG_VISIBLE), 6)
+        plug_pre = page.evaluate(DIALOG_PRE) if dialog else None
+        check("the plug's consent dialog shows what will run", plug_pre == "psucontrol: turn_psu_on",
+              "pre=%r" % plug_pre)
+        page.evaluate(CLICK_DIALOG, False)
+        ran = wait_until(lambda: "plug_on" in plugin_runs, 6)
+        pump(300)
+        plug_flash = page.evaluate(BUTTON_ICON_CLASS, ["plug", "Plug on"])
+        check("confirming posts the run to the plugin, never to OctoPrint's execute, and shows the check",
+              ran and "plug_on" not in calls and "fa-check" in plug_flash,
+              "plugin_runs=%s calls=%s icon=%r" % (plugin_runs, calls, plug_flash))
+
+        page.evaluate(CLICK_STANDALONE, "plug_fail")
+        crossed = wait_until(lambda: "fa-xmark" in (page.evaluate(STANDALONE_ICON, "plug_fail") or ""), 6)
+        pump(300)
+        fail_toasts = page.evaluate(TOAST_COUNT, "plug unreachable")
+        check("a plugin run answering ok false ends in the cross and an error toast with its error",
+              crossed and fail_toasts >= 1, "toasts=%s runs=%s" % (fail_toasts, plugin_runs))
+
+        page.evaluate(CLICK_STANDALONE, "plug_blocked")
+        blocked = wait_until(lambda: "fa-xmark" in (page.evaluate(STANDALONE_ICON, "plug_blocked") or ""), 6)
+        pump(300)
+        blocked_toasts = page.evaluate(TOAST_COUNT, "Not available while the printer is ready")
+        check("a plugin run answering 409 ends in the cross and an error toast with its error",
+              blocked and blocked_toasts >= 1 and "plug_blocked" in plugin_runs and "plug_blocked" not in calls,
+              "toasts=%s runs=%s" % (blocked_toasts, plugin_runs))
+
         # P. live updates are off by default: an open menu sends no further status checks
         open_menu()
         pump(800)
@@ -599,8 +698,12 @@ def run_probe():
         open_menu()
         pump(800)
         status_log.clear()
+        status_live.clear()
         pump(3500)
         open_checks = len(status_log)
+        # captured while the menu is still open: only the interval checks so far, before the closing click
+        interval_live = list(status_live)
+        live_tplink = page.locator('li.sce-device[data-device-id="tplink"] .sce-state').inner_text().strip()
         page.click(TOGGLE)
         pump(1500)
         closed = not page.evaluate(MENU_OPEN)
@@ -609,6 +712,11 @@ def run_probe():
         check("with live updates on, an open menu re-checks each second and stops when closed",
               open_checks >= 2 and closed and status_log == [],
               "open_checks=%s closed=%s after_close=%s" % (open_checks, closed, status_log))
+
+        # Q2. the interval checks carry live true, and a skipped answer leaves the plugin control on its last state
+        check("live interval checks send live true, and the tplink row keeps its last state when skipped",
+              len(interval_live) >= 2 and all(interval_live) and live_tplink == "On",
+              "interval_live=%s tplink=%r" % (interval_live, live_tplink))
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)
