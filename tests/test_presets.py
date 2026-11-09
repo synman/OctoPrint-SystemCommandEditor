@@ -23,7 +23,10 @@ from octoprint_systemcommandeditor.presets import (  # noqa: E402
     maintenance,
     maintenance_actions,
     mark_presets,
+    PRINTER_STATE_WORDS,
+    STATE_LISTS,
     sample_devices,
+    state_list,
     WEBCAM_SERVICES,
     webcam_presets,
 )
@@ -623,10 +626,13 @@ def test_octoprint_job_reads_progress_and_runs_pause_resume_and_a_confirmed_canc
     assert preset["control"] == {"type": "action", "name": "Print job", "icon": "fa-solid fa-hourglass-half",
                                  "read": {"printer": "progress"}}
     assert preset["commands"] == [
-        {"name": "Pause", "run": {"printer": "pause"}, "role": "run", "icon": "fa-solid fa-pause"},
-        {"name": "Resume", "run": {"printer": "resume"}, "role": "run", "icon": "fa-solid fa-play"},
+        {"name": "Pause", "run": {"printer": "pause"}, "role": "run", "icon": "fa-solid fa-pause",
+         "when": {"mode": "only", "states": ["printing"], "effect": "disable"}},
+        {"name": "Resume", "run": {"printer": "resume"}, "role": "run", "icon": "fa-solid fa-play",
+         "when": {"mode": "only", "states": ["paused"], "effect": "disable"}},
         {"name": "Cancel", "run": {"printer": "cancel"}, "role": "run", "icon": "fa-solid fa-stop",
-         "confirm": "Cancel the print?"},
+         "confirm": "Cancel the print?", "when": {"mode": "only", "states": ["printing", "paused"],
+                                                  "effect": "disable"}},
     ]
 
 
@@ -996,3 +1002,114 @@ def test_docker_webcam_preset_never_shows_the_sudo_note_even_when_sudo_fails():
     assert docker["available"] is True
     assert docker["note"] == ""
 
+
+
+def test_bettergrbl_preset_defaults_gate_unlock_sleep_and_home_by_control_state():
+    preset = only_preset(harvest(Plugins("bettergrblsupport"), settings_of()), "bettergrblsupport:grbl")
+    home, unlock, sleep, reset = preset["commands"]
+    assert home["when_control"] == {"mode": "only", "states": ["Idle", "Alarm"], "effect": "disable"}
+    assert unlock["when_control"] == {"mode": "only", "states": ["Alarm"], "effect": "disable"}
+    assert sleep["when_control"] == {"mode": "never", "states": ["Sleep"], "effect": "disable"}
+    assert "when_control" not in reset
+    assert all("when" not in command for command in preset["commands"])
+
+
+def test_octoprint_preset_defaults_gate_print_job_and_printer_home_by_printer_state():
+    presets = octoprint_by_id()
+    pause, resume, cancel = presets["octoprint:job"]["commands"]
+    assert pause["when"] == {"mode": "only", "states": ["printing"], "effect": "disable"}
+    assert resume["when"] == {"mode": "only", "states": ["paused"], "effect": "disable"}
+    assert cancel["when"] == {"mode": "only", "states": ["printing", "paused"], "effect": "disable"}
+    home, cool_down, emergency = presets["octoprint:printer"]["commands"]
+    assert home["when"] == {"mode": "never", "states": ["printing"], "effect": "disable"}
+    assert "when" not in cool_down and "when" not in emergency
+
+
+def test_octoprint_connection_gcode_and_event_carry_no_condition():
+    presets = octoprint_by_id()
+    for key in ("octoprint:connection", "octoprint:gcode", "octoprint:event"):
+        for command in presets[key]["commands"]:
+            assert "when" not in command and "when_control" not in command
+
+
+def test_add_plugin_preset_copies_a_commands_when_and_when_control():
+    preset = {
+        "preset": "p:x", "name": "X", "control": {"type": "action", "name": "X", "icon": "i"},
+        "commands": [
+            {"name": "Go", "run": {"plugin": "p", "helper": "go"}, "role": "run", "icon": "i",
+             "when": {"mode": "only", "states": ["ready"], "effect": "disable"},
+             "when_control": {"mode": "never", "states": ["Hold"], "effect": "hide"}},
+            {"name": "Plain", "run": {"plugin": "p", "helper": "plain"}, "role": "run", "icon": "i"},
+        ],
+    }
+    _devices, actions = add_plugin_preset(preset, [], [])
+    go, plain = actions[1], actions[2]
+    assert go["when"] == {"mode": "only", "states": ["ready"], "effect": "disable"}
+    assert go["when_control"] == {"mode": "never", "states": ["Hold"], "effect": "hide"}
+    assert "when" not in plain and "when_control" not in plain
+
+
+def test_preset_commands_without_a_condition_carry_none():
+    presets = octoprint_by_id()
+    for key in ("octoprint:printer",):
+        cool_down, emergency = presets[key]["commands"][1], presets[key]["commands"][2]
+        assert "when" not in cool_down and "when" not in emergency
+
+
+class Helpers:
+    """A fake plugin manager whose get_helpers answers the given helpers for one plugin only."""
+
+    def __init__(self, plugin_id=None, **helpers):
+        self.plugin_id = plugin_id
+        self.helpers = helpers
+
+    def get_helpers(self, name, *names):
+        if name != self.plugin_id:
+            return None
+        return {helper: self.helpers[helper] for helper in names if helper in self.helpers}
+
+
+def boom():
+    raise RuntimeError("no state")
+
+
+GRBL_CATALOG = ["Idle", "Run", "Hold", "Jog", "Alarm", "Door", "Check", "Home", "Sleep", "Reset", "N/A"]
+
+
+def test_state_list_for_a_printer_read_is_the_nineteen_printer_words_in_order():
+    result = state_list({"printer": "state"}, Helpers())
+    assert result == {"source": "printer", "states": PRINTER_STATE_WORDS}
+    assert len(PRINTER_STATE_WORDS) == 19
+    assert PRINTER_STATE_WORDS[0] == "Offline" and PRINTER_STATE_WORDS[-1] == "Error"
+
+
+def test_state_list_takes_a_plugin_helper_list_first():
+    manager = Helpers("bettergrblsupport", state_values=lambda: ["Idle", "Hold"])
+    result = state_list({"plugin": "bettergrblsupport", "helper": "state", "field": "state"}, manager)
+    assert result == {"source": "helper", "states": ["Idle", "Hold"]}
+
+
+def test_state_list_falls_back_to_the_catalog_when_the_helper_raises():
+    manager = Helpers("bettergrblsupport", state_values=boom)
+    assert state_list({"plugin": "bettergrblsupport", "helper": "state"}, manager) == {
+        "source": "catalog", "states": GRBL_CATALOG,
+    }
+
+
+def test_state_list_falls_back_to_the_catalog_when_the_helper_is_absent_or_returns_no_list():
+    absent = {"plugin": "bettergrblsupport", "helper": "state"}
+    assert state_list(absent, Helpers()) == {"source": "catalog", "states": GRBL_CATALOG}
+    not_a_list = Helpers("bettergrblsupport", state_values=lambda: "Idle")
+    assert state_list(absent, not_a_list) == {"source": "catalog", "states": GRBL_CATALOG}
+
+
+def test_state_list_is_free_for_an_unknown_plugin_mqtt_and_a_status_line():
+    assert state_list({"plugin": "nope", "helper": "x"}, Helpers()) == {"source": "free", "states": []}
+    assert state_list({"mqtt": "a/b"}, Helpers()) == {"source": "free", "states": []}
+    assert state_list("echo Idle", Helpers()) == {"source": "free", "states": []}
+    assert state_list(None, Helpers()) == {"source": "free", "states": []}
+
+
+def test_state_list_catalog_lists_only_bettergrbl():
+    assert set(STATE_LISTS) == {"bettergrblsupport"}
+    assert STATE_LISTS["bettergrblsupport"] == GRBL_CATALOG

@@ -553,10 +553,12 @@ def _bettergrblsupport(get):
     control = {"type": "action", "name": "Grbl", "icon": "fa-solid fa-crosshairs",
                "read": {"plugin": grbl, "helper": "state", "field": "state"}}
     commands = [
-        {"name": "Home", "run": {"plugin": grbl, "helper": "home"}, "role": "run", "icon": "fa-solid fa-house"},
+        {"name": "Home", "run": {"plugin": grbl, "helper": "home"}, "role": "run", "icon": "fa-solid fa-house",
+         "when_control": {"mode": "only", "states": ["Idle", "Alarm"], "effect": "disable"}},
         {"name": "Unlock", "run": {"plugin": grbl, "helper": "unlock"}, "role": "run",
-         "icon": "fa-solid fa-lock-open"},
-        {"name": "Sleep", "run": {"plugin": grbl, "helper": "sleep"}, "role": "run", "icon": "fa-solid fa-moon"},
+         "icon": "fa-solid fa-lock-open", "when_control": {"mode": "only", "states": ["Alarm"], "effect": "disable"}},
+        {"name": "Sleep", "run": {"plugin": grbl, "helper": "sleep"}, "role": "run", "icon": "fa-solid fa-moon",
+         "when_control": {"mode": "never", "states": ["Sleep"], "effect": "disable"}},
         {
             "name": "Reset",
             "run": {"plugin": grbl, "helper": "reset"},
@@ -624,10 +626,13 @@ def octoprint_presets(snapshot_url=None):
         "Print job",
         "fa-solid fa-hourglass-half",
         [
-            {"name": "Pause", "run": {"printer": "pause"}, "role": "run", "icon": "fa-solid fa-pause"},
-            {"name": "Resume", "run": {"printer": "resume"}, "role": "run", "icon": "fa-solid fa-play"},
+            {"name": "Pause", "run": {"printer": "pause"}, "role": "run", "icon": "fa-solid fa-pause",
+             "when": {"mode": "only", "states": ["printing"], "effect": "disable"}},
+            {"name": "Resume", "run": {"printer": "resume"}, "role": "run", "icon": "fa-solid fa-play",
+             "when": {"mode": "only", "states": ["paused"], "effect": "disable"}},
             {"name": "Cancel", "run": {"printer": "cancel"}, "role": "run", "icon": "fa-solid fa-stop",
-             "confirm": "Cancel the print?"},
+             "confirm": "Cancel the print?", "when": {"mode": "only", "states": ["printing", "paused"],
+                                                      "effect": "disable"}},
         ],
         read={"printer": "progress"},
     )
@@ -635,7 +640,8 @@ def octoprint_presets(snapshot_url=None):
         "Printer",
         "fa-solid fa-temperature-half",
         [
-            {"name": "Home", "run": {"printer": "home"}, "role": "run", "icon": "fa-solid fa-house"},
+            {"name": "Home", "run": {"printer": "home"}, "role": "run", "icon": "fa-solid fa-house",
+             "when": {"mode": "never", "states": ["printing"], "effect": "disable"}},
             {"name": "Cool down", "run": {"printer": "cool_down"}, "role": "run", "icon": "fa-solid fa-snowflake"},
             {
                 "name": "Emergency stop",
@@ -854,8 +860,61 @@ def add_plugin_preset(preset, devices, actions):
             entry["async"] = True
         if command.get("confirm"):
             entry["confirm"] = command["confirm"]
+        if command.get("when"):
+            entry["when"] = copy.deepcopy(command["when"])
+        if command.get("when_control"):
+            entry["when_control"] = copy.deepcopy(command["when_control"])
         actions.append(entry)
     return devices, actions
+
+
+# The state words each plugin's control can report, for a control read of a plugin with no state_values helper.
+STATE_LISTS = {
+    "bettergrblsupport": ["Idle", "Run", "Hold", "Jog", "Alarm", "Door", "Check", "Home", "Sleep", "Reset", "N/A"],
+}
+
+# OctoPrint's printer state words, as getStateString returns them on 1.11.8 and 2.0.0rc5
+PRINTER_STATE_WORDS = [
+    "Offline", "Offline after error", "Opening serial connection", "Detecting serial connection", "Connecting",
+    "Operational", "Starting", "Starting print from SD", "Starting to send file to SD", "Printing",
+    "Printing from SD", "Sending file to SD", "Transferring file to SD", "Pausing", "Paused", "Resuming",
+    "Cancelling", "Finishing", "Error",
+]
+
+
+def _helper_states(plugin_id, plugin_manager):
+    # the plugin's state_values helper as a list of words, or None when it has none, raises or returns no list
+    try:
+        helper = (plugin_manager.get_helpers(plugin_id, "state_values") or {}).get("state_values")
+        if not callable(helper):
+            return None
+        values = helper()
+    except Exception:
+        return None
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        return None
+    return list(values)
+
+
+def state_list(spec, plugin_manager):
+    """``{"source", "states"}`` for a control read: the printer's words, a plugin's words, or free text.
+
+    A printer state read is "printer"; a plugin read is "helper" when the plugin's state_values helper answers, else
+    "catalog" when STATE_LISTS lists the plugin, else "free". Anything else, a status line included, is "free".
+    """
+    if not isinstance(spec, dict):
+        return {"source": "free", "states": []}
+    if spec.get("printer") == "state":
+        return {"source": "printer", "states": list(PRINTER_STATE_WORDS)}
+    plugin_id = spec.get("plugin")
+    if not isinstance(plugin_id, str) or not plugin_id:
+        return {"source": "free", "states": []}
+    states = _helper_states(plugin_id, plugin_manager)
+    if states is not None:
+        return {"source": "helper", "states": states}
+    if plugin_id in STATE_LISTS:
+        return {"source": "catalog", "states": list(STATE_LISTS[plugin_id])}
+    return {"source": "free", "states": []}
 
 
 def first_start_presets(groups):

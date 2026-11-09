@@ -1,11 +1,13 @@
 import time
 
 import flask
+import pytest
 
 from octoprint_systemcommandeditor.adapters import (
     MqttCache,
     api_text,
     carried,
+    command_block,
     is_builtin_read,
     is_builtin_run,
     is_mqtt_read,
@@ -16,6 +18,7 @@ from octoprint_systemcommandeditor.adapters import (
     run_builtin,
     run_call,
     run_with_timeout,
+    state_word,
     to_text,
 )
 
@@ -478,3 +481,75 @@ def test_read_names_an_unknown_read_and_never_raises():
             raise RuntimeError("gone")
 
     assert read_builtin({"printer": "state"}, Gone()) == ("", "RuntimeError: gone")
+
+
+ONLY_PRINTING = {"mode": "only", "states": ["printing"], "effect": "disable"}
+ALARM_ONLY = {"mode": "only", "states": ["Alarm"], "effect": "disable"}
+
+
+def gated(when=None, when_control=None, group="grbl"):
+    entry = {"action": "home", "name": "Home"}
+    if when is not None:
+        entry["when"] = when
+    if when_control is not None:
+        entry["when_control"] = when_control
+    if group is not None:
+        entry["group"] = group
+    return entry
+
+
+# the frozen 14-case table: (entry, printer state, control word, expected block or None)
+BLOCK_CASES = [
+    (gated(), "printing", None, None),
+    (gated(when=ONLY_PRINTING), "printing", None, None),
+    (gated(when=ONLY_PRINTING), "ready", None, ("disable", "Only available while printing")),
+    (gated(when_control=ALARM_ONLY), "ready", "Alarm", None),
+    (gated(when_control=ALARM_ONLY), "ready", "Idle", ("disable", "Not available while Grbl is Idle")),
+    (gated(when_control=ALARM_ONLY), "ready", None, None),
+    (gated(when_control=ALARM_ONLY), "ready", "alarm", None),
+    (gated(when_control={"mode": "never", "states": ["Hold"], "effect": "disable"}), "ready", "Hold",
+     ("disable", "Not available while Grbl is Hold")),
+    (gated(when_control={"mode": "never", "states": ["Sleep"], "effect": "disable"}), "ready", "Idle", None),
+    (gated(when={"mode": "only", "states": ["printing"], "effect": "hide"},
+           when_control={"mode": "only", "states": ["Alarm"], "effect": "disable"}),
+     "ready", "Idle", ("hide", "Only available while printing")),
+    (gated(when={"mode": "only", "states": ["printing"], "effect": "disable"},
+           when_control={"mode": "only", "states": ["Alarm"], "effect": "hide"}),
+     "ready", "Idle", ("hide", "Only available while printing")),
+    (gated(when_control=ALARM_ONLY, group=None), "ready", "Idle", None),
+    (gated(when_control={"mode": "never", "states": ["Sleep"], "effect": "disable"}), "ready", None, None),
+    (gated(when_control=ALARM_ONLY), "ready", "N/A", ("disable", "Not available while Grbl is N/A")),
+]
+
+
+@pytest.mark.parametrize("entry, printer_state, word, expected", BLOCK_CASES)
+def test_command_block_follows_the_frozen_table(entry, printer_state, word, expected):
+    block = command_block(entry, printer_state, word, "Grbl")
+    if expected is None:
+        assert block is None
+    else:
+        assert (block["effect"], block["reason"]) == expected
+
+
+def test_command_block_hides_when_the_printer_when_hides_and_names_the_printer_reason():
+    entry = gated(when={"mode": "never", "states": ["printing"], "effect": "hide"})
+    assert command_block(entry, "printing", None, "Grbl") == {
+        "effect": "hide", "reason": "Not available while printing",
+    }
+
+
+def test_command_block_with_a_when_and_no_effect_hides():
+    entry = gated(when={"mode": "only", "states": ["printing"]})
+    assert command_block(entry, "ready", None, "Grbl")["effect"] == "hide"
+
+
+def test_state_word_cuts_at_the_first_colon_and_trims():
+    assert state_word("Hold:0") == "Hold"
+    assert state_word("  Idle\nmore") == "Idle"
+
+
+def test_state_word_is_none_for_none_empty_or_blank():
+    assert state_word(None) is None
+    assert state_word("") is None
+    assert state_word("  ") is None
+    assert state_word(":5") is None

@@ -168,7 +168,9 @@ def test_get_reports_success_toast_when_turned_on(monkeypatch):
 
 
 def test_api_commands_declare_status_ids_and_presets():
-    assert SystemCommandEditorPlugin().get_api_commands() == {"status": ["ids"], "presets": [], "run": ["action"]}
+    assert SystemCommandEditorPlugin().get_api_commands() == {
+        "status": ["ids"], "presets": [], "run": ["action"], "states": [],
+    }
 
 
 def test_settings_default_presets_loaded_off():
@@ -973,3 +975,128 @@ def test_first_start_default_groups_offer_the_webcam_group(monkeypatch):
     assert [device["id"] for device in config["devices"]] == ["webcam_webcamd"]
     assert config["devices"][0]["status"] == "systemctl is-active webcamd.service"
 
+
+
+GRBL_ALARM_ONLY = {"mode": "only", "states": ["Alarm"], "effect": "disable"}
+
+
+def gated_boot(when_control, read_helper, **extra):
+    # a run command in group "grbl", whose control reads through the plugin helper ``read_helper``
+    entry = {"action": "boot", "name": "Boot", "run": {"plugin": "p", "helper": "boot"}, "role": "run",
+             "group": "grbl", "when_control": when_control, **extra}
+    devices = [{"id": "grbl", "type": "action", "name": "Grbl", "read": {"plugin": "p", "helper": "get"}}]
+    return entry, devices, read_helper
+
+
+def control_plugin(calls, read_value=None, read_error=False):
+    def boot():
+        calls.append("boot")
+        return "ran"
+
+    def get():
+        if read_error:
+            raise RuntimeError("no read")
+        return read_value
+
+    return types.SimpleNamespace(exported={"boot": boot, "get": get})
+
+
+def test_states_answers_the_printer_list_a_helper_list_and_free_for_a_status(monkeypatch):
+    allow(monkeypatch)
+    plugin = make_plugin(plugins={"p": types.SimpleNamespace(exported={"state_values": lambda: ["A", "B"]})})
+    with request_context():
+        printer = plugin.on_api_command("states", {"read": {"printer": "state"}}).get_json()
+        helper = plugin.on_api_command("states", {"read": {"plugin": "p", "helper": "get"}}).get_json()
+        free = plugin.on_api_command("states", {"status": "echo hi"}).get_json()
+    assert printer["source"] == "printer" and len(printer["states"]) == 19
+    assert helper == {"source": "helper", "states": ["A", "B"]}
+    assert free == {"source": "free", "states": []}
+
+
+def test_states_answers_the_catalog_for_bettergrbl(monkeypatch):
+    allow(monkeypatch)
+    plugin = make_plugin()
+    with request_context():
+        body = plugin.on_api_command("states", {"read": {"plugin": "bettergrblsupport", "helper": "state"}}).get_json()
+    assert body["source"] == "catalog" and body["states"][0] == "Idle"
+
+
+def test_states_is_403_without_system_permission(monkeypatch):
+    deny(monkeypatch)
+    plugin = make_plugin()
+    with request_context(), pytest.raises(Forbidden):
+        plugin.on_api_command("states", {"read": {"printer": "state"}})
+
+
+def test_run_answers_409_with_the_control_reason_and_runs_nothing_when_the_word_blocks(monkeypatch):
+    allow(monkeypatch)
+    calls = []
+    entry, devices, _ = gated_boot(GRBL_ALARM_ONLY, None)
+    plugin = make_plugin(system_actions=[entry], devices=devices, plugins={"p": control_plugin(calls, "Idle:0")})
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 409
+    assert response.get_json() == {"ok": False, "error": "Not available while Grbl is Idle"}
+    assert calls == []
+
+
+def test_run_goes_ahead_when_the_control_word_is_unknown_after_a_read_error(monkeypatch):
+    allow(monkeypatch)
+    calls = []
+    entry, devices, _ = gated_boot(GRBL_ALARM_ONLY, None)
+    plugin = make_plugin(system_actions=[entry], devices=devices,
+                         plugins={"p": control_plugin(calls, read_error=True)})
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": True, "output": "ran", "error": None}
+    assert calls == ["boot"]
+
+
+def test_run_goes_ahead_when_the_control_word_matches_the_when_control(monkeypatch):
+    allow(monkeypatch)
+    calls = []
+    entry, devices, _ = gated_boot(GRBL_ALARM_ONLY, None)
+    plugin = make_plugin(system_actions=[entry], devices=devices, plugins={"p": control_plugin(calls, "alarm:1")})
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 200
+    assert calls == ["boot"]
+
+
+def test_run_checks_the_printer_when_before_the_control(monkeypatch):
+    allow(monkeypatch)
+    calls = []
+    entry, devices, _ = gated_boot(GRBL_ALARM_ONLY, None, when={"mode": "never", "states": ["printing"],
+                                                                 "effect": "disable"})
+    plugin = make_plugin(system_actions=[entry], devices=devices, plugins={"p": control_plugin(calls, "Idle")},
+                         printer=FakePrinter(printing=True))
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 409
+    assert response.get_json() == {"ok": False, "error": "Not available while the printer is printing"}
+    assert calls == []
+
+
+def test_run_treats_an_errored_control_read_as_unknown_even_when_it_carries_text(monkeypatch):
+    # a read that errors can still return text; that text must not decide the control state
+    allow(monkeypatch)
+    calls = []
+    entry, devices, _ = gated_boot(GRBL_ALARM_ONLY, None)
+    plugin = make_plugin(system_actions=[entry], devices=devices, plugins={"p": control_plugin(calls, "Idle:0")})
+    import octoprint_systemcommandeditor.adapters as adapters
+    monkeypatch.setattr(adapters, "run_with_timeout", lambda *args, **kwargs: ("Idle:0", "read failed"))
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": True, "output": "ran", "error": None}
+    assert calls == ["boot"]
+
+
+def test_get_carries_when_control_on_each_entry_for_the_menu(monkeypatch):
+    allow(monkeypatch)
+    entry, devices, _ = gated_boot(GRBL_ALARM_ONLY, None)
+    plugin = make_plugin(system_actions=[entry], devices=devices, plugins={"p": control_plugin([])})
+    with request_context():
+        body = plugin.on_api_get(None).get_json()
+    assert body["entries"]["boot"]["when_control"] == GRBL_ALARM_ONLY

@@ -174,6 +174,67 @@ def read_outcome(spec, plugin_manager, timeout=10, call=run_call, mqtt=None):
     return (None if error else 0), output, error
 
 
+def state_word(text):
+    """A control's state word: the first line of its read or status text, cut at the first ":" and trimmed.
+
+    None for no text, or when the word is empty.
+    """
+    if text is None or not text.strip():
+        return None
+    word = text.strip().splitlines()[0].split(":", 1)[0].strip()
+    return word or None
+
+
+def _effect(when, listed):
+    # the effect a condition gives when the value is (or is not) in its states; None when it does not block
+    if not when:
+        return None
+    effect = "disable" if when.get("effect") == "disable" else "hide"
+    if when.get("mode") == "never" and listed:
+        return effect
+    if when.get("mode") == "only" and not listed:
+        return effect
+    return None
+
+
+def condition_effect(when, state):
+    """What a command's ``when`` does in ``state``: "hide" or "disable", or None when it does not apply."""
+    if not when:
+        return None
+    return _effect(when, state in (when.get("states") or []))
+
+
+def _printer_reason(when):
+    states = " or ".join(when.get("states") or [])
+    if when.get("mode") == "only":
+        return "Only available while {}".format(states)
+    return "Not available while {}".format(states)
+
+
+def command_block(entry, printer_state, control_word, control_name):
+    """Why a command is blocked, as ``{"effect": "hide" | "disable", "reason": str}``, or None when it is not.
+
+    The printer ``when`` is judged first, then the ``when_control`` of the entry's group, against the control's
+    state word. An unknown word (None) never blocks, and a ``when_control`` on an entry with no group is ignored.
+    The word matches case-insensitively. The effect is "hide" when any blocking condition hides, else "disable";
+    the reason is the first blocking condition's.
+    """
+    blocks = []
+    printer_effect = condition_effect(entry.get("when"), printer_state)
+    if printer_effect:
+        blocks.append((printer_effect, _printer_reason(entry["when"])))
+    control = entry.get("when_control") if entry.get("group") else None
+    if control and control_word is not None:
+        listed = control_word.lower() in [str(state).lower() for state in control.get("states") or []]
+        control_effect = _effect(control, listed)
+        if control_effect:
+            blocks.append((control_effect, "Not available while {} is {}".format(control_name, control_word)))
+    if not blocks:
+        return None
+    effect = "hide" if any(kind == "hide" for kind, _reason in blocks) else "disable"
+    return {"effect": effect, "reason": blocks[0][1]}
+
+
 # Built-in kinds run against OctoPrint itself: G-code, a printer call, a custom event; and the printer readouts.
 NOT_CONNECTED = "The printer is not connected"
 HOME_AXES = ["x", "y", "z"]

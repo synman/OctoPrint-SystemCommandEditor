@@ -23,6 +23,8 @@ from octoprint.access.permissions import Permissions
 from .adapters import (
     MqttCache,
     carried,
+    command_block,
+    condition_effect,
     is_builtin_read,
     is_builtin_run,
     is_run_spec,
@@ -31,6 +33,7 @@ from .adapters import (
     run_builtin,
     run_call,
     run_with_timeout,
+    state_word,
 )
 from .convert import command_count, convert, place_readouts
 from .presets import (
@@ -45,6 +48,7 @@ from .presets import (
     maintenance_actions,
     octoprint_presets,
     sample_devices,
+    state_list,
     system_switches,
     webcam_presets,
 )
@@ -64,6 +68,7 @@ API_ENTRY_KEYS = (
     "role",
     "value",
     "when",
+    "when_control",
     "device",
     "run",
 )
@@ -96,19 +101,6 @@ def printer_state(printer):
     if printer.is_operational():
         return "ready"
     return "offline"
-
-
-def condition_effect(when, state):
-    """What a command's ``when`` does in ``state``: "hide" or "disable", or None when it does not apply."""
-    if not when:
-        return None
-    listed = state in (when.get("states") or [])
-    effect = "disable" if when.get("effect") == "disable" else "hide"
-    if when.get("mode") == "never" and listed:
-        return effect
-    if when.get("mode") == "only" and not listed:
-        return effect
-    return None
 
 
 class SystemCommandEditorPlugin(
@@ -148,7 +140,7 @@ class SystemCommandEditorPlugin(
         return 4
 
     def get_api_commands(self):
-        return {"status": ["ids"], "presets": [], "run": ["action"]}
+        return {"status": ["ids"], "presets": [], "run": ["action"], "states": []}
 
     def on_api_command(self, command, data):
         if not Permissions.SYSTEM.can():
@@ -157,6 +149,9 @@ class SystemCommandEditorPlugin(
             return flask.jsonify(results=self._status(data["ids"], data.get("live") is True))
         if command == "run":
             return self._run(data["action"])
+        if command == "states":
+            # a status line names no state list, so it answers free
+            return flask.jsonify(state_list(data.get("read"), self._plugin_manager))
         if command == "presets":
             return flask.jsonify(
                 presets=detect(),
@@ -214,11 +209,29 @@ class SystemCommandEditorPlugin(
             response = flask.jsonify(ok=False, error="Not available while the printer is {}".format(state))
             response.status_code = 409
             return response
+        if entry.get("group") and entry.get("when_control"):
+            name, word = self._control_state(entry["group"])
+            block = command_block(entry, state, word, name)
+            if block:
+                response = flask.jsonify(ok=False, error=block["reason"])
+                response.status_code = 409
+                return response
         if is_builtin_run(spec):
             output, error = run_builtin(spec, self._printer, octoprint.events.eventManager())
         else:
             output, error = run_with_timeout(spec, self._plugin_manager, call=carried(run_call))
         return flask.jsonify(ok=error is None, output=output, error=error)
+
+    def _control_state(self, group):
+        # the control's name and its state word from one live read; the word is None when unknown
+        name = group
+        for device in self._settings.get(["devices"]) or []:
+            if device.get("id") == group:
+                name = device.get("name") or group
+        result = self._status([group], True).get(group) or {}
+        if result.get("error") or result.get("skipped"):
+            return name, None
+        return name, state_word(result.get("output"))
 
     def _plugin_presets(self):
         return harvest(
