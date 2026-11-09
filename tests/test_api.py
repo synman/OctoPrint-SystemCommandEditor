@@ -1,4 +1,5 @@
 import logging
+import time
 import types
 
 import pytest
@@ -1127,3 +1128,22 @@ def test_get_carries_when_control_on_each_entry_for_the_menu(monkeypatch):
     with request_context():
         body = plugin.on_api_get(None).get_json()
     assert body["entries"]["boot"]["when_control"] == GRBL_ALARM_ONLY
+
+
+def test_status_runs_several_plugin_reads_at_once_inside_one_request(monkeypatch):
+    # the menu asks for every control at once; reads that run in parallel each need their own copy of the request
+    # context, since one copy pushed on two threads at once fails with "created in a different Context"
+    allow(monkeypatch)
+
+    class Plug:
+        def state(self, n):
+            time.sleep(0.2)
+            return "on" if flask.request else "off"
+
+    devices = [{"id": "p%d" % n, "type": "switch", "name": "P%d" % n, "on_pattern": "^on$", "off_pattern": "^off$",
+                "read": {"plugin": "plug", "method": "state", "args": {"n": n % 2}}} for n in range(4)]
+    plugin = make_plugin(devices=devices, plugins={"plug": Plug()})
+    with request_context():
+        body = plugin.on_api_command("status", {"ids": ["p0", "p1", "p2", "p3"], "live": True}).get_json()
+    assert {key: (value["state"], value["error"]) for key, value in body["results"].items()} == {
+        "p%d" % n: ("on", None) for n in range(4)}

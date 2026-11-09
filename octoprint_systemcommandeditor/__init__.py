@@ -174,13 +174,15 @@ class SystemCommandEditorPlugin(
             if live and spec.get("live") is False:
                 skipped[device.get("id")] = {"state": None, "output": "", "exit": None, "error": None, "skipped": True}
                 continue
-            # check_devices runs a status string; a read is keyed by its own JSON so the runner can tell them apart
-            token = json.dumps(spec, sort_keys=True)
+            # check_devices runs a status string; a read is keyed by its device and its own JSON so the runner can tell
+            # them apart, and two devices reading the same thing still get a request context each
+            token = json.dumps({"device": device.get("id"), "read": spec}, sort_keys=True)
             reads[token] = spec
             devices.append({**device, "status": token})
 
-        # made here, on the request's thread: check_devices runs the reads on worker threads that have no request
-        call = carried(run_call)
+        # made here, on the request's thread: check_devices runs the reads on worker threads that have no request. One
+        # copy per read, since one copied context pushed on two threads at once fails
+        calls = {command: carried(run_call) for command in reads}
 
         def runner(command, timeout):
             if command in reads:
@@ -188,7 +190,7 @@ class SystemCommandEditorPlugin(
                 if is_builtin_read(spec):
                     text, error = read_builtin(spec, self._printer)
                     return (None if error else 0), text, error
-                return read_outcome(spec, self._plugin_manager, timeout, call, self._mqtt)
+                return read_outcome(spec, self._plugin_manager, timeout, calls[command], self._mqtt)
             return run_status(command, timeout)
 
         entries = self._action_entries() + self._core_entries()
