@@ -29,10 +29,14 @@ DEVICES = [
     {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "disk-state",
      "section": "Machine"},
     {"id": "cam", "type": "link", "name": "Camera", "icon": "fa-solid fa-video", "url": "http://example.test/cam",
-     "section": "Machine"},    {"id": "nost", "type": "switch", "name": "No-status switch", "icon": "fa-solid fa-plug",
+     "section": "Machine"},
+    {"id": "nost", "type": "switch", "name": "No-status switch", "icon": "fa-solid fa-plug",
      "on_pattern": "", "off_pattern": "", "section": "Machine"},
     {"id": "ghost", "type": "switch", "name": "Ghost switch", "icon": "fa-solid fa-ghost", "status": "ghost-state",
      "section": "Machine"},
+    # no custom divider is named Status, so the menu draws a heading for it
+    {"id": "upt", "type": "readout", "name": "Uptime", "icon": "fa-solid fa-clock", "status": "upt-state",
+     "section": "Status"},
 ]
 
 # devices the menu is expected to draw: "ghost" has no member in core's command list, so it draws no row
@@ -79,6 +83,7 @@ STATUS = {
     "laser": {"state": "off", "output": "", "exit": 0, "error": None},
     "res": {"state": "1080", "output": "", "exit": 0, "error": None},
     "disk": {"state": "42 GB free", "output": "", "exit": 0, "error": None},
+    "upt": {"state": "3 days", "output": "", "exit": 0, "error": None},
 }
 
 CUSTOM_LIST = [
@@ -126,7 +131,7 @@ def status_body(ids, overrides):
     return json.dumps({"results": out})
 
 
-options = {"success_toast": False}
+options = {"success_toast": False, "live_updates": False, "live_interval": 1}
 
 SUCCESS_TOASTS = """() => [...document.querySelectorAll('.ui-pnotify')]
     .filter(n => /executed successfully/.test(n.innerText)).length"""
@@ -144,7 +149,8 @@ def handle_plugin(route, request):
         return
     route.fulfill(status=200, content_type="application/json", body=json.dumps({
         "devices": DEVICES, "core": CORE, "entries": ENTRIES, "core_commands": CORE_COMMANDS,
-        "success_toast": options["success_toast"]}))
+        "success_toast": options["success_toast"], "live_updates": options["live_updates"],
+        "live_interval": options["live_interval"]}))
 
 
 def handle_commands(route, request):
@@ -276,6 +282,13 @@ PROCESS_PRINTING = """() => {
     return true;
 }"""
 
+STATUS_HEADING = """() => {
+    const heads = [...document.querySelectorAll('#navbar_systemmenu li.dropdown-header.sce-added')]
+        .filter(h => h.innerText.trim() === 'Status');
+    const row = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="upt"]');
+    return {heads: heads.length, rowFollows: heads.length === 1 && row !== null && heads[0].nextElementSibling === row};
+}"""
+
 LASER_OFF = """() => {
     const dot = document.querySelector('li.sce-device[data-device-id="laser"] .sce-dot.sce-off');
     return dot !== null;
@@ -310,8 +323,8 @@ def run_probe():
         page.wait_for_function("typeof ko !== 'undefined' && document.querySelector('#navbar_systemmenu') !== null",
                                timeout=20000)
         wait_until(lambda: page.evaluate(
-            "() => document.querySelectorAll('li.sce-device').length === 4 && "
-            "document.querySelector('li.sce-device[data-device-id=\"laser\"] .sce-dot.sce-off') !== null"), 10)
+            "() => document.querySelectorAll('li.sce-device').length === %d && "
+            "document.querySelector('li.sce-device[data-device-id=\"laser\"] .sce-dot.sce-off') !== null" % len(DRAWN)), 10)
         open_menu()
         pump(300)
 
@@ -488,6 +501,19 @@ def run_probe():
               before == after and all(v == 1 for v in rows.values()),
               "before=%s after=%s rows=%s" % (before, after, json.dumps(rows)))
 
+        # P. a section no custom divider names gets one heading, and its row follows it, also after a re-render
+        open_menu()
+        heading = page.evaluate(STATUS_HEADING)
+        check("one Status heading exists and the upt row follows it after a re-render",
+              heading["heads"] == 1 and heading["rowFollows"], json.dumps(heading))
+
+        # P. live updates are off by default: an open menu sends no further status checks
+        open_menu()
+        pump(800)
+        status_log.clear()
+        pump(2500)
+        check("an open menu sends no further status checks by default", status_log == [], "sent=%s" % status_log)
+
         # O. with the success toast turned on, a finished sync run shows core's success toast again
         options["success_toast"] = True
         page.reload(wait_until="domcontentloaded")
@@ -498,6 +524,25 @@ def run_probe():
         pump(int((SYNC_DELAY + 1.0) * 1000))
         toasts = page.evaluate(SUCCESS_TOASTS)
         check("with the option on, a finished sync run shows the success toast", toasts == 1, "toasts=%s" % toasts)
+
+        # Q. with live updates on, an open menu re-checks every interval, and a closed one stops
+        options["live_updates"] = True
+        page.reload(wait_until="domcontentloaded")
+        wait_until(lambda: page.evaluate(
+            "() => document.querySelector('li.sce-device[data-device-id=\"laser\"] .sce-dot.sce-off') !== null"), 15)
+        open_menu()
+        pump(800)
+        status_log.clear()
+        pump(3500)
+        open_checks = len(status_log)
+        page.click(TOGGLE)
+        pump(1500)
+        closed = not page.evaluate(MENU_OPEN)
+        status_log.clear()
+        pump(2500)
+        check("with live updates on, an open menu re-checks each second and stops when closed",
+              open_checks >= 2 and closed and status_log == [],
+              "open_checks=%s closed=%s after_close=%s" % (open_checks, closed, status_log))
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)

@@ -211,6 +211,12 @@ $(function () {
             if (ref) {
                 ref.after(li);
                 refs[section] = li;
+            } else if (section) {
+                // no custom divider names this section: draw one heading for it, once per render
+                if (!menu.children("li").last().hasClass("divider")) menu.append(node("li", ["divider"]));
+                menu.append(node("li", ["dropdown-header"]).text(section));
+                menu.append(li);
+                refs[section] = li;
             } else {
                 menu.append(li);
             }
@@ -374,6 +380,21 @@ $(function () {
                 proceed();
             }
             return deferred.promise();
+        };
+
+        // optional: while the System menu stays open, re-check every device with a status on an interval
+        self._startLive = () => {
+            if (self._liveTimer !== undefined || !(self._data && self._data.live_updates)) return;
+            const seconds = Math.max(1, Number(self._data.live_interval) || 5);
+            self._liveTimer = window.setInterval(() => {
+                if (!$("#navbar_systemmenu").hasClass("open") || !(self._data && self._data.live_updates)) {
+                    window.clearInterval(self._liveTimer);
+                    self._liveTimer = undefined;
+                    return;
+                }
+                if (Object.keys(self._checking).length) return;   // the last check is still running
+                self.checkStatuses(self._devices().map((d) => d.id));
+            }, seconds * 1000);
         };
 
         self.checkStatuses = (ids) => {
@@ -671,6 +692,7 @@ $(function () {
             self._bindMenu();
             $(document).on("click", "#navbar_systemmenu > a", () => {
                 self.checkStatuses(self._devices().map((d) => d.id));
+                self._startLive();
             });
             self.refresh();
         };

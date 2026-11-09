@@ -20,12 +20,26 @@ BASE = os.environ.get("SCE_BASE", "http://127.0.0.1:5097")
 SETTINGS_URL = "**/api/settings"
 REAUTH_URL = "**/api/settings/reauthReq"
 COMMANDS_URL = "**/api/system/commands"
+PLUGIN_URL = "**/api/plugin/systemcommandeditor"
 # built-in commands the core editor needs; a rig whose server.commands does not set them lists none
 CORE_FIXTURE = [
     {"action": "shutdown", "name": "Shutdown system", "confirm": "Shutdown the system?"},
     {"action": "reboot", "name": "Reboot system", "confirm": "Reboot the system?"},
 ]
 STATE_PICK = "label:has-text('{}') input"
+FIXTURE_DEVICES = [
+    {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "df -h",
+     "section": ""},
+]
+# answer to the presets call: one available preset, one unavailable, and one whose id is already a device
+PRESETS = [
+    {"id": "cpu", "type": "readout", "name": "CPU temperature", "icon": "fa-solid fa-microchip",
+     "status": "vcgencmd measure_temp", "section": "Status", "sample": True, "available": True, "value": "42°C"},
+    {"id": "throttle", "type": "readout", "name": "Throttling", "icon": "fa-solid fa-bolt",
+     "status": "vcgencmd get_throttled", "section": "Status", "sample": True, "available": False, "value": ""},
+    {"id": "disk", "type": "readout", "name": "Disk free", "icon": "fa-solid fa-hard-drive",
+     "status": "df -h", "section": "Status", "sample": True, "available": True, "value": "18 GB"},
+]
 
 FIXTURE_ACTIONS = [
     {"action": "divider", "name": "Webcam"},
@@ -65,10 +79,18 @@ def handle_settings(route, request):
         # the real response, once; only the parts the editor reads are replaced
         real = route.fetch().json()
         real.setdefault("system", {})["actions"] = copy.deepcopy(FIXTURE_ACTIONS)
-        real.setdefault("plugins", {}).setdefault("systemcommandeditor", {})["devices"] = []
+        real.setdefault("plugins", {}).setdefault("systemcommandeditor", {})["devices"] = copy.deepcopy(FIXTURE_DEVICES)
         state["base"] = real
         state["current"] = copy.deepcopy(real)
     route.fulfill(status=200, content_type="application/json", body=json.dumps(state["current"]))
+
+
+def handle_presets(route, request):
+    body = request.post_data_json or {} if request.method == "POST" else {}
+    if body.get("command") != "presets":
+        route.continue_()
+        return
+    route.fulfill(status=200, content_type="application/json", body=json.dumps({"presets": PRESETS}))
 
 
 def handle_commands(route, request):
@@ -193,6 +215,7 @@ def run_probe():
                 if msg.type == "error" else None)
         page.route(SETTINGS_URL, handle_settings)
         page.route(COMMANDS_URL, handle_commands)
+        page.route(PLUGIN_URL, handle_presets)
         # OctoPrint asks for a fresh login before it posts system.actions and opens a password dialog. The probe has
         # no password, so the client is told there are no reauthentication requirements. The POST is still answered
         # by the probe, never forwarded, so the server enforces nothing here and no setting changes.
@@ -275,9 +298,10 @@ def run_probe():
             devices = plugin.get("devices")
             actions = first_actions(body)
             on_entry, off_entry = actions.get("laser_on_cmd", {}), actions.get("laser_off_cmd", {})
+            laser = [d for d in devices or [] if d.get("id") == "laser"]
             check("POST carries the switch device in plugins.systemcommandeditor.devices",
-                  isinstance(devices, list) and len(devices) == 1 and devices[0].get("id") == "laser" and
-                  devices[0].get("type") == "switch", json.dumps(devices))
+                  isinstance(devices, list) and len(devices) == 2 and len(laser) == 1 and
+                  laser[0].get("type") == "switch", json.dumps(devices))
             check("POST gives both commands group and role",
                   on_entry.get("group") == "laser" and on_entry.get("role") == "on" and
                   off_entry.get("group") == "laser" and off_entry.get("role") == "off",
@@ -320,8 +344,8 @@ def run_probe():
         page.get_by_role("button", name="Add device").click()
         wait_visible("#sce-device-editor")
         page.select_option("#sce-device-type", value="readout")
-        page.fill("#sce-device-name", "Disk")
-        page.fill("#sce-device-status", "df -h")
+        page.fill("#sce-device-name", "Load")
+        page.fill("#sce-device-status", "uptime")
         modal_done("#sce-device-editor")
 
         body = save_settings()
@@ -339,12 +363,12 @@ def run_probe():
             check("core shutdown carries group and role and no condition",
                   shutdown.get("group") == "power" and shutdown.get("role") == "off" and not shutdown.get("when"),
                   json.dumps(shutdown))
-            camera, disk = devices.get("camera", {}), devices.get("disk", {})
+            camera, load = devices.get("camera", {}), devices.get("load", {})
             check("link device carries url and condition",
                   camera.get("url") == "http://example.test/cam" and camera.get("when") ==
                   {"mode": "only", "states": ["printing"], "effect": "disable"}, json.dumps(camera))
             check("readout device added without a condition carries no when",
-                  disk.get("type") == "readout" and "when" not in disk, json.dumps(disk))
+                  load.get("type") == "readout" and "when" not in load, json.dumps(load))
 
         # Phase C: delete the switch device; its group and role leave both commands
         open_settings()
@@ -366,6 +390,37 @@ def run_probe():
             check("delete removes group and role from both commands and the device",
                   gone and "laser" not in [d.get("id") for d in devices],
                   json.dumps({"devices": [d.get("id") for d in devices], "actions": actions}))
+
+        # Phase D: add from presets; cpu is ticked, throttle is unavailable, disk is already a device
+        open_settings()
+        page.get_by_role("button", name="Add from presets").click()
+        wait_visible("#sce-presets .sce-preset-row")
+        rows = page.locator("#sce-presets .sce-preset-row")
+        check("presets modal lists three rows", rows.count() == 3, "rows=%d" % rows.count())
+        cpu = rows.filter(has_text="CPU temperature")
+        throttle = rows.filter(has_text="Throttling")
+        disk_row = rows.filter(has_text="Disk free")
+        check("throttle is disabled with Not available on this system",
+              throttle.locator("input").is_disabled() and
+              throttle.filter(has_text="Not available on this system").count() == 1)
+        check("disk is disabled and checked with Added",
+              disk_row.locator("input").is_disabled() and disk_row.locator("input").is_checked() and
+              disk_row.filter(has_text="Added").count() == 1)
+        cpu.locator("input").check()
+        page.locator("#sce-presets .modal-footer .btn-primary").click()
+        wait_hidden("#sce-presets")
+        body = save_settings()
+        if body is None:
+            check("save after presets posts the settings", False, "no POST captured")
+        else:
+            devices = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
+            cpu_entry = [d for d in devices if d.get("id") == "cpu"]
+            check("POST carries cpu from presets with exactly six keys in section Status",
+                  len(cpu_entry) == 1 and set(cpu_entry[0]) == {"id", "type", "name", "icon", "status", "section"}
+                  and cpu_entry[0].get("section") == "Status" and cpu_entry[0].get("type") == "readout",
+                  json.dumps(cpu_entry))
+            check("POST has no second disk device",
+                  len([d for d in devices if d.get("id") == "disk"]) == 1, json.dumps([d.get("id") for d in devices]))
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)

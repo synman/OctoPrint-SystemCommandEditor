@@ -7,6 +7,7 @@ __license__ = "GNU Affero General Public License http://www.gnu.org/licenses/agp
 import copy
 import io
 import os
+import threading
 import time
 
 import flask
@@ -16,6 +17,7 @@ import octoprint.plugin
 from octoprint.access.permissions import Permissions
 
 from .convert import command_count, convert
+from .presets import detect, sample_devices
 from .status import check_devices
 
 API_ENTRY_KEYS = (
@@ -45,6 +47,7 @@ class SystemCommandEditorPlugin(
     octoprint.plugin.TemplatePlugin,
     octoprint.plugin.AssetPlugin,
     octoprint.plugin.SimpleApiPlugin,
+    octoprint.plugin.StartupPlugin,
 ):
     # Commands live only in OctoPrint's own system.actions, which the settings dialog saves through the core
     # settings API. The plugin keeps no copy: versions before 2.0 did, and copying it back over system.actions
@@ -62,13 +65,16 @@ class SystemCommandEditorPlugin(
             },
             "devices": [],
             "success_toast": False,
+            "live_updates": False,
+            "live_interval": 5,
+            "presets_loaded": False,
         }
 
     def get_settings_version(self):
         return 2
 
     def get_api_commands(self):
-        return {"status": ["ids"]}
+        return {"status": ["ids"], "presets": []}
 
     def on_api_command(self, command, data):
         if not Permissions.SYSTEM.can():
@@ -77,6 +83,21 @@ class SystemCommandEditorPlugin(
             devices = self._settings.get(["devices"]) or []
             entries = self._action_entries() + self._core_entries()
             return flask.jsonify(results=check_devices(devices, entries, data["ids"]))
+        if command == "presets":
+            return flask.jsonify(presets=detect())
+
+    def on_after_startup(self):
+        if self._settings.get_boolean(["presets_loaded"]):
+            return
+        threading.Thread(target=self._load_sample_presets, daemon=True).start()
+
+    def _load_sample_presets(self, detector=detect):
+        if not (self._settings.get(["devices"]) or []):
+            added = sample_devices(detector())
+            self._settings.set(["devices"], added)
+            self._logger.info("Added sample devices: %s", [device["id"] for device in added])
+        self._settings.set(["presets_loaded"], True)
+        self._settings.save()
 
     def on_api_get(self, request):
         if not Permissions.SYSTEM.can():
@@ -88,6 +109,8 @@ class SystemCommandEditorPlugin(
             entries=entries,
             core_commands=self._core_commands(),
             success_toast=self._settings.get(["success_toast"]) is True,
+            live_updates=self._settings.get(["live_updates"]) is True,
+            live_interval=self._settings.get(["live_interval"]) or 5,
         )
 
     def is_api_protected(self):

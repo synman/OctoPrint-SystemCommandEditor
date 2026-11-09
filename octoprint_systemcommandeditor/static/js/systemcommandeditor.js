@@ -463,6 +463,64 @@ $(function () {
         };
     }
 
+    // "Add from presets": asks the server which readouts this system offers, and adds the ticked ones as devices
+    function PresetPicker(owner) {
+        const self = this;
+
+        self.loading = ko.observable(false);
+        self.failed = ko.observable(false);
+        self.rows = ko.observableArray([]);
+        self.canAdd = ko.pureComputed(() => self.rows().some((row) => row.checkable && row.checked()));
+
+        self.open = () => {
+            const existing = owner.devices().map((device) => device.id);
+            self.rows([]);
+            self.failed(false);
+            self.loading(true);
+            owner.presetDialog.modal("show");
+            OctoPrint.simpleApiCommand("systemcommandeditor", "presets", {})
+                .done((response) => {
+                    self.rows(((response && response.presets) || []).map((preset) => {
+                        const added = existing.includes(preset.id);
+                        return {
+                            preset: preset,
+                            added: added,
+                            checkable: !added && !!preset.available,
+                            checked: ko.observable(added)
+                        };
+                    }));
+                })
+                .fail(() => self.failed(true))
+                .always(() => self.loading(false));
+        };
+
+        self.label = (row) => {
+            if (row.added) return gettext("Added");
+            if (!row.preset.available) return gettext("Not available on this system");
+            return "";
+        };
+
+        self.add = () => {
+            self.rows().forEach((row) => {
+                if (!row.checkable || !row.checked()) return;
+                const preset = row.preset;
+                owner.devices.push({
+                    id: preset.id,
+                    type: preset.type,
+                    name: preset.name,
+                    icon: preset.icon,
+                    status: preset.status,
+                    section: preset.section
+                });
+            });
+            owner.presetDialog.modal("hide");
+        };
+
+        self.cancel = () => {
+            owner.presetDialog.modal("hide");
+        };
+    }
+
     function SystemCommandEditorViewModel(parameters) {
         const self = this;
 
@@ -511,6 +569,7 @@ $(function () {
 
         self.editor = new SystemCommandEditorEditor(self);
         self.deviceEditor = new DeviceEditor(self);
+        self.presets = new PresetPicker(self);
 
         // icons and headings for OctoPrint's own entries, kept in this plugin's settings
         self.coreSettings = ko.observable({});
@@ -665,6 +724,7 @@ $(function () {
             self.dialog.on("hidden", self.editor.onHidden);
             self.deviceDialog = $("#sce-device-editor");
             self.deviceDialog.on("hidden", self.deviceEditor.onHidden);
+            self.presetDialog = $("#sce-presets");
         };
 
         self.onSettingsShown = self.load;

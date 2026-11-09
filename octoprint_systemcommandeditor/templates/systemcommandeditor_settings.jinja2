@@ -57,6 +57,13 @@
         {{ _('Show a success message when a command finishes') }}
     </label>
     <span class="help-block">{{ _('Off by default: the menu already spins the command\'s icon while it runs and shows a check or a cross when it ends. Background commands and failures always show a message.') }}</span>
+    <label class="checkbox">
+        <input type="checkbox" data-bind="checked: settingsViewModel.settings.plugins.systemcommandeditor.live_updates">
+        {{ _('Update device states and readouts while the System menu is open, every') }}
+        <input type="number" min="1" class="input-mini" data-bind="value: settingsViewModel.settings.plugins.systemcommandeditor.live_interval, enable: settingsViewModel.settings.plugins.systemcommandeditor.live_updates">
+        {{ _('seconds') }}
+    </label>
+    <span class="help-block">{{ _('Off by default. Each update runs every status command on the OctoPrint server.') }}</span>
 </div>
 
 <h4 class="sce-group-title">{{ _('Devices') }}</h4>
@@ -85,6 +92,7 @@
 
 <div class="sce-add-buttons">
     <button type="button" class="btn" data-bind="click: addDevice"><i class="fa-solid fa-plug"></i> {{ _('Add device') }}</button>
+    <button type="button" class="btn" data-bind="click: presets.open"><i class="fa-solid fa-wand-magic-sparkles"></i> {{ _('Add from presets') }}</button>
 </div>
 
 <!-- ko if: coreEntries().length -->
@@ -271,6 +279,39 @@
         <!-- /ko -->
         <button type="button" class="btn" data-bind="click: cancel">{{ _('Cancel') }}</button>
         <button type="button" class="btn btn-primary" data-bind="click: done, enable: valid">{{ _('Done') }}</button>
+    </div>
+</div>
+
+<!-- Presets picker -->
+<div id="sce-presets" class="modal hide" data-bind="with: presets">
+    <div class="modal-header">
+        <a href="javascript:void(0)" class="close" data-bind="click: cancel">&times;</a>
+        <h3>{{ _('Add devices from presets') }}</h3>
+    </div>
+    <div class="modal-body">
+        <div data-bind="visible: loading" class="muted">
+            <i class="fa-solid fa-spinner fa-spin"></i> {{ _('Checking this system…') }}
+        </div>
+        <div data-bind="visible: failed" class="muted">{{ _('Could not check this system.') }}</div>
+        <div class="sce-list" data-bind="visible: !loading() && !failed()">
+            <!-- ko foreach: rows -->
+            <div class="sce-row sce-preset-row">
+                <label>
+                    <input type="checkbox" data-bind="checked: checked, enable: checkable">
+                </label>
+                <span class="sce-icon"><i data-bind="css: $data.preset.icon || ''"></i></span>
+                <span class="sce-text">
+                    <span class="sce-name" data-bind="text: $data.preset.name"></span>
+                    <span class="muted" data-bind="text: $data.preset.value || ''"></span>
+                </span>
+                <span class="muted" data-bind="text: $parent.label($data), visible: $parent.label($data)"></span>
+            </div>
+            <!-- /ko -->
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn" data-bind="click: cancel">{{ _('Cancel') }}</button>
+        <button type="button" class="btn btn-primary" data-bind="click: add, enable: canAdd">{{ _('Add selected') }}</button>
     </div>
 </div>
 

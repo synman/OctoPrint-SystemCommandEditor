@@ -323,3 +323,8 @@
   max-width: 720px;
   margin: 0 auto;
 }
+
+/* Add from presets: the checkbox sits before the icon, the muted label after the value */
+#sce-presets .sce-preset-row label {
+  margin: 0 8px 0 0;
+}
