@@ -368,3 +368,8 @@
     padding: 3px 8px;
     font-size: 0.9em;
 }
+
+/* option: invert the menu's icon colors, for dark themes */
+#navbar_systemmenu ul.sce-invert-icons i {
+  filter: invert(1);
+}

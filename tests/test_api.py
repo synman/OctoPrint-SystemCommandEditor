@@ -90,6 +90,10 @@ def test_settings_default_live_updates_off_every_5_seconds():
     assert defaults["live_interval"] == 5
 
 
+def test_settings_default_invert_icons_off():
+    assert SystemCommandEditorPlugin().get_settings_defaults()["invert_icons"] is False
+
+
 def test_settings_default_success_toast_off():
     assert SystemCommandEditorPlugin().get_settings_defaults()["success_toast"] is False
 
@@ -188,7 +192,8 @@ def test_get_returns_entries_and_core_commands(monkeypatch):
     with request_context():
         body = plugin.on_api_get(None).get_json()
 
-    assert set(body) == {"devices", "core", "entries", "core_commands", "success_toast", "live_updates", "live_interval"}
+    assert set(body) == {"devices", "core", "entries", "core_commands", "success_toast", "live_updates", "live_interval", "invert_icons"}
+    assert body["invert_icons"] is False
     assert body["live_updates"] is False
     assert body["live_interval"] == 5
     assert body["success_toast"] is False

@@ -67,6 +67,7 @@ class SystemCommandEditorPlugin(
             "success_toast": False,
             "live_updates": False,
             "live_interval": 5,
+            "invert_icons": False,
             "presets_loaded": False,
         }
 
@@ -111,6 +112,7 @@ class SystemCommandEditorPlugin(
             success_toast=self._settings.get(["success_toast"]) is True,
             live_updates=self._settings.get(["live_updates"]) is True,
             live_interval=self._settings.get(["live_interval"]) or 5,
+            invert_icons=self._settings.get(["invert_icons"]) is True,
         )
 
     def is_api_protected(self):

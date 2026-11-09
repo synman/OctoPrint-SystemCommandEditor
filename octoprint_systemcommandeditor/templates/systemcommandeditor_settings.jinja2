@@ -94,6 +94,11 @@
         {{ _('seconds') }}
     </label>
     <span class="help-block">{{ _('Off by default. Each update runs every status command on the OctoPrint server.') }}</span>
+    <label class="checkbox">
+        <input type="checkbox" data-bind="checked: settingsViewModel.settings.plugins.systemcommandeditor.invert_icons">
+        {{ _('Invert the colors of the System menu icons') }}
+    </label>
+    <span class="help-block">{{ _('For dark themes, such as the ones UI Customizer offers, where the icons blend into the menu.') }}</span>
 </div>
 
 <h4 class="sce-group-title">{{ _('Devices') }}</h4>
