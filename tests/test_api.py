@@ -777,3 +777,54 @@ def test_presets_api_lists_the_octoprint_group_with_its_five_presets(monkeypatch
     assert [preset["preset"] for preset in group["presets"]] == [
         "octoprint:connection", "octoprint:job", "octoprint:printer", "octoprint:gcode", "octoprint:event",
     ]
+
+
+def test_presets_api_offers_the_snapshot_from_classicwebcam_first(monkeypatch):
+    allow(monkeypatch)
+    monkeypatch.setattr(plugin_module, "detect", lambda: [])
+    monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: [])
+    plugin = make_plugin()
+    plugin._maintenance_env = lambda: {}
+    plugin._settings.config["webcam"] = {"snapshot": "http://printer.local/own"}
+    plugin._settings.config["plugins"]["classicwebcam"] = {"snapshot": "http://printer.local/classic"}
+    with request_context():
+        body = plugin.on_api_command("presets", {}).get_json()
+    presets = body["plugins"][-1]["presets"]
+    assert presets[-1]["preset"] == "octoprint:snapshot"
+    assert presets[-1]["control"]["url"] == "http://printer.local/classic"
+
+
+def test_presets_api_offers_the_snapshot_from_the_webcam_setting_when_classicwebcam_is_unset(monkeypatch):
+    allow(monkeypatch)
+    monkeypatch.setattr(plugin_module, "detect", lambda: [])
+    monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: [])
+    plugin = make_plugin()
+    plugin._maintenance_env = lambda: {}
+    plugin._settings.config["webcam"] = {"snapshot": "http://printer.local/own"}
+    with request_context():
+        body = plugin.on_api_command("presets", {}).get_json()
+    assert body["plugins"][-1]["presets"][-1]["control"]["url"] == "http://printer.local/own"
+
+
+def test_presets_api_has_no_snapshot_preset_without_either_setting(monkeypatch):
+    allow(monkeypatch)
+    monkeypatch.setattr(plugin_module, "detect", lambda: [])
+    monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: [])
+    plugin = make_plugin()
+    plugin._maintenance_env = lambda: {}
+    with request_context():
+        body = plugin.on_api_command("presets", {}).get_json()
+    assert "octoprint:snapshot" not in [p["preset"] for p in body["plugins"][-1]["presets"]]
+
+
+def test_presets_api_skips_a_blank_classicwebcam_snapshot_and_trims_the_one_it_uses(monkeypatch):
+    allow(monkeypatch)
+    monkeypatch.setattr(plugin_module, "detect", lambda: [])
+    monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: [])
+    plugin = make_plugin()
+    plugin._maintenance_env = lambda: {}
+    plugin._settings.config.setdefault("plugins", {})["classicwebcam"] = {"snapshot": "   "}
+    plugin._settings.config["webcam"] = {"snapshot": " http://printer.local/own "}
+    with request_context():
+        body = plugin.on_api_command("presets", {}).get_json()
+    assert body["plugins"][-1]["presets"][-1]["control"]["url"] == "http://printer.local/own"

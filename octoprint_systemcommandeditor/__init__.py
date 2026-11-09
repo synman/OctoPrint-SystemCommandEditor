@@ -159,7 +159,7 @@ class SystemCommandEditorPlugin(
                 presets=detect(),
                 maintenance=detect_maintenance(self._maintenance_env()),
                 switches=system_switches(socket.gethostname()),
-                plugins=self._plugin_presets() + [octoprint_presets()],
+                plugins=self._plugin_presets() + [octoprint_presets(self._snapshot_url())],
             )
 
     def _status(self, ids, live):
@@ -222,6 +222,14 @@ class SystemCommandEditorPlugin(
             self._plugin_manager,
             lambda plugin, key: self._settings.global_get(["plugins", plugin, key]),
         )
+
+    def _snapshot_url(self):
+        # the classic webcam plugin's snapshot first, then OctoPrint's own webcam setting; None when neither is set
+        for path in (["plugins", "classicwebcam", "snapshot"], ["webcam", "snapshot"]):
+            url = self._settings.global_get(path)
+            if isinstance(url, str) and url.strip():
+                return url.strip()
+        return None
 
     def on_after_startup(self):
         if self._settings.get_boolean(["presets_loaded"]):

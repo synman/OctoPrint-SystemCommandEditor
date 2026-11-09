@@ -214,6 +214,14 @@ $(function () {
         // a plugin command's run call, kept as saved; such a command has no shell command
         self.runCall = ko.observable(undefined);
         self.runText = ko.pureComputed(() => window.SceModel.describeRun(self.runCall()));
+        // a G-code run is editable: one line per G-code line; any other run kind stays read-only
+        self.isGcode = ko.pureComputed(() => {
+            const run = self.runCall();
+            return !!run && Array.isArray(run.gcode);
+        });
+        self.isRunOnly = ko.pureComputed(() => !!self.runCall() && !self.isGcode());
+        self.gcodeText = ko.observable("");
+        const gcodeLines = () => self.gcodeText().split("\n").map((line) => line.trim()).filter((line) => line);
 
         self.device = ko.observable("");
         self.role = ko.observable("");
@@ -240,7 +248,9 @@ $(function () {
             return self.name().trim() ? "" : gettext("A name is required.");
         });
         self.commandError = ko.pureComputed(() => {
-            if (self.isSection() || self.isCore() || self.runCall()) return "";
+            if (self.isSection() || self.isCore()) return "";
+            if (self.isGcode()) return gcodeLines().length ? "" : gettext("Enter at least one G-code line.");
+            if (self.runCall()) return "";
             return self.command().trim() ? "" : gettext("A command is required.");
         });
 
@@ -332,7 +342,10 @@ $(function () {
                 fresh_credentials: self.freshCredentials(),
                 ignore: self.ignore()
             }, deviceFields());
-            if (self.runCall()) {
+            if (self.isGcode()) {
+                // the other keys of the run are kept; the lines are trimmed and blank ones dropped
+                entry.run = _.extend({}, self.runCall(), {gcode: gcodeLines()});
+            } else if (self.runCall()) {
                 entry.run = self.runCall();
             } else {
                 entry.command = self.command().trim();
@@ -369,6 +382,7 @@ $(function () {
             self.action(entry.action && entry.action !== DIVIDER ? entry.action : "");
             self.command(entry.command || "");
             self.runCall(entry.run);
+            self.gcodeText(entry.run && Array.isArray(entry.run.gcode) ? entry.run.gcode.join("\n") : "");
             self.icon(entry.icon || "");
             self.iconColor(entry.icon_color || "");
             self.iconInvert(!!entry.icon_invert);
@@ -695,6 +709,7 @@ $(function () {
             };
             if (control.on_pattern) device.on_pattern = control.on_pattern;
             if (control.off_pattern) device.off_pattern = control.off_pattern;
+            if (control.type === "link") device.url = control.url;
             owner.devices.push(device);
             const commands = preset.commands || [];
             if (!commands.length) return;

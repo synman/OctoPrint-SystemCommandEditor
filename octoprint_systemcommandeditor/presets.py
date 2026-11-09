@@ -592,8 +592,10 @@ def harvest(plugin_manager, get_setting):
     return groups
 
 
-def octoprint_presets():
-    """OctoPrint's own printer actions and readouts, as one group in the shape ``harvest`` returns. Always present."""
+def octoprint_presets(snapshot_url=None):
+    """OctoPrint's own printer actions and readouts, as one group in the shape ``harvest`` returns. Always present.
+
+    With a non-empty ``snapshot_url`` the group also offers a webcam snapshot link, last."""
     connection = {
         "type": "switch", "name": "Printer connection", "icon": ICON, "read": {"printer": "state"},
         "on_pattern": "^(Operational|Printing|Paused|Pausing|Resuming|Cancelling|Finishing)",
@@ -657,4 +659,7 @@ def octoprint_presets():
         {"preset": key, "name": name, "control": control, "commands": commands}
         for key, name, (control, commands) in entries
     ]
+    if isinstance(snapshot_url, str) and snapshot_url:
+        snapshot = {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera", "url": snapshot_url}
+        presets.append({"preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": snapshot, "commands": []})
     return {"plugin": "octoprint", "name": "OctoPrint", "presets": presets}

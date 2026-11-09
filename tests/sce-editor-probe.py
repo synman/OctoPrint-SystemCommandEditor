@@ -65,6 +65,7 @@ SWITCHES = [
 
 # plugin presets answer: a PSU Control switch reading get_psu_state with On and Off runs, and a Better Grbl Support
 # action reading state with one field, with Home and a confirmed Reset
+SNAPSHOT_URL = "http://probe-octo.local/webcam/?action=snapshot"
 PLUGINS = [
     {"plugin": "psucontrol", "name": "PSU Control", "presets": [
         {"preset": "psucontrol:psu", "name": "PSU Control",
@@ -81,6 +82,15 @@ PLUGINS = [
              {"name": "Home", "run": {"plugin": "bettergrblsupport", "api": "home"}, "role": "run"},
              {"name": "Reset", "run": {"plugin": "bettergrblsupport", "api": "reset"}, "role": "run",
               "confirm": "Reset the controller?"}]}]},
+    # the OctoPrint group, as octoprint_presets() builds it with a snapshot URL: a webcam link, and Send G-code
+    {"plugin": "octoprint", "name": "OctoPrint", "presets": [
+        {"preset": "octoprint:snapshot", "name": "Webcam snapshot",
+         "control": {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera", "url": SNAPSHOT_URL},
+         "commands": []},
+        {"preset": "octoprint:gcode", "name": "Send G-code",
+         "control": {"type": "action", "name": "Send G-code", "icon": "fa-solid fa-terminal"},
+         "commands": [{"name": "Send", "run": {"gcode": ["M117 Hello from System Commands"]}, "role": "run",
+                       "confirm": "Send this G-code?"}]}]},
 ]
 
 FIXTURE_ACTIONS = [
@@ -732,8 +742,8 @@ def run_probe():
         plugin_rows = page.locator("#sce-presets .sce-plugin-row")
         psu_row = plugin_rows.filter(has_text="PSU Control")
         grbl_row = plugin_rows.filter(has_text="Grbl")
-        check("the presets picker shows a Plugin devices section with both plugin presets unticked",
-              page.locator("#sce-presets h4", has_text="Plugin devices").count() == 1 and plugin_rows.count() == 2
+        check("the presets picker shows a Plugin devices section with all four plugin presets unticked",
+              page.locator("#sce-presets h4", has_text="Plugin devices").count() == 1 and plugin_rows.count() == 4
               and not psu_row.locator("input").is_checked() and not grbl_row.locator("input").is_checked(),
               "rows=%d" % plugin_rows.count())
         psu_row.locator("input").check()
@@ -852,6 +862,58 @@ def run_probe():
               and not [a for a in left_actions if a.get("preset") == "psucontrol:psu" or a.get("group") == "psu_control"]
               and not [a for a in left_actions if a == {"action": "divider", "name": "Plugin devices"}],
               json.dumps({"devices": left_devices, "actions": left_actions[-3:]}))
+
+        # Phase D4: the OctoPrint group. Webcam snapshot is a link control; Send G-code is editable G-code
+        open_settings()
+        page.get_by_role("button", name="Add from presets").click()
+        wait_visible("#sce-presets .sce-plugin-row")
+        snap_row = page.locator("#sce-presets .sce-plugin-row", has_text="Webcam snapshot")
+        send_row = page.locator("#sce-presets .sce-plugin-row", has_text="Send G-code")
+        check("the picker's OctoPrint group offers Webcam snapshot, unticked",
+              snap_row.count() == 1 and not snap_row.locator("input").is_checked())
+        snap_row.locator("input").check()
+        send_row.locator("input").check()
+        page.locator("#sce-presets .modal-footer .btn-primary").click()
+        wait_hidden("#sce-presets")
+        body = save_settings()
+        if body is None:
+            check("save after OctoPrint pick posts the settings", False, "no POST captured")
+        else:
+            devices = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
+            snap = [d for d in devices if d.get("preset") == "octoprint:snapshot"]
+            check("ticking Webcam snapshot and saving posts a link control with its url and its marker",
+                  len(snap) == 1 and snap[0].get("type") == "link" and snap[0].get("url") == SNAPSHOT_URL,
+                  json.dumps(snap))
+
+        # the Send command opens with its G-code lines in a textarea; replacing them saves the new lines
+        open_settings()
+        edit_command("Send")
+        gcode_before = page.locator("#sce-editor-gcode").input_value()
+        check("a Send G-code command opens with a G-code textarea holding its lines",
+              gcode_before == "M117 Hello from System Commands", "gcode=%r" % gcode_before)
+        page.fill("#sce-editor-gcode", "G28\nM117 done\n\n")
+        modal_done("#sce-editor")
+        body = save_settings()
+        if body is None:
+            check("save after G-code edit posts the settings", False, "no POST captured")
+        else:
+            saved_send = next((a for a in (body.get("system") or {}).get("actions") or []
+                               if a.get("preset") == "octoprint:gcode"), {})
+            check("replacing the lines and saving posts run gcode with the trimmed non-blank lines",
+                  saved_send.get("run") == {"gcode": ["G28", "M117 done"]}, json.dumps(saved_send))
+
+        # clearing every G-code line shows the error and disables Done
+        open_settings()
+        edit_command("Send")
+        page.fill("#sce-editor-gcode", "  \n\n")
+        page.wait_for_timeout(200)
+        error_text = page.locator("#sce-editor").inner_text()
+        done_disabled = page.locator("#sce-editor .modal-footer .btn-primary").is_disabled()
+        check("clearing every G-code line shows the error and disables Done",
+              "Enter at least one G-code line." in error_text and done_disabled,
+              "done_disabled=%s" % done_disabled)
+        page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
+        wait_hidden("#sce-editor")
 
         # Phase E: an action control; its command takes the Run role, and the role list is just Run
         open_settings()   # the settings pane closes on each successful save

@@ -649,3 +649,22 @@ def test_octoprint_presets_carry_no_id_or_action_and_no_action_on_commands():
     for preset in octoprint_presets()["presets"]:
         assert "id" not in preset["control"] and "action" not in preset["control"]
         assert all("action" not in command and "group" not in command for command in preset["commands"])
+
+
+def test_octoprint_snapshot_preset_is_absent_without_a_url():
+    assert "octoprint:snapshot" not in octoprint_by_id()
+    assert "octoprint:snapshot" not in {p["preset"] for p in octoprint_presets("")["presets"]}
+
+
+def test_octoprint_snapshot_preset_is_a_link_with_its_url_and_no_commands_and_comes_last():
+    group = octoprint_presets("http://printer.local/webcam/?action=snapshot")
+    preset = group["presets"][-1]
+    assert preset == {
+        "preset": "octoprint:snapshot", "name": "Webcam snapshot",
+        "control": {"type": "link", "name": "Webcam snapshot", "icon": "fa-solid fa-camera",
+                    "url": "http://printer.local/webcam/?action=snapshot"},
+        "commands": [],
+    }
+    assert [p["preset"] for p in group["presets"][:-1]] == [
+        "octoprint:connection", "octoprint:job", "octoprint:printer", "octoprint:gcode", "octoprint:event",
+    ]

@@ -324,7 +324,17 @@
                 </div>
             </div>
 
-            <!-- ko if: runCall -->
+            <!-- ko if: isGcode -->
+            <div class="control-group" data-bind="css: { error: commandError() }">
+                <label class="control-label" for="sce-editor-gcode">{{ _('G-code') }}</label>
+                <div class="controls">
+                    <textarea id="sce-editor-gcode" class="input-block-level sce-mono" rows="4" data-bind="textInput: gcodeText" placeholder="{{ _('e.g. G28')|edq }}"></textarea>
+                    <span class="help-block" data-bind="visible: !commandError()">{{ _('One G-code line per line, sent to the printer in order.') }}</span>
+                    <span class="help-block" data-bind="text: commandError, visible: commandError"></span>
+                </div>
+            </div>
+            <!-- /ko -->
+            <!-- ko if: isRunOnly -->
             <div class="control-group">
                 <label class="control-label">{{ _('Runs') }}</label>
                 <div class="controls">
