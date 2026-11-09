@@ -100,11 +100,22 @@
 </p>
 
 <div class="sce-options">
+    <div class="sce-option">
     <label class="checkbox">
         <input type="checkbox" data-bind="checked: settingsViewModel.settings.plugins.systemcommandeditor.success_toast">
         {{ _('Show a success message when a command finishes') }}
     </label>
-    <span class="help-block">{{ _('Off by default: the menu already spins the command\'s icon while it runs and shows a check or a cross when it ends. Background commands and failures always show a message.') }}</span>
+    <span class="help-block">{{ _('Off by default: the menu already shows a spinning busy icon while a command runs and a check or a cross when it ends. Background commands and failures always show a message.') }}</span>
+    </div>
+    <div class="sce-option sce-busy-icon">
+        <span>{{ _('Busy icon') }}</span>
+        <span class="sce-busy-preview"><i data-bind="css: $root.busyIcon() + ' fa-spin fa-fw'"></i></span>
+        <div class="sce-icon-picks" data-bind="foreach: $root.busyIcons">
+            <button type="button" class="btn btn-mini" data-bind="click: function() { $root.pickBusyIcon($data) }, attr: { title: $data.replace('fa-solid fa-', '') }, css: { active: $root.busyIcon() === $data }"><i data-bind="css: $data + ' fa-fw'"></i></button>
+        </div>
+        <span class="help-block">{{ _('The icon a command shows while it runs. Only icons that read well turning are offered.') }}</span>
+    </div>
+    <div class="sce-option">
     <label class="checkbox">
         <input type="checkbox" data-bind="checked: settingsViewModel.settings.plugins.systemcommandeditor.live_updates">
         {{ _('Update control states and readouts while the System menu is open, every') }}
@@ -112,6 +123,7 @@
         {{ _('seconds') }}
     </label>
     <span class="help-block">{{ _('Off by default. Each update runs every status command on the OctoPrint server.') }}</span>
+    </div>
 </div>
 
 <h4 class="sce-group-title">{{ _('Controls') }}</h4>
@@ -164,9 +176,9 @@
             <span class="sce-name" data-bind="text: $data.device.name"></span>
             <span class="muted" data-bind="text: $root.typeLabel($data.device.type)"></span>
         </span>
-        <span class="btn-group sce-buttons">
+        <span class="sce-buttons sce-member-buttons">
             <!-- ko foreach: $data.buttons -->
-            <button type="button" class="btn btn-mini" data-bind="attr: { title: $data.name, 'data-core-action': $data.action }, click: $root.editCoreAction"><i data-bind="css: $data.icon"></i></button>
+            <button type="button" class="btn btn-mini sce-btn" data-bind="attr: { title: $data.name, 'data-core-action': $data.action }, click: $root.editCoreAction"><i data-bind="css: $data.icon"></i></button>
             <!-- /ko -->
         </span>
     </div>
@@ -223,9 +235,9 @@
             <span class="sce-name" data-bind="text: $root.controlOf($data).name"></span>
             <span class="muted" data-bind="text: $root.typeLabel($root.controlOf($data).type)"></span>
         </span>
-        <span class="btn-group sce-buttons">
+        <span class="sce-buttons sce-member-buttons">
             <!-- ko foreach: $root.buttonsOf($data) -->
-            <button type="button" class="btn btn-mini" data-bind="attr: { title: $data.name, 'data-action': $data.action }, click: $root.editMemberAction"><i data-bind="css: $data.icon"></i></button>
+            <button type="button" class="btn btn-mini sce-btn" data-bind="attr: { title: $data.name, 'data-action': $data.action }, click: $root.editMemberAction"><i data-bind="css: $data.icon"></i></button>
             <!-- /ko -->
         </span>
         <!-- /ko -->

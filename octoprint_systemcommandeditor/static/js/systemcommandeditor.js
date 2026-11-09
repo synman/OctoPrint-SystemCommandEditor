@@ -699,6 +699,14 @@ $(function () {
         self._dirty = false;
         self._devicesJson = "[]";
 
+        // the Settings busy-icon picker: the allowed list lives in SceModel; the saved value is one full class string
+        self.busyIcons = window.SceModel.BUSY_ICONS;
+        self.busyIcon = ko.pureComputed(() => ko.unwrap(self._pluginSettings().busy_icon));
+        self.pickBusyIcon = (cls) => {
+            const setting = self._pluginSettings().busy_icon;
+            if (ko.isObservable(setting)) setting(cls);
+        };
+
         self.iconChoices = [
             "fa-solid fa-power-off",
             "fa-solid fa-rotate-right",

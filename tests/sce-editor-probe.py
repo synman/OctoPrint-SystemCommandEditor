@@ -309,6 +309,25 @@ def icon_picker_checks():
     wait_hidden("#sce-device-editor")
 
 
+BUSY_PICKS = """() => [...document.querySelectorAll('#settings_plugin_systemcommandeditor .sce-busy-icon .sce-icon-picks button i')]
+    .map(i => i.className.replace(' fa-fw', '').trim())"""
+
+
+def busy_icon_checks():
+    allowed = page.evaluate("() => window.SceModel.BUSY_ICONS.slice()")
+    shown = page.evaluate(BUSY_PICKS)
+    check("the busy-icon picker shows exactly the allowed icons", sorted(shown) == sorted(allowed),
+          "shown=%s" % shown)
+    page.click('#settings_plugin_systemcommandeditor .sce-busy-icon button[title="gear"]')
+    preview = page.locator("#settings_plugin_systemcommandeditor .sce-busy-preview i").get_attribute("class") or ""
+    check("the busy-icon preview spins the picked icon", "fa-gear" in preview and "fa-spin" in preview,
+          "preview=%r" % preview)
+    saved = save_settings()
+    value = (((saved or {}).get("plugins") or {}).get("systemcommandeditor") or {}).get("busy_icon")
+    check("picking an icon and saving stores it as busy_icon", value == "fa-solid fa-gear", "busy_icon=%r" % value)
+    open_settings()  # the save closed the dialog; the phases after this work in it
+
+
 def run_probe():
     global page
     started = time.time()
@@ -346,6 +365,7 @@ def run_probe():
         check("fresh fixture carries no condition", not with_when, json.dumps(with_when))
 
         icon_picker_checks()
+        busy_icon_checks()
 
         # Phase A: a switch device with two custom commands, a live consent preview, one condition
         add_switch_device("Laser")

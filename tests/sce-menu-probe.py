@@ -222,6 +222,12 @@ BUTTONS = """(id) => [...document.querySelectorAll('#navbar_systemmenu li.sce-de
 
 SPIN_IN = """(id) => document.querySelectorAll('#navbar_systemmenu li.sce-device[data-device-id="' + id + '"] i.fa-spin').length"""
 
+# the class list of the icon on one button of a device row, "" when the button is not drawn
+BUTTON_ICON_CLASS = """([id, title]) => {
+    const i = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="' + id + '"] button[title="' + title + '"] i');
+    return i ? i.className : "";
+}"""
+
 STANDALONE_ICON = """(action) => {
     const li = [...document.querySelectorAll('#navbar_systemmenu ul.dropdown-menu > li')]
         .find(l => { const d = ko.dataFor(l); return d && d.action === action; });
@@ -361,10 +367,17 @@ def run_probe():
         page.locator('li.sce-device[data-device-id="laser"] button[title="Restart laser"]').click()
         pump(300)
         spun = page.evaluate(SPIN_IN, "laser") > 0
-        check("sync button spins while pending", spun)
+        busy = page.evaluate(BUTTON_ICON_CLASS, ["laser", "Restart laser"])
+        # the busy icon (the default fa-spinner) replaces the button's own icon, and that one is not spinning
+        check("sync button shows the busy icon spinning while pending",
+              spun and "fa-spinner" in busy and "fa-spin" in busy and "fa-rotate-right" not in busy,
+              "busy=%r" % busy)
         pump(int((SYNC_DELAY + 1.2) * 1000))
         still = page.evaluate(SPIN_IN, "laser") > 0
         check("sync button stops after", spun and not still, "spinning=%s" % still)
+        flash = page.evaluate(BUTTON_ICON_CLASS, ["laser", "Restart laser"])
+        check("sync button then shows the check or cross flash", "fa-check" in flash or "fa-xmark" in flash,
+              "icon=%r" % flash)
         toasts = page.evaluate(SUCCESS_TOASTS)
         check("a finished sync run shows no success toast by default", toasts == 0, "toasts=%s" % toasts)
 
@@ -405,15 +418,21 @@ def run_probe():
               readout is not None and "Disk" in readout and "42 GB free" in readout, json.dumps(readout))
 
         # G2. an action row: its status text, then one button per run member, drawn with the member's icon
+        open_menu()  # measured open: a closed menu has no layout, so every rect reads zero
         action_row = page.evaluate("""() => {
             const li = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="bkup"]');
             if (!li) return null;
             const state = li.querySelector('.sce-state');
             const buttons = [...li.querySelectorAll('button.sce-btn')].map(b => ({
                 title: b.getAttribute('title'), icon: b.querySelector('i').className}));
-            return {name: li.querySelector('.sce-device-name').innerText.trim(),
-                    state: state ? state.innerText.trim() : null, buttons: buttons};
+            const name = li.querySelector('.sce-device-name > span:first-child');
+            const rs = state && state.getBoundingClientRect(), rn = name && name.getBoundingClientRect();
+            const under = !!(rs && rn) && rn.height > 0 && rs.height > 0 && rs.top >= rn.bottom - 1;
+            return {name: name ? name.innerText.trim() : null,
+                    state: state ? state.innerText.trim() : null, under: under, buttons: buttons};
         }""")
+        check("action row's status sits under its name", action_row is not None and action_row["under"],
+              json.dumps(action_row))
         check("action row shows its status text and one button with the member icon",
               action_row is not None and action_row["state"] == "Last backup 2 h ago"
               and len(action_row["buttons"]) == 1 and action_row["buttons"][0]["title"] == "Back up now"

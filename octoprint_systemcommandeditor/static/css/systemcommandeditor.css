@@ -94,6 +94,32 @@
   white-space: nowrap;
 }
 
+/* the same separate buttons, gap and padding as the System menu's row (#navbar_systemmenu .sce-buttons / .sce-btn) */
+#settings_plugin_systemcommandeditor .sce-member-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+#settings_plugin_systemcommandeditor .sce-member-buttons .sce-btn {
+  padding: 0 5px;
+}
+
+/* the busy-icon picker in the options block: a row of icon buttons and a spinning preview */
+#settings_plugin_systemcommandeditor .sce-busy-icon {
+  margin: 6px 0;
+}
+
+#settings_plugin_systemcommandeditor .sce-busy-icon .sce-busy-preview {
+  margin-left: 8px;
+}
+
+#settings_plugin_systemcommandeditor .sce-busy-icon .sce-icon-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+}
+
 #settings_plugin_systemcommandeditor .sce-add-buttons {
   text-align: center;
   margin-top: 10px;
@@ -251,6 +277,17 @@
   white-space: nowrap;
 }
 
+/* an action's status, on its own line under the name */
+#navbar_systemmenu .sce-device-name.sce-stack {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+#navbar_systemmenu .sce-state.sce-under {
+  white-space: normal;
+}
+
 #navbar_systemmenu li.sce-device.sce-readout > .sce-state {
   margin-left: auto;
 }
@@ -322,6 +359,13 @@
 #settings_plugin_systemcommandeditor .sce-options {
   max-width: 720px;
   margin: 0 auto;
+}
+
+/* each option in its own block, a rule between them */
+#settings_plugin_systemcommandeditor .sce-option + .sce-option {
+  border-top: 1px solid #eee;
+  margin-top: 8px;
+  padding-top: 8px;
 }
 
 /* Add from presets: the checkbox sits before the icon, the muted label after the value */

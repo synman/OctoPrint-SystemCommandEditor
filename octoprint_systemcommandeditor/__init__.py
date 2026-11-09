@@ -84,6 +84,7 @@ class SystemCommandEditorPlugin(
             "success_toast": False,
             "live_updates": False,
             "live_interval": 5,
+            "busy_icon": "fa-solid fa-spinner",
             "presets_loaded": False,
         }
 
@@ -185,6 +186,7 @@ class SystemCommandEditorPlugin(
             success_toast=self._settings.get(["success_toast"]) is True,
             live_updates=self._settings.get(["live_updates"]) is True,
             live_interval=self._settings.get(["live_interval"]) or 5,
+            busy_icon=self._settings.get(["busy_icon"]) or "fa-solid fa-spinner",
         )
 
     def is_api_protected(self):

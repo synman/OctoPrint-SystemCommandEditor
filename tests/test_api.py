@@ -109,6 +109,10 @@ def test_settings_default_success_toast_off():
     assert SystemCommandEditorPlugin().get_settings_defaults()["success_toast"] is False
 
 
+def test_settings_default_busy_icon_is_spinner():
+    assert SystemCommandEditorPlugin().get_settings_defaults()["busy_icon"] == "fa-solid fa-spinner"
+
+
 def test_get_reports_success_toast_when_turned_on(monkeypatch):
     monkeypatch.setattr(Permissions.SYSTEM, "can", lambda: True)
     plugin = make_plugin()
@@ -215,7 +219,8 @@ def test_get_returns_entries_and_core_commands(monkeypatch):
     with request_context():
         body = plugin.on_api_get(None).get_json()
 
-    assert set(body) == {"devices", "core", "entries", "core_commands", "success_toast", "live_updates", "live_interval"}
+    assert set(body) == {"devices", "core", "entries", "core_commands", "success_toast", "live_updates", "live_interval", "busy_icon"}
+    assert body["busy_icon"] == "fa-solid fa-spinner"
     assert body["live_updates"] is False
     assert body["live_interval"] == 5
     assert body["success_toast"] is False

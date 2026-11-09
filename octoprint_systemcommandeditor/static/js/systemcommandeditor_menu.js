@@ -199,8 +199,23 @@
         return out;
     }
 
+    // the icons a sync command's busy indicator may use: Font Awesome 6 Free solid glyphs that read well turning
+    const BUSY_ICONS = ["fa-solid fa-spinner", "fa-solid fa-circle-notch", "fa-solid fa-arrows-rotate",
+        "fa-solid fa-rotate", "fa-solid fa-rotate-right", "fa-solid fa-gear", "fa-solid fa-fan",
+        "fa-solid fa-compact-disc", "fa-solid fa-sun", "fa-solid fa-asterisk", "fa-solid fa-life-ring",
+        "fa-solid fa-snowflake", "fa-solid fa-yin-yang", "fa-solid fa-dharmachakra", "fa-solid fa-hurricane"];
+
+    // the classes that show a running sync command: the chosen busy icon, spinning. An unset or empty icon falls back
+    // to the first allowed one.
+    function busyClass(icon) {
+        const base = String(icon || "").trim() || BUSY_ICONS[0];
+        return base.split(/\s+/).filter((t) => t !== "fa-spin").concat(["fa-spin"]).join(" ");
+    }
+
     const SceModel = {
         BUTTON_ICON: BUTTON_ICON,
+        BUSY_ICONS: BUSY_ICONS,
+        busyClass: busyClass,
         rowButtons: rowButtons,
         units: units,
         placementOf: placementOf,
@@ -583,9 +598,11 @@ $(function () {
                     btn.addClass("disabled");
                     btn.attr("title", cond.reason);
                 }
+                // a running sync button shows the busy icon in place of its own; the check or cross then replaces it
                 const spinning = self._runs.spinning(b.action);
-                const cls = (!spinning && self._flash(b.action, entry)) || iconOf(b, entry);
-                btn.append(node("i", [cls + (spinning ? " fa-spin" : ""), "fa-fw"]));
+                const cls = spinning ? SceModel.busyClass(self._data.busy_icon)
+                    : (self._flash(b.action, entry) || iconOf(b, entry));
+                btn.append(node("i", [cls, "fa-fw"]));
                 btn.on("click", (ev) => {
                     ev.stopPropagation();
                     if (btn.hasClass("disabled")) return;
@@ -605,12 +622,14 @@ $(function () {
             if (rowCond.effect === "hide") li.addClass(HIDDEN);
             if (rowCond.effect === "disable") li.addClass("disabled");
 
+            // the status sits under the name, so a long one never crowds the buttons
             const row = node("a", ["sce-device-row"]).attr("href", "javascript:void(0)");
-            row.append(icon(d.icon, d.icon_color, d.icon_invert), node("span", ["sce-device-name"]).text(d.name));
+            const label = node("span", ["sce-device-name", "sce-stack"]).append(node("span").text(d.name));
+            row.append(icon(d.icon, d.icon_color, d.icon_invert), label);
             if (self._checking[d.id] && kind === "pending") {
-                row.append(node("span", ["sce-state"]).append(node("i", ["fa-solid fa-spinner fa-spin", "fa-fw"])));
+                label.append(node("span", ["sce-state", "sce-under"]).append(node("i", ["fa-solid fa-spinner fa-spin", "fa-fw"])));
             } else if (kind !== "nostatus" && kind !== "pending") {
-                row.append(node("span", ["sce-state"]).text(kind === "unknown" ? "Unknown" : String(kind)));
+                label.append(node("span", ["sce-state", "sce-under"]).text(kind === "unknown" ? "Unknown" : String(kind)));
             }
             if (rowCond.effect === "disable") row.attr("title", rowCond.reason);
             // the row itself runs nothing; only its buttons do
@@ -734,7 +753,7 @@ $(function () {
                 if (cond.effect === "disable") markCore(el, "disabled", cond.reason);
                 const iconEl = el.children("a").first().children("i.sce-menu-icon");
                 if (self._runs.spinning(action)) {
-                    iconEl.addClass("fa-spin");
+                    iconEl.attr("class", ADDED + " " + SceModel.busyClass(self._data.busy_icon) + " fa-fw sce-menu-icon");
                 } else {
                     const flash = self._flash(action, e);
                     if (flash) iconEl.attr("class", ADDED + " " + flash + " fa-fw sce-menu-icon");
