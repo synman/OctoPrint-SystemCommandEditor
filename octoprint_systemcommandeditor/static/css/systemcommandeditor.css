@@ -318,3 +318,8 @@
   background: none;
   color: inherit;
 }
+
+#settings_plugin_systemcommandeditor .sce-options {
+  max-width: 720px;
+  margin: 0 auto;
+}

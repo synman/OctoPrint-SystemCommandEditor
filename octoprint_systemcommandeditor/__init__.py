@@ -61,6 +61,7 @@ class SystemCommandEditorPlugin(
                 "restart_safe": {"icon": "fa-solid fa-shield-halved", "heading": "", "group": "", "role": "", "value": "", "when": None},
             },
             "devices": [],
+            "success_toast": False,
         }
 
     def get_settings_version(self):
@@ -86,6 +87,7 @@ class SystemCommandEditorPlugin(
             core=self._settings.get(["core"]) or {},
             entries=entries,
             core_commands=self._core_commands(),
+            success_toast=self._settings.get(["success_toast"]) is True,
         )
 
     def is_api_protected(self):

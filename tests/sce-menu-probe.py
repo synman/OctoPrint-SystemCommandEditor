@@ -126,6 +126,12 @@ def status_body(ids, overrides):
     return json.dumps({"results": out})
 
 
+options = {"success_toast": False}
+
+SUCCESS_TOASTS = """() => [...document.querySelectorAll('.ui-pnotify')]
+    .filter(n => /executed successfully/.test(n.innerText)).length"""
+
+
 def handle_plugin(route, request):
     if request.method == "POST":
         ids = (request.post_data_json or {}).get("ids", [])
@@ -137,7 +143,8 @@ def handle_plugin(route, request):
         route.fulfill(status=200, content_type="application/json", body=status_body(ids, {}))
         return
     route.fulfill(status=200, content_type="application/json", body=json.dumps({
-        "devices": DEVICES, "core": CORE, "entries": ENTRIES, "core_commands": CORE_COMMANDS}))
+        "devices": DEVICES, "core": CORE, "entries": ENTRIES, "core_commands": CORE_COMMANDS,
+        "success_toast": options["success_toast"]}))
 
 
 def handle_commands(route, request):
@@ -335,6 +342,8 @@ def run_probe():
         pump(int((SYNC_DELAY + 1.2) * 1000))
         still = page.evaluate(SPIN_IN, "laser") > 0
         check("sync button stops after", spun and not still, "spinning=%s" % still)
+        toasts = page.evaluate(SUCCESS_TOASTS)
+        check("a finished sync run shows no success toast by default", toasts == 0, "toasts=%s" % toasts)
 
         # E. async never spins; consent dialog body carries the command in <pre>
         open_menu()
@@ -478,6 +487,17 @@ def run_probe():
         check("re-render leaves no duplicate sce-added nodes",
               before == after and all(v == 1 for v in rows.values()),
               "before=%s after=%s rows=%s" % (before, after, json.dumps(rows)))
+
+        # O. with the success toast turned on, a finished sync run shows core's success toast again
+        options["success_toast"] = True
+        page.reload(wait_until="domcontentloaded")
+        wait_until(lambda: page.evaluate(
+            "() => document.querySelector('li.sce-device[data-device-id=\"laser\"] .sce-dot.sce-off') !== null"), 15)
+        open_menu()
+        page.locator('li.sce-device[data-device-id="laser"] button[title="Restart laser"]').click()
+        pump(int((SYNC_DELAY + 1.0) * 1000))
+        toasts = page.evaluate(SUCCESS_TOASTS)
+        check("with the option on, a finished sync run shows the success toast", toasts == 1, "toasts=%s" % toasts)
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)

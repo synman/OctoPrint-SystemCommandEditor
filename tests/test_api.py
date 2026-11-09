@@ -71,6 +71,20 @@ def test_settings_defaults_include_devices():
     assert SystemCommandEditorPlugin().get_settings_defaults()["devices"] == []
 
 
+def test_settings_default_success_toast_off():
+    assert SystemCommandEditorPlugin().get_settings_defaults()["success_toast"] is False
+
+
+def test_get_reports_success_toast_when_turned_on(monkeypatch):
+    monkeypatch.setattr(Permissions.SYSTEM, "can", lambda: True)
+    plugin = make_plugin()
+    plugin._settings.config["plugins"]["systemcommandeditor"]["success_toast"] = True
+    app = flask.Flask(__name__)
+    with app.test_request_context():
+        body = plugin.on_api_get(None).get_json()
+    assert body["success_toast"] is True
+
+
 def test_api_commands_declare_status_ids():
     assert SystemCommandEditorPlugin().get_api_commands() == {"status": ["ids"]}
 
@@ -98,7 +112,8 @@ def test_get_returns_entries_and_core_commands(monkeypatch):
     with request_context():
         body = plugin.on_api_get(None).get_json()
 
-    assert set(body) == {"devices", "core", "entries", "core_commands"}
+    assert set(body) == {"devices", "core", "entries", "core_commands", "success_toast"}
+    assert body["success_toast"] is False
     assert body["devices"] == [{"id": "d", "type": "switch"}]
     assert body["core"] == {"shutdown": {"icon": "i"}}
     assert body["entries"] == {

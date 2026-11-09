@@ -51,6 +51,14 @@
     {{ _('These commands appear in the System menu, the power icon in the navigation bar. Changes take effect when you click Save.') }}
 </p>
 
+<div class="sce-options">
+    <label class="checkbox">
+        <input type="checkbox" data-bind="checked: settingsViewModel.settings.plugins.systemcommandeditor.success_toast">
+        {{ _('Show a success message when a command finishes') }}
+    </label>
+    <span class="help-block">{{ _('Off by default: the menu already spins the command\'s icon while it runs and shows a check or a cross when it ends. Background commands and failures always show a message.') }}</span>
+</div>
+
 <h4 class="sce-group-title">{{ _('Devices') }}</h4>
 <p class="muted">
     {{ _('A device groups commands in the System menu: a switch has On and Off commands, a selector has a command for each choice, a readout shows a status, and a link opens a page.') }}

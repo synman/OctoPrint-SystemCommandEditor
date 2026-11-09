@@ -305,13 +305,17 @@ $(function () {
             };
 
             self.schedule();
+            const runSpec = {
+                ...spec,
+                async: isAsync,
+                confirm: SceModel.consentHtml(entry.confirm || spec.confirm, command) || undefined
+            };
+            // a sync run already shows its spinner and result on its own button, so its success toast is
+            // optional; async runs and failures always toast
+            const quiet = !isAsync && !(self._data && self._data.success_toast);
             let pending;
             try {
-                pending = self.systemViewModel.triggerCommand({
-                    ...spec,
-                    async: isAsync,
-                    confirm: SceModel.consentHtml(entry.confirm || spec.confirm, command) || undefined
-                });
+                pending = quiet ? self._triggerQuietly(runSpec) : self.systemViewModel.triggerCommand(runSpec);
             } catch (err) {
                 settle("failed");
                 return;
@@ -324,6 +328,52 @@ $(function () {
                 () => settle("ok"),
                 (first) => settle(rejectOutcome(first))
             );
+        };
+
+        // core's triggerCommand without its success toast: the same consent dialog, fresh login check,
+        // error toast and promise outcomes (see OctoPrint's static/js/app/viewmodels/system.js)
+        self._triggerQuietly = (spec) => {
+            const vm = self.systemViewModel;
+            if (!vm.loginState.hasPermission(vm.access.permissions.SYSTEM)) {
+                return $.Deferred().reject().promise();
+            }
+            const deferred = $.Deferred();
+            const callback = () => {
+                OctoPrint.system.executeCommand(spec.actionSource, spec.action)
+                    .done(function () {
+                        deferred.resolve(["success", arguments]);
+                    })
+                    .fail(function (jqXHR) {
+                        if (spec.ignore) {
+                            deferred.resolve(["ignored", arguments]);
+                            return;
+                        }
+                        let error = "<p>" + _.sprintf(gettext("The command \"%(command)s\" could not be executed."),
+                            {command: _.escape(spec.name)}) + "</p>";
+                        error += pnotifyAdditionalInfo("<pre>" + _.escape(jqXHR.responseText) + "</pre>");
+                        new PNotify({title: gettext("Error"), text: error, type: "error", hide: false});
+                        deferred.reject(["error", arguments]);
+                    });
+            };
+            const proceed = () => {
+                if (spec.fresh_credentials) {
+                    vm.loginState.reauthenticateIfNecessary(callback).failed(function () {
+                        deferred.reject(["denied", arguments]);
+                    });
+                } else {
+                    callback();
+                }
+            };
+            if (spec.confirm) {
+                showConfirmationDialog({
+                    message: spec.confirm,
+                    onproceed: proceed,
+                    oncancel: () => deferred.reject("cancelled")
+                });
+            } else {
+                proceed();
+            }
+            return deferred.promise();
         };
 
         self.checkStatuses = (ids) => {
