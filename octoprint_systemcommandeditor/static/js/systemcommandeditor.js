@@ -794,8 +794,10 @@ $(function () {
             return preset.note || "";
         };
         // a plugin preset's row, labelled with its control's type
+        // a command-only preset has no control: its row takes the icon of its first command
         const pluginRow = (preset) => _.extend(rowOf(preset, presentBy(preset.preset)), {
             type: preset.control && TYPE_LABELS[preset.control.type] ? TYPE_LABELS[preset.control.type]() : "",
+            icon: preset.control ? preset.control.icon || "" : ((preset.commands || [])[0] || {}).icon || "",
             label: pluginLabel(preset)
         });
 

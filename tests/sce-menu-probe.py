@@ -8,6 +8,7 @@ Prints one PASS or FAIL line per check and exits non-zero on any FAIL.
 """
 import json
 import os
+import re
 import sys
 import time
 
@@ -149,6 +150,8 @@ CUSTOM_LIST = [
     {"action": "cam_open", "name": "Open camera page", "url": "http://example.test/cam", "group": "camtools",
      "role": "run"},
     {"action": "cam_busy", "name": "Camera page while idle", "url": "http://example.test/busy"},
+    {"action": "cam_confirm", "name": "Camera page with confirm", "url": "http://example.test/confirm",
+     "confirm": "Open the camera page?"},
     {"action": "divider", "name": "Tools"},
     {"action": "bkup_run", "name": "Back up now", "command": "bkup-cmd"},
     {"action": "sync_action", "name": "Sync action", "command": "sync-cmd"},
@@ -180,6 +183,8 @@ ENTRIES.update({
                  "icon": "fa-solid fa-video"},
     "cam_busy": {"name": "Camera page while idle", "url": "http://example.test/busy", "icon": "fa-solid fa-video",
                  "when": {"mode": "never", "states": ["printing"], "effect": "disable"}},
+    "cam_confirm": {"name": "Camera page with confirm", "url": "http://example.test/confirm",
+                    "icon": "fa-solid fa-video", "confirm": "Open the camera page?"},
 })
 
 CORE_LIST = [{"action": "restart", "name": "Restart OctoPrint", "confirm": "Restart OctoPrint?"}]
@@ -564,7 +569,7 @@ def run_probe():
         posts_before = len(calls)
         open_menu()
         with page.context.expect_page() as popup_info:
-            page.get_by_role("link", name="Camera page", exact=True).click()
+            page.locator("#navbar_systemmenu a").filter(has_text=re.compile(r"^\s*Camera page\s*$")).first.click()
         popup = popup_info.value
         popup.wait_for_load_state()
         check("a standalone link command opens its url in a new tab", popup.url == "http://example.test/cam",
@@ -580,6 +585,32 @@ def run_probe():
               "url=%s" % popup.url)
         popup.close()
         check("link clicks post nothing to the custom command endpoint", len(calls) == posts_before,
+              "calls=%s" % calls)
+
+        # H2. a link with a confirmation shows it with its link text; cancel opens nothing; proceed opens its url
+        open_menu()
+        page.locator("#navbar_systemmenu a").filter(has_text=re.compile(r"^\s*Camera page with confirm\s*$")).first.click()
+        dialog = wait_until(lambda: page.evaluate(DIALOG_VISIBLE), 6)
+        dialog_text = page.evaluate("() => [...document.querySelectorAll('.modal pre')].map(p => p.innerText).join('|')")
+        check("a link with a confirmation asks first, showing its Link text", bool(dialog) and
+              dialog_text == "Link: http://example.test/confirm", "dialog=%r text=%r" % (dialog, dialog_text))
+        pages_before = len(page.context.pages)
+        cancelled = page.evaluate(CLICK_DIALOG, True)
+        pump(600)
+        check("cancelling the link's confirmation opens nothing and posts nothing",
+              bool(cancelled) and len(page.context.pages) == pages_before and len(calls) == posts_before,
+              "cancelled=%r pages=%d->%d calls=%s" % (cancelled, pages_before, len(page.context.pages), calls))
+        open_menu()
+        page.locator("#navbar_systemmenu a").filter(has_text=re.compile(r"^\s*Camera page with confirm\s*$")).first.click()
+        wait_until(lambda: page.evaluate(DIALOG_VISIBLE), 6)
+        with page.context.expect_page() as popup_info:
+            page.evaluate(CLICK_DIALOG, False)
+        popup = popup_info.value
+        popup.wait_for_load_state()
+        check("proceeding on the link's confirmation opens its url in a new tab",
+              popup.url == "http://example.test/confirm", "url=%s" % popup.url)
+        popup.close()
+        check("a confirmed link still posts nothing to the custom command endpoint", len(calls) == posts_before,
               "calls=%s" % calls)
 
         # H2. a switch with no status command shows no dot and no word and both buttons; a switch with no member
@@ -676,7 +707,7 @@ def run_probe():
             return a ? a.closest('li').className : null;
         }""")
         pages_before = len(page.context.pages)
-        page.get_by_role("link", name="Camera page while idle", exact=True).click(force=True)
+        page.locator("#navbar_systemmenu a").filter(has_text=re.compile(r"^\s*Camera page while idle\s*$")).first.click(force=True)
         pump(600)
         check("a link a printer when disables is grayed while printing and its click opens nothing",
               busy_class is not None and "disabled" in busy_class and len(page.context.pages) == pages_before,

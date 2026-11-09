@@ -636,8 +636,17 @@ $(function () {
             const entry = self._entry(source, action) || {};
             // core cannot run a link command: it answers 500 to an entry with no command. The page opens in a new tab
             // and nothing is posted to OctoPrint
+            // a link with a confirmation asks first, showing its "Link: <url>" text as the command would; only proceed opens it
             if (SceModel.isLink(entry)) {
-                window.open(entry.url, "_blank", "noopener");
+                const open = () => window.open(entry.url, "_blank", "noopener");
+                if (!entry.confirm) {
+                    open();
+                    return;
+                }
+                showConfirmationDialog({
+                    message: SceModel.consentHtml(entry.confirm, SceModel.linkText(entry)),
+                    onproceed: open
+                });
                 return;
             }
             const spec = self._spec(source, action);
