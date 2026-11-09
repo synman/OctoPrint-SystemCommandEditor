@@ -187,10 +187,10 @@ def test_load_sample_presets_fills_empty_devices_and_marks_done(monkeypatch):
     plugin._load_sample_presets(detector=lambda: detected, maintenance_detector=lambda: [])
     devices = plugin._settings.config["plugins"]["systemcommandeditor"]["devices"]
     assert devices[:2] == [
-        {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server"},
-        {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print"},
+        {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server", "preset": "host"},
+        {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print", "preset": "octoprint"},
     ]
-    assert devices[2:] == [device_of(CATALOG[0])]
+    assert devices[2:] == [{**device_of(CATALOG[0]), "preset": "disk"}]
     assert ("set", "presets_loaded", True) in plugin._settings.calls
     assert plugin._settings.calls[-1] == ("save",)
 
@@ -201,8 +201,8 @@ def test_load_sample_presets_keeps_existing_devices(monkeypatch):
     plugin = make_plugin(devices=existing)
     plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: [])
     assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == [
-        {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server"},
-        {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print"},
+        {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server", "preset": "host"},
+        {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print", "preset": "octoprint"},
     ] + existing
     assert ("set", "presets_loaded", True) in plugin._settings.calls
     assert plugin._settings.calls[-1] == ("save",)
@@ -341,8 +341,10 @@ def test_first_start_skins_host_and_octoprint_devices_and_core_entries(monkeypat
     plugin._load_sample_presets(detector=sample_disk, maintenance_detector=lambda: [])
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
     assert [device["id"] for device in config["devices"]] == ["host", "octoprint", "disk"]
-    assert config["devices"][0] == {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server"}
-    assert config["devices"][1] == {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": "fa-solid fa-print"}
+    assert config["devices"][0] == {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server",
+                                    "preset": "host"}
+    assert config["devices"][1] == {"id": "octoprint", "type": "switch", "name": "OctoPrint",
+                                    "icon": "fa-solid fa-print", "preset": "octoprint"}
     core = config["core"]
     assert (core["reboot"]["group"], core["reboot"]["role"]) == ("host", "restart")
     assert (core["shutdown"]["group"], core["shutdown"]["role"]) == ("host", "off")
@@ -385,3 +387,26 @@ def test_get_merges_saved_core_entries_over_their_defaults(monkeypatch):
         core = plugin.on_api_get(None).get_json()["core"]
     assert core["shutdown"]["heading"] == "System"
     assert core["shutdown"]["group"] == "host"
+
+
+def test_first_start_marks_maintenance_control_and_command_with_their_action(tmp_path):
+    plugin = make_plugin()
+    plugin._load_sample_presets(detector=lambda: [], maintenance_detector=lambda: maintenance_listing({"webcam_restart": 1}))
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    control = [device for device in config["devices"] if device["id"] == "backup_now"][0]
+    command = [entry for entry in plugin._settings.config["system"]["actions"] if entry.get("action") == "backup_now"][0]
+    assert control["preset"] == "backup_now" and command["preset"] == "backup_now"
+
+
+def test_first_start_marks_readout_placement_with_its_readout(monkeypatch):
+    monkeypatch.setattr(plugin_module.socket, "gethostname", lambda: "atom-octo.local")
+    plugin = make_plugin(core=SystemCommandEditorPlugin().get_settings_defaults()["core"])
+    plugin._load_sample_presets(detector=sample_disk, maintenance_detector=lambda: [])
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    placement = [entry for entry in plugin._settings.config["system"]["actions"] if entry.get("device") == "disk"][0]
+    assert placement["preset"] == "disk"
+    assert [d for d in config["devices"] if d["id"] == "disk"][0]["preset"] == "disk"
+
+
+def test_settings_version_is_4():
+    assert SystemCommandEditorPlugin().get_settings_version() == 4

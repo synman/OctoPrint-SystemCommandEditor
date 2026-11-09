@@ -392,6 +392,14 @@ $(function () {
             owner.dialog.modal("hide");
         };
 
+        // closes without saving this dialog's edits; the owner then adds a copy of the saved record
+        self.canDuplicate = ko.pureComputed(() => self.editing() && !self.isSection() && !self.isCore());
+        self.duplicate = () => {
+            const original = self._original();
+            owner.dialog.modal("hide");
+            if (original) owner.duplicate(original);
+        };
+
         self.onHidden = () => {
             if (self._deferred) {
                 self._deferred.reject();
@@ -483,6 +491,8 @@ $(function () {
             if (type === "link") device.url = self.url().trim();
             if (type === "link") device.section = self.section();
             if (type === "link") device.when = self.condition.toWhen();
+            const original = self._original();
+            if (original && original.preset) device.preset = original.preset;
             return dropEmpty(device);
         };
 
@@ -525,6 +535,13 @@ $(function () {
             owner.deviceDialog.modal("hide");
         };
 
+        self.canDuplicate = ko.pureComputed(() => self.editing());
+        self.duplicate = () => {
+            const original = self._original();
+            owner.deviceDialog.modal("hide");
+            if (original) owner.duplicateDevice(original);
+        };
+
         self.onHidden = () => {
             if (self._deferred) {
                 self._deferred.reject();
@@ -539,26 +556,36 @@ $(function () {
     function PresetPicker(owner) {
         const self = this;
 
+        // A preset is present when a control or a command carries its marker, wherever it sits. The marker is the
+        // preset's id (readout, switch) or action (maintenance), so a renamed or moved record is still found.
+        const presentBy = (presetId) =>
+            owner.devices().some((device) => device.preset === presetId) ||
+            owner.entries().some((entry) => !isSection(entry) && entry.preset === presetId);
+
+        // the first of base, base_2, base_3... that taken() does not refuse
+        const freeAmong = (base, taken) => {
+            let candidate = base;
+            let counter = 2;
+            while (candidate === DIVIDER || taken(candidate)) {
+                candidate = base + "_" + counter++;
+            }
+            return candidate;
+        };
+        // a control's identifier is free of every control and every command or placement key
+        const controlTaken = (key) =>
+            owner.devices().some((device) => device.id === key) ||
+            owner.entries().some((entry) => !isSection(entry) && entry.action === key);
+
         // a system.actions entry for a maintenance command, built the way the server's entry_of builds it; its
-        // device is the action control that runs it (group and role "run")
-        const entryOf = (preset, deviceId) => {
-            const entry = {action: preset.action, name: preset.name, command: preset.command, icon: preset.icon};
+        // device is the action control that runs it (group and role "run"), and it carries the preset's marker
+        const entryOf = (preset, deviceId, action) => {
+            const entry = {action: action, name: preset.name, command: preset.command, icon: preset.icon};
             if (preset.confirm) entry.confirm = preset.confirm;
             if (preset.async) entry.async = true;
             entry.group = deviceId;
             entry.role = "run";
+            entry.preset = preset.action;
             return entry;
-        };
-
-        // the identifier an action control takes: the preset's action key if no control has it, else key_2, key_3...
-        const actionDeviceId = (base) => {
-            const used = owner.devices().map((device) => device.id);
-            let candidate = base;
-            let counter = 2;
-            while (used.includes(candidate)) {
-                candidate = base + "_" + counter++;
-            }
-            return candidate;
         };
 
         self.loading = ko.observable(false);
@@ -580,7 +607,6 @@ $(function () {
         });
 
         self.open = () => {
-            const existing = owner.devices().map((device) => device.id);
             self.switches([]);
             self.readouts([]);
             self.maintenance([]);
@@ -590,13 +616,13 @@ $(function () {
             OctoPrint.simpleApiCommand("systemcommandeditor", "presets", {})
                 .done((response) => {
                     self.switches(((response && response.switches) || []).map((preset) =>
-                        rowOf(preset, existing.includes(preset.id))
+                        rowOf(preset, presentBy(preset.id))
                     ));
                     self.readouts(((response && response.presets) || []).map((preset) =>
-                        rowOf(preset, existing.includes(preset.id))
+                        rowOf(preset, presentBy(preset.id))
                     ));
                     self.maintenance(((response && response.maintenance) || []).map((preset) =>
-                        rowOf(preset, owner.actionInUse(preset.action))
+                        rowOf(preset, presentBy(preset.action))
                     ));
                 })
                 .fail(() => self.failed(true))
@@ -619,17 +645,27 @@ $(function () {
             if (kept.length !== entries.length) owner.entries(kept);
         };
 
+        // every control and every command carrying the marker goes; a removed control's other members are detached,
+        // so core entries are freed the same way Delete frees them
+        const removePreset = (presetId) => {
+            const ids = owner.devices().filter((device) => device.preset === presetId).map((device) => device.id);
+            owner.devices.remove((device) => device.preset === presetId);
+            owner.entries.remove((entry) => !isSection(entry) && entry.preset === presetId);
+            ids.forEach((id) => owner.detachControl(id));
+        };
+
         self.apply = () => {
+            const pending = self.canApply();
             // switches go first, in the server's order, as first start puts them
             const addedSwitches = [];
             self.switches().forEach((row) => {
                 const preset = row.item;
                 if (row.checked() && !row.added) {
-                    addedSwitches.push({id: preset.id, type: "switch", name: preset.name, icon: preset.icon});
-                    owner.joinCore(preset.id, preset.members);
+                    const id = freeAmong(preset.id, controlTaken);
+                    addedSwitches.push({id: id, type: "switch", name: preset.name, icon: preset.icon, preset: preset.id});
+                    owner.joinCore(id, preset.members);
                 } else if (!row.checked() && row.added) {
-                    owner.devices.remove((device) => device.id === preset.id);
-                    owner.detachControl(preset.id);
+                    removePreset(preset.id);
                 }
             });
             if (addedSwitches.length) owner.devices(addedSwitches.concat(owner.devices()));
@@ -637,36 +673,31 @@ $(function () {
                 if (row.checked() && !row.added) {
                     const preset = row.item;
                     const device = {
-                        id: preset.id,
+                        id: freeAmong(preset.id, controlTaken),
                         type: preset.type,
                         name: preset.name,
                         icon: preset.icon,
-                        status: preset.status
+                        status: preset.status,
+                        preset: preset.id
                     };
                     owner.devices.push(device);
                     owner.placeReadout(device, "Status");
                 } else if (!row.checked() && row.added) {
-                    owner.devices.remove((device) => device.id === row.item.id);
-                    owner.entries.remove((entry) => entry.device === row.item.id);
+                    removePreset(row.item.id);
                 }
             });
-            const removed = self.maintenance().filter((row) => row.added && !row.checked()).map((row) => row.item.action);
-            if (removed.length) {
-                // the action controls its removed commands ran through go too
-                const groups = owner.entries().filter((entry) => !isSection(entry) && removed.includes(entry.action))
-                    .map((entry) => entry.group);
-                owner.devices.remove((device) => device.type === "action" && groups.includes(device.id));
-                owner.entries.remove((entry) => !isSection(entry) && removed.includes(entry.action));
-                pruneEmptyMaintenance();
-            }
+            const removed = self.maintenance().filter((row) => row.added && !row.checked());
+            removed.forEach((row) => removePreset(row.item.action));
+            if (removed.length) pruneEmptyMaintenance();
             const picked = [];
             self.maintenance().filter((row) => row.checked() && !row.added).forEach((row) => {
                 const preset = row.item;
-                const id = actionDeviceId(preset.action);
-                const device = {id: id, type: "action", name: preset.name, icon: preset.icon};
+                const id = freeAmong(preset.action, controlTaken);
+                const action = freeAmong(preset.action, (key) => owner.actionInUse(key));
+                const device = {id: id, type: "action", name: preset.name, icon: preset.icon, preset: preset.action};
                 if (preset.status) device.status = preset.status;
                 owner.devices.push(device);
-                picked.push(entryOf(preset, id));
+                picked.push(entryOf(preset, id, action));
             });
             if (picked.length) {
                 if (!owner.dividerNames().includes("Maintenance")) {
@@ -674,7 +705,7 @@ $(function () {
                 }
                 picked.forEach((entry) => owner.entries.push(entry));
             }
-            if (removed.length || picked.length || addedSwitches.length) owner.changed();
+            if (pending) owner.changed();
             owner.presetDialog.modal("hide");
         };
 
@@ -794,6 +825,7 @@ $(function () {
         // that divider, creating the divider at the end when it is missing
         self.placeReadout = (device, section) => {
             const entry = {action: placementKey(device.id), name: device.name, device: device.id};
+            if (device.preset) entry.preset = device.preset;
             const list = self.entries().slice();
             if (!section) {
                 list.push(entry);
@@ -1017,10 +1049,15 @@ $(function () {
             self.coreSettings(self._coreFromSettings());
             self._coreDirty = false;
             self._saved(self._fromSettings());
-            self.entries(self._saved().map((entry) => _.extend({}, entry)));
-            self.devices(self._devicesFromSettings().map((device) => _.extend({}, device)));
-            self._devicesJson = devicesSnapshot();
-            self._dirty = false;
+            // a doubled key in the saved config is renamed here, so every command and control has its own key
+            const savedEntries = self._saved().map((entry) => _.extend({}, entry));
+            const entries = window.SceModel.dedupeKeys(savedEntries, "action");
+            self.entries(entries.map((entry) => _.extend({}, entry)));
+            const loadedDevices = self._devicesFromSettings().map((device) => _.extend({}, device));
+            const devices = window.SceModel.dedupeKeys(loadedDevices, "id");
+            self.devices(devices.map((device) => _.extend({}, device)));
+            self._devicesJson = JSON.stringify(loadedDevices.map(dropEmpty));
+            self._dirty = JSON.stringify(entries) !== JSON.stringify(savedEntries);
         };
 
         self.changed = () => {
@@ -1119,15 +1156,6 @@ $(function () {
             }
         };
 
-        const uniqueAction = (base) => {
-            let candidate = base;
-            let counter = 2;
-            while (self.actionInUse(candidate)) {
-                candidate = base + "_" + counter++;
-            }
-            return candidate;
-        };
-
         self.addCommand = () => {
             self.editor.show(null, false).done((entry) => {
                 self.entries.push(entry);
@@ -1146,12 +1174,31 @@ $(function () {
             self.editor.show(entry, isSection(entry)).done((edited) => replace(entry, edited));
         };
 
+        // a copy of a command: the first free "Copy of" name, no preset, group, role or value, right after the original
         self.duplicate = (entry) => {
-            const copy = _.extend({}, entry, {
-                name: _.sprintf(gettext("%(name)s (copy)"), {name: entry.name}),
-                action: uniqueAction(entry.action + "_copy")
-            });
-            self.entries.splice(self.entries.indexOf(entry) + 1, 0, copy);
+            const copy = _.omit(entry, "preset", "group", "role", "value");
+            copy.name = window.SceModel.copyName(entry.name, self.entries().filter((e) => !isSection(e)).map((e) => e.name));
+            copy.action = keyFor(copy.name, undefined, "command", (key) => self.actionInUse(key));
+            const index = self.entries.indexOf(entry);
+            self.entries.splice(index < 0 ? self.entries().length : index + 1, 0, copy);
+            self.changed();
+        };
+
+        // a copy of a control: the control alone, no preset; a readout's copy also gets a placement right after the
+        // original's, or at the end when the original has none
+        self.duplicateDevice = (device) => {
+            const copy = _.omit(device, "preset");
+            copy.name = window.SceModel.copyName(device.name, self.devices().map((d) => d.name));
+            copy.id = keyFor(copy.name, undefined, "control", (key) =>
+                self.devices().some((d) => d.id === key) || self.entries().some((e) => !isSection(e) && e.action === key));
+            self.devices.push(copy);
+            if (copy.type === "readout") {
+                const list = self.entries().slice();
+                const placed = list.findIndex((e) => self.isPlacement(e) && e.device === device.id);
+                list.splice(placed < 0 ? list.length : placed + 1, 0,
+                    {action: placementKey(copy.id), name: copy.name, device: copy.id});
+                self.entries(list);
+            }
             self.changed();
         };
 

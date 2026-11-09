@@ -71,8 +71,11 @@ def readout(id_, section=None, name=None):
     return device
 
 
-def placement(id_, name=None):
-    return {"action": id_, "name": name or id_.title(), "device": id_}
+def placement(id_, name=None, preset=None):
+    entry = {"action": id_, "name": name or id_.title(), "device": id_}
+    if preset is not None:
+        entry["preset"] = preset
+    return entry
 
 
 def test_legacy_copy_is_merged_and_dropped(tmp_path):
@@ -120,13 +123,13 @@ def test_v3_places_readout_after_last_entry_of_its_section(tmp_path):
     plugin.on_settings_migrate(3, 2)
 
     config = plugin._settings.config["plugins"]["systemcommandeditor"]
-    assert config["devices"] == [readout("disk")]
+    assert config["devices"] == [dict(readout("disk"), preset="disk")]
     assert plugin._settings.config["system"]["actions"] == [
         cmd("a"),
         {"action": "divider", "name": "Status"},
         cmd("b"),
         cmd("c"),
-        placement("disk"),
+        placement("disk", preset="disk"),
         {"action": "divider"},
         cmd("d"),
     ]
@@ -138,14 +141,14 @@ def test_v3_creates_missing_divider_at_end(tmp_path):
     assert plugin._settings.config["system"]["actions"] == [
         cmd("a"),
         {"action": "divider", "name": "Status"},
-        placement("disk"),
+        placement("disk", preset="disk"),
     ]
 
 
 def test_v3_readout_without_section_goes_to_end(tmp_path):
     plugin = make_plugin(tmp_path, [cmd("a"), {"action": "divider", "name": "X"}, cmd("b")], None, devices=[readout("ip")])
     plugin.on_settings_migrate(3, 2)
-    assert plugin._settings.config["system"]["actions"][-1] == placement("ip")
+    assert plugin._settings.config["system"]["actions"][-1] == placement("ip", preset="ip")
     assert plugin._settings.config["system"]["actions"][:3] == [cmd("a"), {"action": "divider", "name": "X"}, cmd("b")]
 
 
@@ -175,7 +178,10 @@ def test_v3_leaves_readout_that_already_has_placement_alone(tmp_path):
     actions = [{"action": "divider", "name": "Status"}, placement("disk", "Disk")]
     plugin = make_plugin(tmp_path, actions, None, devices=[readout("disk", "Status")])
     plugin.on_settings_migrate(3, 2)
-    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.config["system"]["actions"] == [
+        {"action": "divider", "name": "Status"},
+        placement("disk", "Disk", preset="disk"),
+    ]
     assert "section" not in plugin._settings.config["plugins"]["systemcommandeditor"]["devices"][0]
 
 
@@ -210,6 +216,62 @@ def test_loader_places_sample_readouts_under_status(tmp_path):
     assert plugin._settings.config["system"]["actions"] == [
         cmd("a"),
         {"action": "divider", "name": "Status"},
-        {"action": "disk", "name": "Free disk", "device": "disk"},
+        {"action": "disk", "name": "Free disk", "device": "disk", "preset": "disk"},
     ]
     assert config["presets_loaded"] is True
+
+
+# version 4: presets carry a marker
+
+
+def test_v4_marks_readout_placement_and_switches_by_the_old_rule(tmp_path):
+    devices = [
+        {"id": "host", "type": "switch", "name": "Host", "icon": ""},
+        {"id": "octoprint", "type": "switch", "name": "OctoPrint", "icon": ""},
+        readout("disk", "Status"),
+        readout("mine"),
+    ]
+    actions = [{"action": "divider", "name": "Status"}, placement("disk")]
+    plugin = make_plugin(tmp_path, actions, None, devices=devices)
+    plugin.on_settings_migrate(4, 3)
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert [d.get("preset") for d in config["devices"]] == ["host", "octoprint", "disk", None]
+    assert plugin._settings.config["system"]["actions"] == [
+        {"action": "divider", "name": "Status"},
+        placement("disk", preset="disk"),
+    ]
+
+
+def test_v4_marks_maintenance_command_and_its_action_control(tmp_path):
+    devices = [{"id": "backup_now", "type": "action", "name": "Back up", "icon": ""}]
+    actions = [cmd("a"), {"action": "divider", "name": "Maintenance"},
+               {"action": "backup_now", "name": "Back up", "command": "x", "group": "backup_now", "role": "run"}]
+    plugin = make_plugin(tmp_path, actions, None, devices=devices)
+    plugin.on_settings_migrate(4, 3)
+    config = plugin._settings.config["plugins"]["systemcommandeditor"]
+    assert config["devices"][0]["preset"] == "backup_now"
+    assert plugin._settings.config["system"]["actions"][2]["preset"] == "backup_now"
+    assert "preset" not in plugin._settings.config["system"]["actions"][0]
+
+
+def test_v4_keeps_an_existing_marker(tmp_path):
+    devices = [{"id": "disk", "type": "readout", "name": "Disk", "icon": "", "status": "df", "preset": "mine"}]
+    plugin = make_plugin(tmp_path, [], None, devices=devices)
+    plugin.on_settings_migrate(4, 3)
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"][0]["preset"] == "mine"
+    assert plugin._settings.global_sets == []
+
+
+def test_v4_writes_nothing_when_nothing_matches(tmp_path):
+    devices = [{"id": "fan", "type": "switch", "name": "Fan", "icon": ""}]
+    plugin = make_plugin(tmp_path, [cmd("a")], None, devices=devices)
+    plugin.on_settings_migrate(4, 3)
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == devices
+    assert plugin._settings.global_sets == []
+
+
+def test_v4_skipped_when_already_at_4(tmp_path):
+    devices = [{"id": "disk", "type": "readout", "name": "Disk", "icon": "", "status": "df"}]
+    plugin = make_plugin(tmp_path, [], None, devices=devices)
+    plugin.on_settings_migrate(4, 4)
+    assert "preset" not in plugin._settings.config["plugins"]["systemcommandeditor"]["devices"][0]

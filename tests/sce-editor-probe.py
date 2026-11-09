@@ -28,7 +28,9 @@ CORE_FIXTURE = [
 ]
 STATE_PICK = "label:has-text('{}') input"
 FIXTURE_DEVICES = [
-    {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "df -h"},
+    {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "df -h", "preset": "disk"},
+    # made by hand with a preset's id but no marker: the picker must not count it as that preset
+    {"id": "throttle", "type": "readout", "name": "My throttle", "icon": "fa-solid fa-bolt", "status": "echo ok"},
 ]
 # answer to the presets call: one available preset, one unavailable, and one whose id is already a device
 PRESETS = [
@@ -65,6 +67,8 @@ FIXTURE_ACTIONS = [
     {"action": "divider", "name": "Webcam"},
     {"action": "laser_on_cmd", "name": "Laser on", "command": "echo on", "icon": "fa-solid fa-lightbulb"},
     {"action": "laser_off_cmd", "name": "Laser off", "command": "echo off", "icon": "fa-solid fa-circle"},
+    # a hand edit that doubled a key: the pane renames the later one when it loads
+    {"action": "laser_off_cmd", "name": "Spare twin", "command": "echo off twin"},
 ]
 
 results = []
@@ -395,6 +399,10 @@ def run_probe():
         with_when += ["device." + d.get("id", "") for d in plugin_base.get("devices") or [] if d.get("when")]
         check("fresh fixture carries no condition", not with_when, json.dumps(with_when))
 
+        keys = page.evaluate("""() => ko.toJS(ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor')).entries())
+            .filter((e) => e.action !== 'divider').map((e) => [e.name, e.action])""")
+        check("a doubled key in the saved list is renamed on load: the first keeps it, the later one takes _2",
+              ["Laser off", "laser_off_cmd"] in keys and ["Spare twin", "laser_off_cmd_2"] in keys, json.dumps(keys))
         icon_picker_checks()
         busy_icon_checks()
 
@@ -468,7 +476,7 @@ def run_probe():
             on_entry, off_entry = actions.get("laser_on_cmd", {}), actions.get("laser_off_cmd", {})
             laser = [d for d in devices or [] if d.get("id") == "laser"]
             check("POST carries the switch device in plugins.systemcommandeditor.devices",
-                  isinstance(devices, list) and len(devices) == 2 and len(laser) == 1 and
+                  isinstance(devices, list) and len(devices) == 3 and len(laser) == 1 and
                   laser[0].get("type") == "switch", json.dumps(devices))
             check("POST gives both commands group and role",
                   on_entry.get("group") == "laser" and on_entry.get("role") == "on" and
@@ -595,7 +603,7 @@ def run_probe():
         check("an undetected readout stays pickable and shows Not detected on this system",
               throttle.locator("input").is_enabled() and not throttle.locator("input").is_checked() and
               throttle.filter(has_text="Not detected on this system").count() == 1)
-        check("disk is enabled and ticked because it is already a device",
+        check("disk is enabled and ticked because a control carries its marker",
               disk_row.locator("input").is_enabled() and disk_row.locator("input").is_checked())
         check("cpu readout starts unticked", cpu.locator("input").is_enabled() and not cpu.locator("input").is_checked())
         cpu.locator("input").check()
@@ -628,24 +636,28 @@ def run_probe():
         else:
             devices = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
             cpu_entry = [d for d in devices if d.get("id") == "cpu"]
-            check("POST carries cpu from presets with exactly five keys and no section",
-                  len(cpu_entry) == 1 and set(cpu_entry[0]) == {"id", "type", "name", "icon", "status"}
+            check("POST carries cpu from presets with its marker and no section",
+                  len(cpu_entry) == 1 and set(cpu_entry[0]) == {"id", "type", "name", "icon", "status", "preset"}
+                  and cpu_entry[0].get("preset") == "cpu"
                   and cpu_entry[0].get("type") == "readout", json.dumps(cpu_entry))
             saved_actions = list((body.get("system") or {}).get("actions") or [])
             status_at = [i for i, a in enumerate(saved_actions) if a == {"action": "divider", "name": "Status"}]
             cpu_place = [i for i, a in enumerate(saved_actions) if a.get("device") == "cpu"]
             check("POST places cpu under the Status divider, as its own entry with no command",
                   len(status_at) == 1 and len(cpu_place) == 1 and cpu_place[0] > status_at[0]
-                  and saved_actions[cpu_place[0]] == {"action": "cpu", "name": "CPU temperature", "device": "cpu"},
+                  and saved_actions[cpu_place[0]] == {"action": "cpu", "name": "CPU temperature", "device": "cpu", "preset": "cpu"},
                   json.dumps(saved_actions))
             host = [d for d in devices if d.get("id") == "host"]
             # OctoPrint posts only changed keys, so the roles are judged from the settings as they stand after the save
             core = ((state["current"].get("plugins") or {}).get("systemcommandeditor") or {}).get("core") or {}
             check("ticking the host switch adds it first and joins reboot and shutdown to it by role",
-                  devices[:1] == [{"id": "host", "type": "switch", "name": "probe-host", "icon": "fa-solid fa-server"}]
+                  devices[:1] == [{"id": "host", "type": "switch", "name": "probe-host", "icon": "fa-solid fa-server", "preset": "host"}]
                   and (core.get("reboot") or {}).get("group") == "host" and (core.get("reboot") or {}).get("role") == "restart"
                   and (core.get("shutdown") or {}).get("group") == "host" and (core.get("shutdown") or {}).get("role") == "off",
                   json.dumps({"host": host, "core": core}))
+            check("a hand-made readout with a preset's id but no marker is left alone",
+                  len([d for d in devices if d.get("id") == "throttle" and not d.get("preset")]) == 1,
+                  json.dumps([d.get("id") for d in devices]))
             check("unticking an added readout and applying removes it from the POST",
                   len([d for d in devices if d.get("id") == "disk"]) == 0, json.dumps([d.get("id") for d in devices]))
             saved = list((body.get("system") or {}).get("actions") or [])
@@ -699,6 +711,54 @@ def run_probe():
               upkeep.locator("button[data-action='backup_now'][title='Back up OctoPrint now']").count() == 1 and
               command_row("Back up OctoPrint now").count() == 0,
               "control buttons=%s" % upkeep.locator("button[data-action]").count())
+
+        # Phase F: Duplicate copies the saved command or control under the first free "Copy of" name
+        state_js = """() => {
+            const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            return {entries: ko.toJS(vm.entries()), devices: ko.toJS(vm.devices())};
+        }"""
+        edit_command("Back up OctoPrint now")
+        page.locator("#sce-editor .modal-footer button:has-text('Duplicate')").click()
+        wait_hidden("#sce-editor")
+        edit_command("Back up OctoPrint now")
+        page.locator("#sce-editor .modal-footer button:has-text('Duplicate')").click()
+        wait_hidden("#sce-editor")
+        st = page.evaluate(state_js)
+        names = [e.get("name") for e in st["entries"]]
+        at = names.index("Back up OctoPrint now") if "Back up OctoPrint now" in names else -1
+        copies = [e for e in st["entries"] if (e.get("name") or "").startswith("Copy")]
+        check("a command copy is named Copy of, then Copy 2 of, sits after the original and drops preset, group and role",
+              at >= 0 and names[at + 1:at + 3] == ["Copy 2 of Back up OctoPrint now", "Copy of Back up OctoPrint now"]
+              and sorted(e.get("action") for e in copies) == ["copy_2_of_back_up_octoprint_now", "copy_of_back_up_octoprint_now"]
+              and not any(e.get(k) for e in copies for k in ("preset", "group", "role", "value")),
+              json.dumps({"after": names[at + 1:at + 3], "copies": copies}))
+        open_cpu = """() => {
+            const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            vm.editDevice(vm.devices().find((d) => d.id === 'cpu'));
+        }"""
+        page.evaluate(open_cpu)
+        wait_visible("#sce-device-editor")
+        modal_done("#sce-device-editor")
+        st = page.evaluate(state_js)
+        check("editing a preset's control keeps its marker",
+              [d.get("preset") for d in st["devices"] if d.get("id") == "cpu"] == ["cpu"], json.dumps(st["devices"]))
+        page.evaluate(open_cpu)
+        wait_visible("#sce-device-editor")
+        page.locator("#sce-device-editor .modal-footer button:has-text('Duplicate')").click()
+        wait_hidden("#sce-device-editor")
+        st = page.evaluate(state_js)
+        copy = [d for d in st["devices"] if d.get("name") == "Copy of CPU temperature"]
+        acts = [e.get("device") for e in st["entries"]]
+        disk_at = acts.index("cpu") if "cpu" in acts else -1
+        check("a control copy is the control alone, named Copy of, keyed from its name, with no marker; a readout copy is placed after the original",
+              len(copy) == 1 and copy[0].get("id") == "copy_of_cpu_temperature" and not copy[0].get("preset")
+              and copy[0].get("type") == "readout" and disk_at >= 0 and acts[disk_at + 1] == "copy_of_cpu_temperature",
+              json.dumps({"copy": copy, "placements": acts}))
+        page.get_by_role("button", name="Add command").click()
+        wait_visible("#sce-editor")
+        check("a new command offers no Duplicate", page.locator("#sce-editor .modal-footer button:has-text('Duplicate')").count() == 0)
+        page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
+        wait_hidden("#sce-editor")
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)

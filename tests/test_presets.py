@@ -14,6 +14,8 @@ from octoprint_systemcommandeditor.presets import (  # noqa: E402
     device_of,
     entry_of,
     maintenance,
+    maintenance_actions,
+    mark_presets,
     sample_devices,
 )
 from octoprint_systemcommandeditor.status import run_status  # noqa: E402
@@ -104,7 +106,8 @@ def test_sample_devices_keeps_only_sample_and_available_in_catalog_order():
     samples = sample_devices(detected)
     assert [record["id"] for record in samples] == ["disk"]
     for record in samples:
-        assert set(record) == {"id", "type", "name", "icon", "status"}
+        assert set(record) == {"id", "type", "name", "icon", "status", "preset"}
+        assert record["preset"] == record["id"]
 
 
 ENV = {
@@ -206,8 +209,10 @@ def test_action_of_builds_an_action_control_and_its_run_command():
         "name": preset["name"],
         "icon": preset["icon"],
         "status": preset["status"],
+        "preset": "backup_now",
     }
     assert entry["group"] == "backup_now" and entry["role"] == "run"
+    assert entry["preset"] == "backup_now"
     assert entry["command"] == preset["command"] and entry["async"] is True
 
 
@@ -292,3 +297,61 @@ def test_backup_age_says_none_when_the_backup_folder_is_empty(tmp_path):
     env = {**ENV, "basedir": str(tmp_path)}
     status = [p for p in maintenance(env) if p["action"] == "backup_now"][0]["status"]
     assert run_status(status) == (0, "Last backup none", None)
+
+
+def test_mark_presets_marks_catalog_readouts_and_their_placements_by_id():
+    devices = [{"id": "disk", "type": "readout", "name": "Disk", "icon": "", "status": "df"}]
+    actions = [{"action": "disk", "name": "Disk", "device": "disk"}]
+    new_devices, new_actions, changed = mark_presets(devices, actions, [])
+    assert changed
+    assert new_devices[0]["preset"] == "disk"
+    assert new_actions[0]["preset"] == "disk"
+    assert "preset" not in devices[0] and "preset" not in actions[0]
+
+
+def test_mark_presets_marks_the_host_and_octoprint_switches_only_as_switches():
+    devices = [
+        {"id": "host", "type": "switch", "name": "Host"},
+        {"id": "octoprint", "type": "readout", "name": "OctoPrint"},
+        {"id": "custom", "type": "switch", "name": "Custom"},
+    ]
+    new_devices, _, changed = mark_presets(devices, [], [])
+    assert changed
+    assert [d.get("preset") for d in new_devices] == ["host", None, None]
+
+
+def test_mark_presets_marks_maintenance_command_and_its_action_control():
+    devices = [{"id": "backup_now", "type": "action", "name": "Back up", "icon": ""}]
+    actions = [
+        {"action": "divider", "name": "Maintenance"},
+        {"action": "backup_now", "name": "Back up", "command": "x", "group": "backup_now", "role": "run"},
+        {"action": "mine", "name": "Mine", "command": "y", "group": "mine"},
+    ]
+    new_devices, new_actions, changed = mark_presets(devices, actions, ["backup_now"])
+    assert changed
+    assert new_devices[0]["preset"] == "backup_now"
+    assert new_actions[1]["preset"] == "backup_now"
+    assert "preset" not in new_actions[0] and "preset" not in new_actions[2]
+
+
+def test_mark_presets_never_overwrites_an_existing_marker():
+    devices = [{"id": "disk", "type": "readout", "name": "Disk", "icon": "", "preset": "mine"}]
+    actions = [{"action": "disk", "name": "Disk", "device": "disk", "preset": "theirs"}]
+    new_devices, new_actions, changed = mark_presets(devices, actions, [])
+    assert not changed
+    assert new_devices[0]["preset"] == "mine"
+    assert new_actions[0]["preset"] == "theirs"
+
+
+def test_mark_presets_reports_no_change_for_custom_records():
+    devices = [{"id": "fan", "type": "switch", "name": "Fan"}, {"id": "t", "type": "action", "name": "T"}]
+    actions = [{"action": "fan_on", "name": "On", "command": "x", "group": "fan", "role": "on"}]
+    new_devices, new_actions, changed = mark_presets(devices, actions, ["backup_now"])
+    assert not changed
+    assert new_devices == devices and new_actions == actions
+
+
+def test_maintenance_actions_lists_the_seven_keys_without_detection():
+    assert maintenance_actions() == [
+        "backup_now", "webcam_restart", "purge_timelapses", "purge_logs", "sync_clock", "wifi_powersave_off", "os_update",
+    ]

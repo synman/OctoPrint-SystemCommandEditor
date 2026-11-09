@@ -421,6 +421,51 @@ test("actionView: core run members count when core lists them", () => {
     assert.deepStrictEqual(M.actionView(m, () => false).buttons, []);
 });
 
+test("copyName: the first copy is Copy of the name", () => {
+    assert.strictEqual(M.copyName("Restart", []), "Copy of Restart");
+});
+
+test("copyName: Copy of is taken, so Copy 2 of, then Copy 3 of", () => {
+    assert.strictEqual(M.copyName("Restart", ["Restart", "Copy of Restart"]), "Copy 2 of Restart");
+    assert.strictEqual(M.copyName("Restart", ["Copy of Restart", "Copy 2 of Restart"]), "Copy 3 of Restart");
+});
+
+test("copyName: names that are not copies of this name do not block it", () => {
+    assert.strictEqual(M.copyName("Restart", ["Copy of Reboot", "Restart 2"]), "Copy of Restart");
+});
+
+test("dedupeKeys: the first item with a key keeps it, later ones get _2 and _3", () => {
+    const out = M.dedupeKeys([{action: "a"}, {action: "a"}, {action: "a"}], "action");
+    assert.deepStrictEqual(out.map((e) => e.action), ["a", "a_2", "a_3"]);
+});
+
+test("dedupeKeys: an existing key x_2 is respected, so the copy of x takes x_3", () => {
+    const out = M.dedupeKeys([{action: "x"}, {action: "x"}, {action: "x_2"}], "action");
+    assert.deepStrictEqual(out.map((e) => e.action), ["x", "x_3", "x_2"]);
+});
+
+test("dedupeKeys: a divider is never renamed or chosen as a new key", () => {
+    const out = M.dedupeKeys([{action: "divider", name: "A"}, {action: "divider", name: "B"}], "action");
+    assert.deepStrictEqual(out.map((e) => e.action), ["divider", "divider"]);
+    assert.deepStrictEqual(out.map((e) => e.name), ["A", "B"]);
+});
+
+test("dedupeKeys: the input is not modified and unchanged items are returned as they were", () => {
+    const input = [{action: "a", name: "1"}, {action: "a", name: "2"}, {action: "b"}];
+    const before = JSON.stringify(input);
+    const out = M.dedupeKeys(input, "action");
+    assert.strictEqual(JSON.stringify(input), before);
+    assert.strictEqual(out[0], input[0]);
+    assert.strictEqual(out[2], input[2]);
+    assert.deepStrictEqual(out[1], {action: "a_2", name: "2"});
+});
+
+test("dedupeKeys: works on controls by id, and an empty list gives an empty list", () => {
+    const out = M.dedupeKeys([{id: "sw"}, {id: "sw"}], "id");
+    assert.deepStrictEqual(out.map((d) => d.id), ["sw", "sw_2"]);
+    assert.deepStrictEqual(M.dedupeKeys([], "id"), []);
+});
+
 const elapsed = Date.now() - STARTED;
 if (failures.length) {
     console.log("FAIL: " + failures.length + " of " + count + " tests");

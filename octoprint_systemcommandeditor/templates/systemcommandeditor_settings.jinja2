@@ -364,6 +364,9 @@
         </form>
     </div>
     <div class="modal-footer">
+        <!-- ko if: canDuplicate -->
+        <button type="button" class="btn pull-left" data-bind="click: duplicate"><i class="fa-solid fa-copy"></i> {{ _('Duplicate') }}</button>
+        <!-- /ko -->
         <!-- ko if: !isSection() && !isCore() -->
         <button type="button" class="btn pull-left" data-bind="click: runNow, enable: canRun, attr: { title: runTitle }"><i class="fa-solid fa-play"></i> {{ _('Run now') }}</button>
         <!-- /ko -->
@@ -516,6 +519,9 @@
         </form>
     </div>
     <div class="modal-footer">
+        <!-- ko if: canDuplicate -->
+        <button type="button" class="btn pull-left" data-bind="click: duplicate"><i class="fa-solid fa-copy"></i> {{ _('Duplicate') }}</button>
+        <!-- /ko -->
         <button type="button" class="btn" data-bind="click: cancel">{{ _('Cancel') }}</button>
         <button type="button" class="btn btn-primary" data-bind="click: done, enable: valid">{{ _('Done') }}</button>
     </div>

@@ -126,7 +126,7 @@ def system_switches(hostname):
 
 def sample_devices(detected):
     return [
-        {key: item[key] for key in DEVICE_KEYS}
+        {**{key: item[key] for key in DEVICE_KEYS}, "preset": item["id"]}
         for item in detected
         if item["sample"] and item["available"]
     ]
@@ -328,12 +328,79 @@ def action_of(preset, device_ids):
 
     The device id is the preset's action key when free among ``device_ids``, else ``_2``, ``_3``... The command
     joins it with ``group`` = that id and ``role`` ``run``. Only maintenance presets with a status carry one.
+    Both carry ``preset`` = the preset's action, which marks them as made by that preset.
     """
     device_id = free_key(preset["action"], device_ids)
-    device = {"id": device_id, "type": "action", "name": preset["name"], "icon": preset["icon"]}
+    device = {"id": device_id, "type": "action", "name": preset["name"], "icon": preset["icon"],
+              "preset": preset["action"]}
     if preset.get("status"):
         device["status"] = preset["status"]
     entry = entry_of(preset)
     entry["group"] = device_id
     entry["role"] = "run"
+    entry["preset"] = preset["action"]
     return device, entry
+
+
+def maintenance_actions():
+    """The action keys of the maintenance presets. They are constants, so no detection or environment is needed."""
+    blank = {"octoprint": "", "basedir": "", "timelapse": "", "logs": ""}
+    return [preset["action"] for preset in maintenance(blank)]
+
+
+def mark_presets(devices, actions, maintenance_action_keys):
+    """Add a ``preset`` marker to the records that an older version created without one.
+
+    Returns ``(devices, actions, changed)``; the inputs are not modified. The rule, applied where no marker exists:
+    a readout control whose id is a catalog id, a switch control named ``host`` or ``octoprint``, and a readout
+    placement of such a readout get the id; a maintenance command gets its action, and the action control its
+    ``group`` names gets the same. A marker that is already set is never overwritten.
+    """
+    readout_ids = {preset["id"] for preset in CATALOG}
+    switch_ids = {switch["id"] for switch in SYSTEM_SWITCHES}
+    maintenance_set = set(maintenance_action_keys)
+    changed = False
+
+    new_actions = [dict(entry) if isinstance(entry, dict) else entry for entry in actions or []]
+    action_groups = {}
+    for entry in new_actions:
+        if isinstance(entry, dict) and entry.get("action") in maintenance_set and "command" in entry:
+            if not entry.get("preset"):
+                entry["preset"] = entry["action"]
+                changed = True
+            if entry.get("group"):
+                action_groups.setdefault(entry["group"], entry["action"])
+
+    new_devices = [dict(device) if isinstance(device, dict) else device for device in devices or []]
+    for device in new_devices:
+        if not isinstance(device, dict) or device.get("preset"):
+            continue
+        device_id, kind = device.get("id"), device.get("type")
+        if kind == "readout" and device_id in readout_ids:
+            marker = device_id
+        elif kind == "switch" and device_id in switch_ids:
+            marker = device_id
+        elif kind == "action" and device_id in action_groups:
+            marker = action_groups[device_id]
+        else:
+            continue
+        device["preset"] = marker
+        changed = True
+
+    readout_presets = {
+        device["id"]: device["preset"]
+        for device in new_devices
+        if isinstance(device, dict) and device.get("type") == "readout" and device.get("preset")
+    }
+    for entry in new_actions:
+        if (
+            isinstance(entry, dict)
+            and entry.get("action") != "divider"
+            and "command" not in entry
+            and entry.get("device") in readout_presets
+            and not entry.get("preset")
+        ):
+            entry["preset"] = readout_presets[entry["device"]]
+            changed = True
+
+    return new_devices, new_actions, changed

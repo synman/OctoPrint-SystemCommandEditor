@@ -212,6 +212,42 @@
         return base.split(/\s+/).filter((t) => t !== "fa-spin").concat(["fa-spin"]).join(" ");
     }
 
+    // The name of a copy: "Copy of <name>", then "Copy 2 of <name>", "Copy 3 of <name>"... The first one no entry in
+    // takenNames has. takenNames are the names already in use by the list the copy joins.
+    function copyName(name, takenNames) {
+        const taken = new Set(takenNames || []);
+        for (let n = 1; ; n++) {
+            const candidate = n === 1 ? "Copy of " + name : "Copy " + n + " of " + name;
+            if (!taken.has(candidate)) return candidate;
+        }
+    }
+
+    // Renames the second and later items that share a key, so every key in the list is unique. The first item with a
+    // key keeps it; the others take the first free <key>_2, <key>_3... free against every key in the list and never
+    // "divider". Dividers and items with no key are left alone. The input is not modified; renamed items are copies.
+    function dedupeKeys(list, keyField) {
+        const items = list || [];
+        const taken = new Set();
+        items.forEach((item) => {
+            if (item && item[keyField] !== undefined) taken.add(item[keyField]);
+        });
+        const seen = new Set();
+        return items.map((item) => {
+            if (!item || item[keyField] === undefined || item[keyField] === "divider") return item;
+            const key = item[keyField];
+            if (!seen.has(key)) {
+                seen.add(key);
+                return item;
+            }
+            let n = 2;
+            while (taken.has(key + "_" + n) || key + "_" + n === "divider") n++;
+            const free = key + "_" + n;
+            taken.add(free);
+            seen.add(free);
+            return Object.assign({}, item, {[keyField]: free});
+        });
+    }
+
     const SceModel = {
         BUTTON_ICON: BUTTON_ICON,
         BUSY_ICONS: BUSY_ICONS,
@@ -229,7 +265,9 @@
         StatusTracker: StatusTracker,
         RunTracker: RunTracker,
         escapeHtml: escapeHtml,
-        consentHtml: consentHtml
+        consentHtml: consentHtml,
+        copyName: copyName,
+        dedupeKeys: dedupeKeys
     };
 
     if (typeof module !== "undefined" && module.exports) module.exports = SceModel;

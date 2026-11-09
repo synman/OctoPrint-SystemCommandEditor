@@ -19,7 +19,16 @@ import octoprint.plugin
 from octoprint.access.permissions import Permissions
 
 from .convert import command_count, convert, place_readouts
-from .presets import SYSTEM_SWITCHES, action_of, detect, detect_maintenance, sample_devices, system_switches
+from .presets import (
+    SYSTEM_SWITCHES,
+    action_of,
+    detect,
+    detect_maintenance,
+    mark_presets,
+    maintenance_actions,
+    sample_devices,
+    system_switches,
+)
 from .status import check_devices
 
 API_ENTRY_KEYS = (
@@ -86,7 +95,7 @@ class SystemCommandEditorPlugin(
         }
 
     def get_settings_version(self):
-        return 3
+        return 4
 
     def get_api_commands(self):
         return {"status": ["ids"], "presets": []}
@@ -132,7 +141,7 @@ class SystemCommandEditorPlugin(
             self._settings.set(["core", action, "group"], group)
             self._settings.set(["core", action, "role"], role)
         return [
-            {key: switch[key] for key in ("id", "type", "name", "icon")}
+            {**{key: switch[key] for key in ("id", "type", "name", "icon")}, "preset": switch["id"]}
             for switch in system_switches(socket.gethostname())
         ]
 
@@ -148,6 +157,8 @@ class SystemCommandEditorPlugin(
                 # a sample readout is shown in the menu only where its placement is, so place each one under Status
                 actions = self._settings.global_get(["system", "actions"]) or []
                 _, actions, _ = place_readouts([dict(device, section=STATUS_SECTION) for device in added], actions)
+                # the placements carry their readouts' markers, which place_readouts does not write
+                _, actions, _ = mark_presets(added, actions, [])
                 self._settings.global_set(["system", "actions"], actions)
         elif skin:
             self._settings.set(["devices"], skin + devices)
@@ -219,6 +230,20 @@ class SystemCommandEditorPlugin(
             self._convert_legacy_commands()
         if current is None or current < 3:
             self._place_readouts()
+        if current is None or current < 4:
+            self._mark_presets()
+
+    def _mark_presets(self):
+        devices = copy.deepcopy(self._settings.get(["devices"]) or [])
+        actions = copy.deepcopy(self._settings.global_get(["system", "actions"]) or [])
+        new_devices, new_actions, changed = mark_presets(devices, actions, maintenance_actions())
+        if not changed:
+            return
+        if new_actions != actions:
+            self._settings.global_set(["system", "actions"], new_actions)
+        if new_devices != devices:
+            self._settings.set(["devices"], new_devices)
+        self._logger.info("Marked the presets already in use, so the picker can track them by id")
 
     def _place_readouts(self):
         devices = self._settings.get(["devices"]) or []
