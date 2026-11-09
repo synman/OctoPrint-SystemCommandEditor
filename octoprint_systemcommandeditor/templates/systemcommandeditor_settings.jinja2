@@ -145,6 +145,10 @@
 
 <!-- ko if: coreEntries().length -->
 <h4 class="sce-group-title">{{ _('Built-in controls') }}</h4>
+<p class="muted">
+    {{ _('OctoPrint\'s own shutdown, reboot and restart commands. Change their icon or heading, or put them on a control. What they run is set under') }}
+    <a href="javascript:void(0)" data-bind="click: showServerSettings">{{ _('Server') }}</a>.
+</p>
 <div class="sce-list sce-core-list">
     <!-- ko foreach: coreEntries -->
     <!-- ko if: $data.heading -->
@@ -161,17 +165,16 @@
         </span>
     </div>
     <!-- /ko -->
-    <div class="sce-core-note muted">
-        {{ _('OctoPrint\'s built-in commands. You can change their icons and headings here; what they run is set under') }}
-        <a href="javascript:void(0)" data-bind="click: showServerSettings">{{ _('Server') }}</a>.
-    </div>
 </div>
 <!-- /ko -->
 
 <h4 class="sce-group-title">{{ _('Custom controls') }}</h4>
+<p class="muted">
+    {{ _('Your own commands and section headings, in the order the System menu shows them.') }}
+</p>
 <div class="sce-list" data-bind="css: { 'sce-list-empty': entries().length === 0 }">
     <div class="sce-empty muted" data-bind="visible: entries().length === 0">
-        {{ _('You have no system commands yet. Add one with the buttons below.') }}
+        {{ _('You have no custom controls yet. Add one with the buttons below.') }}
     </div>
 
     <!-- ko foreach: entries -->
