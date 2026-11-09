@@ -269,7 +269,7 @@ $(function () {
         self.roleError = ko.pureComputed(() => {
             if (!self.device() || self.isSection()) return "";
             const known = self.roleChoices().some((choice) => choice.value && choice.value === self.role());
-            return known ? "" : gettext("Choose a role for this device.");
+            return known ? "" : gettext("Choose a role for this control.");
         });
         self.valueError = ko.pureComputed(() => {
             if (!self.device() || self.role() !== "choice") return "";
@@ -278,15 +278,15 @@ $(function () {
         self.deviceError = ko.pureComputed(() => {
             const id = self.device();
             if (!id || self.isSection()) return "";
-            if (!self.selectedDevice()) return gettext("Choose a device that exists.");
+            if (!self.selectedDevice()) return gettext("Choose a control that exists.");
             const others = owner.membersOf(id).filter((m) => {
                 if (m.core) return !(self.isCore() && m.key === self.action());
                 return !(!self.isCore() && m.key === self._original());
             });
             if (others.some((m) => m.core !== self.isCore())) {
                 return self.isCore()
-                    ? gettext("This device already has custom commands, so a built-in command cannot use it.")
-                    : gettext("A built-in command already uses this device, so a custom command cannot use it.");
+                    ? gettext("This control already has custom commands, so a built-in command cannot use it.")
+                    : gettext("A built-in command already uses this control, so a custom command cannot use it.");
             }
             if (self.selectedDevice().type === "switch" && self.role() &&
                 others.some((m) => m.role === self.role())) {
@@ -442,7 +442,7 @@ $(function () {
         self.hasStatus = ko.pureComputed(() => self.type() !== "link");
         self.hasSection = ko.pureComputed(() => self.type() === "readout" || self.type() === "link");
 
-        self.title = ko.pureComputed(() => (self.editing() ? gettext("Edit device") : gettext("Add device")));
+        self.title = ko.pureComputed(() => (self.editing() ? gettext("Edit control") : gettext("Add control")));
 
         self.sectionChoices = ko.pureComputed(() => {
             const names = owner.dividerNames().map((name) => ({value: name, label: name}));
@@ -465,7 +465,7 @@ $(function () {
             if (!ACTION_PATTERN.test(id)) return gettext("Use lowercase letters, digits, - and _ only.");
             const original = self._original();
             const taken = owner.devices().some((d) => d !== original && d.id === id);
-            return taken ? gettext("Another device already uses this identifier.") : "";
+            return taken ? gettext("Another control already uses this identifier.") : "";
         });
         self.statusError = ko.pureComputed(() => {
             if (self.type() !== "readout") return "";
@@ -787,7 +787,7 @@ $(function () {
 
         self.removeDevice = (device) => {
             showConfirmationDialog({
-                message: _.sprintf(gettext('This removes the device "%(name)s" and its role on each command.'), {
+                message: _.sprintf(gettext('This removes the control "%(name)s" and its role on each command.'), {
                     name: _.escape(device.name)
                 }),
                 onproceed: () => {

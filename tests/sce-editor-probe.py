@@ -176,7 +176,7 @@ def modal_done(modal):
 
 
 def add_switch_device(name):
-    page.get_by_role("button", name="Add device").click()
+    page.get_by_role("button", name="Add control").click()
     wait_visible("#sce-device-editor")
     page.fill("#sce-device-name", name)
     modal_done("#sce-device-editor")
@@ -281,7 +281,7 @@ def icon_picker_checks():
     wait_hidden("#sce-editor")
 
     # a new device's identifier follows its name: lowercase, with spaces and other characters turned into _
-    page.get_by_role("button", name="Add device").click()
+    page.get_by_role("button", name="Add control").click()
     wait_visible("#sce-device-editor")
     page.wait_for_timeout(400)
     over = page.evaluate("""() => { const b = document.querySelector('#sce-device-editor .modal-body');
@@ -431,7 +431,7 @@ def run_probe():
         wait_hidden("#sce-editor")
 
         # 3. a link with a URL and a condition, and a readout with no condition
-        page.get_by_role("button", name="Add device").click()
+        page.get_by_role("button", name="Add control").click()
         wait_visible("#sce-device-editor")
         page.select_option("#sce-device-type", value="link")
         page.fill("#sce-device-name", "Camera")
@@ -443,7 +443,7 @@ def run_probe():
               summary == "Grayed out unless the printer is Printing.", "summary=%r" % summary)
         modal_done("#sce-device-editor")
 
-        page.get_by_role("button", name="Add device").click()
+        page.get_by_role("button", name="Add control").click()
         wait_visible("#sce-device-editor")
         page.select_option("#sce-device-type", value="readout")
         page.fill("#sce-device-name", "Load")
