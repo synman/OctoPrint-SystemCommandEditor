@@ -654,6 +654,12 @@ def test_octoprint_gcode_is_a_g_code_macros_action_control_with_one_named_macro(
                                   "role": "run", "icon": "fa-solid fa-paper-plane", "confirm": "Send this G-code?"}]
 
 
+def test_octoprint_printer_preset_notes_it_is_not_for_grbl_and_no_other_preset_has_a_note():
+    by_id = octoprint_by_id()
+    assert by_id["octoprint:printer"]["note"] == "Not for Grbl machines: use the Grbl control's Home and Reset"
+    assert [key for key, preset in by_id.items() if "note" in preset] == ["octoprint:printer"]
+
+
 def test_octoprint_event_has_no_read_and_one_run():
     by_id = octoprint_by_id()
     event = by_id["octoprint:event"]

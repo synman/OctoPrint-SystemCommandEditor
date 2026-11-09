@@ -676,6 +676,10 @@ def octoprint_presets(snapshot_url=None):
         {"preset": key, "name": name, "control": control, "commands": commands}
         for key, name, (control, commands) in entries
     ]
+    # the picker shows a note beside the row: these printer calls do the wrong thing on Grbl, where G28 moves to a
+    # stored position instead of homing, M112 is refused, and there are no heaters to cool
+    next(p for p in presets if p["preset"] == "octoprint:printer")["note"] = (
+        "Not for Grbl machines: use the Grbl control's Home and Reset")
     if isinstance(snapshot_url, str) and snapshot_url:
         presets.append({
             "preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": None,
