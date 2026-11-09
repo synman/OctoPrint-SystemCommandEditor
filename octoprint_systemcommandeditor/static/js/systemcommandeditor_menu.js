@@ -666,8 +666,6 @@ $(function () {
                     if (action === "divider") return;
                     const c = core[action];
                     if (c && c.heading) {
-                        // a heading below other items gets the same line above it as a custom section's heading
-                        if (el.prevAll("li").length) node("li", ["divider"]).insertBefore(el);
                         node("li", ["dropdown-header"]).text(c.heading).insertBefore(el);
                     }
                     icon(c && c.icon, c && c.icon_color, c && c.icon_invert).prependTo(el.children("a").first());
