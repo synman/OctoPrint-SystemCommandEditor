@@ -114,7 +114,7 @@
     <span class="help-block">{{ _('Off by default. Each update runs every status command on the OctoPrint server.') }}</span>
 </div>
 
-<h4 class="sce-group-title">{{ _('Devices') }}</h4>
+<h4 class="sce-group-title">{{ _('Controls') }}</h4>
 <p class="muted">
     {{ _('A device groups commands in the System menu: a switch has On and Off commands, a selector has a command for each choice, a readout shows a status, and a link opens a page.') }}
 </p>
@@ -144,7 +144,7 @@
 </div>
 
 <!-- ko if: coreEntries().length -->
-<h4 class="sce-group-title">{{ _('Built-in commands') }}</h4>
+<h4 class="sce-group-title">{{ _('Built-in controls') }}</h4>
 <div class="sce-list sce-core-list">
     <!-- ko foreach: coreEntries -->
     <!-- ko if: $data.heading -->
@@ -168,7 +168,7 @@
 </div>
 <!-- /ko -->
 
-<h4 class="sce-group-title">{{ _('Custom commands') }}</h4>
+<h4 class="sce-group-title">{{ _('Custom controls') }}</h4>
 <div class="sce-list" data-bind="css: { 'sce-list-empty': entries().length === 0 }">
     <div class="sce-empty muted" data-bind="visible: entries().length === 0">
         {{ _('You have no system commands yet. Add one with the buttons below.') }}
