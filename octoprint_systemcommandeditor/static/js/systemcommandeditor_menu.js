@@ -47,7 +47,7 @@
     }
 
     function members(deviceId, entries, core) {
-        const m = {source: null, on: null, off: null, restart: null, safe_restart: null, choices: []};
+        const m = {source: null, on: null, off: null, restart: null, safe_restart: null, choices: [], runs: []};
         const tables = [["custom", entries || {}], ["core", core || {}]];
         for (const pair of tables) {
             const source = pair[0];
@@ -62,6 +62,7 @@
                 else if (e.role === "restart" && !m.restart) m.restart = action;
                 else if (e.role === "safe_restart" && !m.safe_restart) m.safe_restart = action;
                 else if (e.role === "choice") m.choices.push({action: action, value: e.value, name: name});
+                else if (e.role === "run") m.runs.push({action: action, source: source, name: name, icon: e.icon});
             }
         }
         return m;
@@ -75,6 +76,13 @@
         if (state !== "on" && m.on) buttons.push({kind: "on", action: m.on});
         // the row itself runs nothing; only its buttons do
         return {buttons: buttons};
+    }
+
+    // one button per run member core lists (present(source, action)), in member order, with the member's own icon;
+    // the row itself runs nothing
+    function actionView(m, present) {
+        return {buttons: m.runs.filter((r) => present(r.source, r.action))
+            .map((r) => ({kind: "run", action: r.action, icon: r.icon || "fa-solid fa-play"}))};
     }
 
     function StatusTracker() {
@@ -166,6 +174,7 @@
         conditionSummary: conditionSummary,
         members: members,
         switchView: switchView,
+        actionView: actionView,
         StatusTracker: StatusTracker,
         RunTracker: RunTracker,
         escapeHtml: escapeHtml,
@@ -519,8 +528,14 @@ $(function () {
                 ev.stopPropagation();
             });
 
-            const buttons = node("span", ["sce-buttons"]);
-            view.buttons.forEach((b) => {
+            li.append(row, self._runButtons(view.buttons, (b) => BUTTON_ICON[b.kind]));
+            return li;
+        };
+
+        // one button per run: the same consent, run, spin and flash path for switch verbs and action runs
+        self._runButtons = (buttons, iconOf) => {
+            const box = node("span", ["sce-buttons"]);
+            buttons.forEach((b) => {
                 const entry = self._entryOf(b.action);
                 const cond = self._condition(entry.when);
                 const btn = node("button", ["btn", "btn-mini", "sce-btn"]).attr({
@@ -533,16 +548,42 @@ $(function () {
                     btn.attr("title", cond.reason);
                 }
                 const spinning = self._runs.spinning(b.action);
-                const cls = (!spinning && self._flash(b.action, entry)) || BUTTON_ICON[b.kind];
+                const cls = (!spinning && self._flash(b.action, entry)) || iconOf(b, entry);
                 btn.append(node("i", [cls + (spinning ? " fa-spin" : ""), "fa-fw"]));
                 btn.on("click", (ev) => {
                     ev.stopPropagation();
                     if (btn.hasClass("disabled")) return;
                     self._run(self._sourceOf(b.action), b.action);
                 });
-                buttons.append(btn);
+                box.append(btn);
             });
-            li.append(row, buttons);
+            return box;
+        };
+
+        // an action row: icon, name, the status text as a readout shows it, then one button per run member
+        self._buildAction = (d, li, members) => {
+            const kind = self._kindOf(d);
+            const view = SceModel.actionView(members, (source, action) => !!self._spec(source, action));
+
+            const rowCond = self._condition(d.when);
+            if (rowCond.effect === "hide") li.addClass(HIDDEN);
+            if (rowCond.effect === "disable") li.addClass("disabled");
+
+            const row = node("a", ["sce-device-row"]).attr("href", "javascript:void(0)");
+            row.append(icon(d.icon, d.icon_color, d.icon_invert), node("span", ["sce-device-name"]).text(d.name));
+            if (self._checking[d.id] && kind === "pending") {
+                row.append(node("span", ["sce-state"]).append(node("i", ["fa-solid fa-spinner fa-spin", "fa-fw"])));
+            } else if (kind !== "nostatus" && kind !== "pending") {
+                row.append(node("span", ["sce-state"]).text(kind === "unknown" ? "Unknown" : String(kind)));
+            }
+            if (rowCond.effect === "disable") row.attr("title", rowCond.reason);
+            // the row itself runs nothing; only its buttons do
+            row.on("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+            });
+
+            li.append(row, self._runButtons(view.buttons, (b) => b.icon));
             return li;
         };
 
@@ -667,11 +708,12 @@ $(function () {
             const place = sectionPlacer(items, menu);
             devices.forEach((d) => {
                 const li = node("li", [DEVICE]).attr("data-device-id", d.id);
-                if (d.type === "switch" || d.type === "selector") {
+                if (d.type === "switch" || d.type === "selector" || d.type === "action") {
                     if (!self._hasPresentMember(d.id)) return;
                     const m = SceModel.members(d.id, entries, core);
                     if (d.type === "switch") self._buildSwitch(d, li, m);
-                    else self._buildSelector(d, li, m);
+                    else if (d.type === "selector") self._buildSelector(d, li, m);
+                    else self._buildAction(d, li, m);
                     if (firstMember[d.id]) li.insertBefore(firstMember[d.id]);
                     else place(d.section, li);
                     return;

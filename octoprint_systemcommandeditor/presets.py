@@ -1,6 +1,9 @@
+import os
 import shlex
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
+from .convert import free_key
 from .status import check_devices, run_status
 
 CATALOG = [
@@ -106,6 +109,52 @@ def sample_devices(detected):
 
 SUDO_CHECK = "sudo -n true"
 
+# Status scripts run with the interpreter that runs OctoPrint, so they need no GNU-only tools. Each takes one folder.
+BACKUP_AGE_SCRIPT = """
+import os, sys, time
+folder = sys.argv[1]
+mtimes = []
+if os.path.isdir(folder):
+    for name in os.listdir(folder):
+        path = os.path.join(folder, name)
+        if os.path.isfile(path):
+            mtimes.append(os.path.getmtime(path))
+if not mtimes:
+    print("Last backup none")
+else:
+    age = max(0, time.time() - max(mtimes))
+    if age >= 86400:
+        text = "%d d ago" % (age // 86400)
+    elif age >= 3600:
+        text = "%d h ago" % (age // 3600)
+    else:
+        text = "%d min ago" % (age // 60)
+    print("Last backup " + text)
+"""
+
+FOLDER_SIZE_SCRIPT = """
+import os, sys
+folder = sys.argv[1]
+total = 0
+for root, _dirs, names in os.walk(folder):
+    for name in names:
+        try:
+            total += os.path.getsize(os.path.join(root, name))
+        except OSError:
+            pass
+units = ["B", "KB", "MB", "GB", "TB"]
+size = float(total)
+i = 0
+while size >= 1024 and i < len(units) - 1:
+    size /= 1024
+    i += 1
+print("%d B" % total if i == 0 else "%.1f %s" % (size, units[i]))
+"""
+
+
+def _python_status(script, folder):
+    return "{} -c {} {}".format(shlex.quote(sys.executable), shlex.quote(script), shlex.quote(folder))
+
 
 def maintenance(env):
     octoprint = shlex.quote(env["octoprint"])
@@ -123,6 +172,7 @@ def maintenance(env):
             "sample": True,
             "needs_sudo": False,
             "detect": "test -x {}".format(octoprint),
+            "status": _python_status(BACKUP_AGE_SCRIPT, os.path.join(env["basedir"], "data", "backup")),
         },
         {
             "action": "webcam_restart",
@@ -145,6 +195,7 @@ def maintenance(env):
             "sample": False,
             "needs_sudo": False,
             "detect": "test -d {}".format(timelapse),
+            "status": _python_status(FOLDER_SIZE_SCRIPT, env["timelapse"]),
         },
         {
             "action": "purge_logs",
@@ -156,6 +207,7 @@ def maintenance(env):
             "sample": False,
             "needs_sudo": False,
             "detect": "test -d {}".format(logs),
+            "status": _python_status(FOLDER_SIZE_SCRIPT, env["logs"]),
         },
         {
             "action": "sync_clock",
@@ -212,6 +264,7 @@ def detect_maintenance(env, runner=run_status, timeout=10):
                 "confirm": preset["confirm"],
                 "async": preset["async"],
                 "sample": preset["sample"],
+                "status": preset.get("status", ""),
                 "available": exit_code == 0,
                 "note": "Needs passwordless sudo" if preset["needs_sudo"] and not sudo_ok else "",
             }
@@ -226,3 +279,19 @@ def entry_of(preset):
     if preset.get("async"):
         entry["async"] = True
     return entry
+
+
+def action_of(preset, device_ids):
+    """Return ``(device, entry)`` for a maintenance preset as an action control and its run command.
+
+    The device id is the preset's action key when free among ``device_ids``, else ``_2``, ``_3``... The command
+    joins it with ``group`` = that id and ``role`` ``run``. Only maintenance presets with a status carry one.
+    """
+    device_id = free_key(preset["action"], device_ids)
+    device = {"id": device_id, "type": "action", "name": preset["name"], "icon": preset["icon"]}
+    if preset.get("status"):
+        device["status"] = preset["status"]
+    entry = entry_of(preset)
+    entry["group"] = device_id
+    entry["role"] = "run"
+    return device, entry

@@ -97,7 +97,7 @@ test("members: a device with only core members has source core", () => {
 
 test("members: no matches gives empty members", () => {
     const m = M.members("nothing", {}, {});
-    assert.deepStrictEqual(m, {source: null, on: null, off: null, restart: null, safe_restart: null, choices: []});
+    assert.deepStrictEqual(m, {source: null, on: null, off: null, restart: null, safe_restart: null, choices: [], runs: []});
 });
 
 // ---- the first entry with a role wins (a later entry must not overwrite it) ----
@@ -359,6 +359,52 @@ test("placementOf: an unplaced readout has no placement, and a command never cou
     assert.strictEqual(M.placementOf("disk", entries), "");
     assert.strictEqual(M.placementOf("disk", {}), "");
     assert.strictEqual(M.placementOf("disk", undefined), "");
+});
+
+test("members: run members gather in member order with their own icon", () => {
+    const entries = {
+        first: {group: "backup", role: "run", name: "Back up now", icon: "fa-solid fa-box-archive"},
+        other: {group: "backup", role: "run", name: "Other"},
+        verb: {group: "backup", role: "on", name: "On"}
+    };
+    const m = M.members("backup", entries, {});
+    assert.deepStrictEqual(m.runs, [
+        {action: "first", source: "custom", name: "Back up now", icon: "fa-solid fa-box-archive"},
+        {action: "other", source: "custom", name: "Other", icon: undefined}
+    ]);
+    assert.strictEqual(m.on, "verb");
+});
+
+test("actionView: one button per run member core lists, in order, using the member icon", () => {
+    const entries = {
+        a: {group: "d", role: "run", name: "A", icon: "fa-solid fa-film"},
+        b: {group: "d", role: "run", name: "B"},
+        c: {group: "d", role: "run", name: "C", icon: "fa-solid fa-broom"}
+    };
+    const m = M.members("d", entries, {});
+    const listed = (source, action) => action !== "b";
+    const view = M.actionView(m, listed);
+    assert.deepStrictEqual(view.buttons, [
+        {kind: "run", action: "a", icon: "fa-solid fa-film"},
+        {kind: "run", action: "c", icon: "fa-solid fa-broom"}
+    ]);
+});
+
+test("actionView: a run member without an icon falls back to play", () => {
+    const m = M.members("d", {a: {group: "d", role: "run", name: "A"}}, {});
+    assert.deepStrictEqual(M.actionView(m, () => true).buttons, [{kind: "run", action: "a", icon: "fa-solid fa-play"}]);
+});
+
+test("actionView: a row with no run member has no buttons and runs nothing itself", () => {
+    const m = M.members("d", {a: {group: "d", role: "on", name: "A"}}, {});
+    assert.deepStrictEqual(M.actionView(m, () => true).buttons, []);
+});
+
+test("actionView: core run members count when core lists them", () => {
+    const m = M.members("d", {}, {reboot: {group: "d", role: "run", name: "Reboot", icon: "fa-solid fa-rotate-right"}});
+    assert.deepStrictEqual(M.actionView(m, (source, action) => source === "core" && action === "reboot").buttons,
+        [{kind: "run", action: "reboot", icon: "fa-solid fa-rotate-right"}]);
+    assert.deepStrictEqual(M.actionView(m, () => false).buttons, []);
 });
 
 const elapsed = Date.now() - STARTED;

@@ -210,3 +210,11 @@ def test_check_devices_real_command_pattern_past_200_characters():
     result = check_devices(devices, [], ["plug"])
     assert result["plug"]["state"] == "off"
     assert len(result["plug"]["output"]) == 200
+
+
+def test_action_returns_first_line_of_output_as_readout_does():
+    assert evaluate({"type": "action"}, [], 0, "Last backup 2 h ago\nmore", None) == "Last backup 2 h ago"
+
+
+def test_action_error_is_unknown():
+    assert evaluate({"type": "action"}, [], None, "", "timeout") == "unknown"

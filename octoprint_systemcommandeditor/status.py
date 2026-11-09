@@ -45,7 +45,7 @@ def evaluate(device, choice_values, exit_code, output, error):
     if kind == "selector":
         value = output.strip()
         return value if value in choice_values else "unknown"
-    if kind == "readout":
+    if kind in ("readout", "action"):
         return (output.splitlines() or [""])[0]
     return None
 

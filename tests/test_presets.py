@@ -1,9 +1,13 @@
+import os
+import time
+
 import pytest
 
 pytest.importorskip("octoprint")
 
 from octoprint_systemcommandeditor.presets import (  # noqa: E402
     CATALOG,
+    action_of,
     detect,
     detect_maintenance,
     device_of,
@@ -11,6 +15,7 @@ from octoprint_systemcommandeditor.presets import (  # noqa: E402
     maintenance,
     sample_devices,
 )
+from octoprint_systemcommandeditor.status import run_status  # noqa: E402
 
 IDS = ["disk", "memory", "load", "uptime", "cpu_temp", "throttle", "ip", "wifi"]
 
@@ -135,7 +140,7 @@ def test_maintenance_returns_seven_actions_in_order_with_quoted_paths():
     presets = maintenance(ENV)
     assert [preset["action"] for preset in presets] == MAINTENANCE_ACTIONS
     for preset in presets:
-        assert set(preset) == {"action", "name", "icon", "command", "confirm", "async", "sample", "needs_sudo", "detect"}
+        assert set(preset) - {"status"} == {"action", "name", "icon", "command", "confirm", "async", "sample", "needs_sudo", "detect"}
     backup = presets[0]
     assert backup["command"] == "'/opt/my venv/bin/octoprint' --basedir '/home/pi/my octo' plugins backup:backup"
     assert backup["detect"] == "test -x '/opt/my venv/bin/octoprint'"
@@ -154,7 +159,7 @@ def test_detect_maintenance_marks_availability_from_detect_exit_code():
     assert by_action["sync_clock"]["available"] is False
     assert by_action["os_update"]["available"] is False
     assert by_action["backup_now"]["available"] is True
-    assert set(listed[0]) == {"action", "name", "icon", "command", "confirm", "async", "sample", "available", "note"}
+    assert set(listed[0]) == {"action", "name", "icon", "command", "confirm", "async", "sample", "status", "available", "note"}
 
 
 def test_detect_maintenance_sudo_note_only_when_sudo_fails_and_preset_needs_it():
@@ -189,3 +194,51 @@ def test_entry_of_keeps_confirm_and_async_only_when_set():
     plain = entry_of(by_action["wifi_powersave_off"])
     assert "confirm" not in plain and "async" not in plain
 
+
+
+def test_action_of_builds_an_action_control_and_its_run_command():
+    preset = [p for p in maintenance(ENV) if p["action"] == "backup_now"][0]
+    device, entry = action_of(preset, set())
+    assert device == {
+        "id": "backup_now",
+        "type": "action",
+        "name": preset["name"],
+        "icon": preset["icon"],
+        "status": preset["status"],
+    }
+    assert entry["group"] == "backup_now" and entry["role"] == "run"
+    assert entry["command"] == preset["command"] and entry["async"] is True
+
+
+def test_action_of_takes_the_next_free_device_id_and_skips_status_when_none():
+    preset = [p for p in maintenance(ENV) if p["action"] == "webcam_restart"][0]
+    device, entry = action_of(preset, {"webcam_restart", "webcam_restart_2"})
+    assert device["id"] == "webcam_restart_3"
+    assert "status" not in device
+    assert entry["group"] == "webcam_restart_3"
+
+
+def test_backup_age_and_folder_size_status_commands_run_against_a_temp_folder(tmp_path):
+    base = tmp_path / "octo"
+    backups = base / "data" / "backup"
+    backups.mkdir(parents=True)
+    newest = backups / "backup.zip"
+    newest.write_bytes(b"x" * 100)
+    two_hours_ago = time.time() - 2 * 3600 - 60
+    os.utime(newest, (two_hours_ago, two_hours_ago))
+    timelapse = base / "timelapse"
+    timelapse.mkdir()
+    (timelapse / "clip.mp4").write_bytes(b"y" * 1536)
+    env = {**ENV, "basedir": str(base), "timelapse": str(timelapse), "logs": str(base / "logs")}
+    by_action = {preset["action"]: preset for preset in maintenance(env)}
+
+    assert run_status(by_action["backup_now"]["status"]) == (0, "Last backup 2 h ago", None)
+    assert run_status(by_action["purge_timelapses"]["status"]) == (0, "1.5 KB", None)
+    # a missing logs folder has nothing in it
+    assert run_status(by_action["purge_logs"]["status"]) == (0, "0 B", None)
+
+
+def test_backup_age_says_none_when_the_backup_folder_is_empty(tmp_path):
+    env = {**ENV, "basedir": str(tmp_path)}
+    status = [p for p in maintenance(env) if p["action"] == "backup_now"][0]["status"]
+    assert run_status(status) == (0, "Last backup none", None)

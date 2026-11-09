@@ -19,7 +19,7 @@ import octoprint.plugin
 from octoprint.access.permissions import Permissions
 
 from .convert import command_count, convert, place_readouts
-from .presets import detect, detect_maintenance, entry_of, sample_devices
+from .presets import action_of, detect, detect_maintenance, sample_devices
 from .status import check_devices
 
 API_ENTRY_KEYS = (
@@ -155,10 +155,18 @@ class SystemCommandEditorPlugin(
                 return detect_maintenance(self._maintenance_env())
         actions = self._settings.global_get(["system", "actions"]) or []
         if not any(item.get("action") != "divider" and "device" not in item for item in actions):
-            samples = [
-                entry_of(preset) for preset in maintenance_detector() if preset["sample"] and preset["available"]
-            ]
-            if samples:
+            detected = [preset for preset in maintenance_detector() if preset["sample"] and preset["available"]]
+            if detected:
+                # each maintenance command is an action control of its own, with its command as the one run member
+                devices = self._settings.get(["devices"]) or []
+                device_ids = {device.get("id") for device in devices}
+                new_devices, samples = [], []
+                for preset in detected:
+                    device, entry = action_of(preset, device_ids)
+                    device_ids.add(device["id"])
+                    new_devices.append(device)
+                    samples.append(entry)
+                self._settings.set(["devices"], devices + new_devices)
                 divider = {"action": "divider", "name": "Maintenance"}
                 self._settings.global_set(["system", "actions"], actions + [divider] + samples)
                 self._logger.info("Added maintenance commands: %s", [entry["action"] for entry in samples])

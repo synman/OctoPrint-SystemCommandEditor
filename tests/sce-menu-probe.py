@@ -36,6 +36,7 @@ DEVICES = [
     {"id": "ghost", "type": "switch", "name": "Ghost switch", "icon": "fa-solid fa-ghost", "status": "ghost-state",
      "section": "Machine"},
     {"id": "upt", "type": "readout", "name": "Uptime", "icon": "fa-solid fa-clock", "status": "upt-state"},
+    {"id": "bkup", "type": "action", "name": "Upkeep", "icon": "fa-solid fa-box-archive", "status": "bkup-state"},
 ]
 
 # devices the menu is expected to draw: "ghost" has no member in core's command list, so it draws no row
@@ -44,6 +45,8 @@ DRAWN = [d for d in DEVICES if d["id"] != "ghost"]
 ENTRIES = {
     "disk": {"name": "Disk", "device": "disk"},
     "upt": {"name": "Uptime", "device": "upt"},
+    "bkup_run": {"name": "Back up now", "command": "bkup-cmd", "group": "bkup", "role": "run",
+                 "icon": "fa-solid fa-box-archive", "async": False, "confirm": "", "value": ""},
     "laser_on": {"name": "Laser on", "command": "laser-on-cmd", "group": "laser", "role": "on",
                  "icon": "fa-solid fa-lightbulb", "async": False, "confirm": "", "value": "", "when": {
                      "mode": "never", "states": ["printing"], "effect": "disable"}},
@@ -85,6 +88,7 @@ STATUS = {
     "res": {"state": "1080", "output": "", "exit": 0, "error": None},
     "disk": {"state": "42 GB free", "output": "", "exit": 0, "error": None},
     "upt": {"state": "3 days", "output": "", "exit": 0, "error": None},
+    "bkup": {"state": "Last backup 2 h ago", "output": "", "exit": 0, "error": None},
 }
 
 CUSTOM_LIST = [
@@ -97,6 +101,7 @@ CUSTOM_LIST = [
     {"action": "nost_on", "name": "No-status on", "command": "nost-on-cmd"},
     {"action": "nost_off", "name": "No-status off", "command": "nost-off-cmd"},
     {"action": "divider", "name": "Tools"},
+    {"action": "bkup_run", "name": "Back up now", "command": "bkup-cmd"},
     {"action": "sync_action", "name": "Sync action", "command": "sync-cmd"},
     {"action": "sync_fail", "name": "Failing sync action", "command": "fail-cmd"},
     {"action": "sync_cancel", "name": "Cancel test action", "command": "cancel-cmd",
@@ -398,6 +403,31 @@ def run_probe():
         }""")
         check("readout shows name and state text",
               readout is not None and "Disk" in readout and "42 GB free" in readout, json.dumps(readout))
+
+        # G2. an action row: its status text, then one button per run member, drawn with the member's icon
+        action_row = page.evaluate("""() => {
+            const li = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="bkup"]');
+            if (!li) return null;
+            const state = li.querySelector('.sce-state');
+            const buttons = [...li.querySelectorAll('button.sce-btn')].map(b => ({
+                title: b.getAttribute('title'), icon: b.querySelector('i').className}));
+            return {name: li.querySelector('.sce-device-name').innerText.trim(),
+                    state: state ? state.innerText.trim() : null, buttons: buttons};
+        }""")
+        check("action row shows its status text and one button with the member icon",
+              action_row is not None and action_row["state"] == "Last backup 2 h ago"
+              and len(action_row["buttons"]) == 1 and action_row["buttons"][0]["title"] == "Back up now"
+              and "fa-box-archive" in action_row["buttons"][0]["icon"], json.dumps(action_row))
+
+        # G3. the action button runs its member through the same custom command path as a switch verb
+        open_menu()
+        page.locator('li.sce-device[data-device-id="bkup"] button[title="Back up now"]').click()
+        pump(600)
+        if page.evaluate(MENU_OPEN):
+            page.click(TOGGLE)     # close the menu again, as the other phases do
+            pump(300)
+        check("the action button runs its member through the custom command endpoint",
+              "bkup_run" in calls, "calls=%s" % calls)
 
         # H. link href and target
         link = page.evaluate("""() => {

@@ -454,7 +454,9 @@ def run_probe():
             check("second save posts the settings", False, "no POST captured")
         else:
             plugin = (body.get("plugins") or {}).get("systemcommandeditor") or {}
-            core = plugin.get("core") or {}
+            # OctoPrint posts only what changed, so a key the rig already holds is absent from the POST; judge the
+            # settings as they stand after the save (the rig's values merged with the POST)
+            core = ((state["current"].get("plugins") or {}).get("systemcommandeditor") or {}).get("core") or {}
             devices = {d.get("id"): d for d in plugin.get("devices") or []}
             reboot, shutdown = core.get("reboot") or {}, core.get("shutdown") or {}
             check("core reboot carries group, role and the condition",
@@ -549,6 +551,31 @@ def run_probe():
                   and saved[-1].get("action") == "backup_now" and saved[-1].get("async") is True
                   and not [a for a in saved if a.get("action") == "webcam_restart"],
                   json.dumps(saved[-2:]))
+
+        # Phase E: an action control; its command takes the Run role, and the role list is just Run
+        open_settings()   # the settings pane closes on each successful save
+        page.get_by_role("button", name="Add control").click()
+        wait_visible("#sce-device-editor")
+        page.select_option("#sce-device-type", value="action")
+        page.fill("#sce-device-name", "Upkeep")
+        modal_done("#sce-device-editor")
+        action_type = page.evaluate("""() => {
+            const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            const d = ko.toJS(vm.devices()).find(x => x.id === 'upkeep');
+            return d ? d.type : null;
+        }""")
+        check("an action control is added with type action", action_type == "action", "type=%r" % action_type)
+
+        edit_command("Back up OctoPrint now", device="Upkeep")
+        roles = page.evaluate("() => [...document.querySelectorAll('#sce-editor .sce-role option')].map(o => o.value)")
+        check("an action's role list is just Run", roles == ["", "run"], "roles=%s" % roles)
+        page.select_option("#sce-editor .sce-role", value="run")
+        page.wait_for_timeout(200)
+        check("Done enables once the command has the Run role",
+              not page.locator("#sce-editor .modal-footer .btn-primary").is_disabled())
+        modal_done("#sce-editor")
+        run_badge = command_row("Back up OctoPrint now").locator(".sce-member", has_text="Upkeep · Run").count()
+        check("the command's badge reads Upkeep · Run", run_badge == 1, "badges=%s" % run_badge)
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)

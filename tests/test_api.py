@@ -11,7 +11,7 @@ from octoprint.access.permissions import Permissions  # noqa: E402
 
 import octoprint_systemcommandeditor as plugin_module  # noqa: E402
 from octoprint_systemcommandeditor import SystemCommandEditorPlugin  # noqa: E402
-from octoprint_systemcommandeditor.presets import CATALOG, device_of, entry_of, maintenance  # noqa: E402
+from octoprint_systemcommandeditor.presets import CATALOG, action_of, device_of, entry_of, maintenance  # noqa: E402
 
 
 class FakeSettings:
@@ -271,7 +271,7 @@ def maintenance_listing(exit_by_action):
     for preset in maintenance(MAINTENANCE_ENV):
         exit_code = exit_by_action.get(preset["action"], 0)
         listed.append({**{k: preset[k] for k in ("action", "name", "icon", "command", "confirm", "async", "sample")},
-                       "available": exit_code == 0, "note": ""})
+                       "status": preset.get("status", ""), "available": exit_code == 0, "note": ""})
     return listed
 
 
@@ -283,11 +283,14 @@ def test_load_sample_presets_adds_maintenance_divider_when_no_custom_command():
     )
     actions = plugin._settings.config["system"]["actions"]
     backup = [preset for preset in maintenance(MAINTENANCE_ENV) if preset["action"] == "backup_now"][0]
+    device, run = action_of(backup, set())
     assert actions == [
         {"action": "divider", "name": "Webcam"},
         {"action": "divider", "name": "Maintenance"},
-        entry_of(backup),
+        run,
     ]
+    assert run["group"] == device["id"] == "backup_now" and run["role"] == "run"
+    assert device in plugin._settings.config["plugins"]["systemcommandeditor"]["devices"]
     assert ("save",) == plugin._settings.calls[-1]
 
 

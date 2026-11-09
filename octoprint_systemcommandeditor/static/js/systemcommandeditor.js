@@ -123,11 +123,13 @@ $(function () {
         off: () => gettext("Off"),
         restart: () => gettext("Restart"),
         safe_restart: () => gettext("Safe mode restart"),
-        choice: () => gettext("Choice")
+        choice: () => gettext("Choice"),
+        run: () => gettext("Run")
     };
     const TYPE_LABELS = {
         switch: () => gettext("Switch"),
         selector: () => gettext("Selector"),
+        action: () => gettext("Action"),
         readout: () => gettext("Readout"),
         link: () => gettext("Link")
     };
@@ -250,7 +252,7 @@ $(function () {
 
         self.deviceChoices = ko.pureComputed(() => {
             const choices = [{id: "", name: gettext("None")}];
-            return choices.concat(owner.devices().filter((d) => d.type === "switch" || d.type === "selector"));
+            return choices.concat(owner.devices().filter((d) => d.type === "switch" || d.type === "selector" || d.type === "action"));
         });
         self.selectedDevice = ko.pureComputed(() => _.find(owner.devices(), (d) => d.id === self.device()));
         self.roleChoices = ko.pureComputed(() => {
@@ -264,6 +266,7 @@ $(function () {
                     {value: "restart", label: ROLE_LABELS.restart()},
                     {value: "safe_restart", label: ROLE_LABELS.safe_restart()}];
             }
+            if (d.type === "action") return [choose, {value: "run", label: ROLE_LABELS.run()}];
             return [choose, {value: "choice", label: ROLE_LABELS.choice()}];
         });
         self.roleError = ko.pureComputed(() => {
@@ -432,6 +435,7 @@ $(function () {
         self.typeChoices = [
             {value: "switch", label: TYPE_LABELS.switch()},
             {value: "selector", label: TYPE_LABELS.selector()},
+            {value: "action", label: TYPE_LABELS.action()},
             {value: "readout", label: TYPE_LABELS.readout()},
             {value: "link", label: TYPE_LABELS.link()}
         ];
@@ -555,12 +559,26 @@ $(function () {
     function PresetPicker(owner) {
         const self = this;
 
-        // a system.actions entry for a maintenance command, built the way the server's entry_of builds it
-        const entryOf = (preset) => {
+        // a system.actions entry for a maintenance command, built the way the server's entry_of builds it; its
+        // device is the action control that runs it (group and role "run")
+        const entryOf = (preset, deviceId) => {
             const entry = {action: preset.action, name: preset.name, command: preset.command, icon: preset.icon};
             if (preset.confirm) entry.confirm = preset.confirm;
             if (preset.async) entry.async = true;
+            entry.group = deviceId;
+            entry.role = "run";
             return entry;
+        };
+
+        // the identifier an action control takes: the preset's action key if no control has it, else key_2, key_3...
+        const actionDeviceId = (base) => {
+            const used = owner.devices().map((device) => device.id);
+            let candidate = base;
+            let counter = 2;
+            while (used.includes(candidate)) {
+                candidate = base + "_" + counter++;
+            }
+            return candidate;
         };
 
         self.loading = ko.observable(false);
@@ -634,13 +652,23 @@ $(function () {
                 }
             });
             const removed = self.maintenance().filter((row) => row.added && !row.checked()).map((row) => row.item.action);
-            const picked = self.maintenance()
-                .filter((row) => row.checked() && !row.added)
-                .map((row) => entryOf(row.item));
             if (removed.length) {
+                // the action controls its removed commands ran through go too
+                const groups = owner.entries().filter((entry) => !isSection(entry) && removed.includes(entry.action))
+                    .map((entry) => entry.group);
+                owner.devices.remove((device) => device.type === "action" && groups.includes(device.id));
                 owner.entries.remove((entry) => !isSection(entry) && removed.includes(entry.action));
                 pruneEmptyMaintenance();
             }
+            const picked = [];
+            self.maintenance().filter((row) => row.checked() && !row.added).forEach((row) => {
+                const preset = row.item;
+                const id = actionDeviceId(preset.action);
+                const device = {id: id, type: "action", name: preset.name, icon: preset.icon};
+                if (preset.status) device.status = preset.status;
+                owner.devices.push(device);
+                picked.push(entryOf(preset, id));
+            });
             if (picked.length) {
                 if (!owner.dividerNames().includes("Maintenance")) {
                     owner.entries.push({action: DIVIDER, name: "Maintenance"});
