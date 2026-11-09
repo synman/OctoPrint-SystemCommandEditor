@@ -185,6 +185,88 @@ $(function () {
         };
     }
 
+    // the words typed in a free-text box: split at commas, trimmed, blanks and repeats dropped
+    function parseWords(text) {
+        const words = [];
+        String(text || "").split(",").map((w) => w.trim()).forEach((w) => {
+            if (w && !words.includes(w)) words.push(w);
+        });
+        return words;
+    }
+
+    // "Available when <control> is:" on a command in a control: limits it to states of the control it is grouped under.
+    // attach(device) asks the states call for the control's words; a control with neither a read nor a status has none.
+    function ControlCondition() {
+        const self = this;
+
+        self.visible = ko.observable(false);
+        self.name = ko.observable("");
+        self.enabled = ko.observable(false);
+        self.mode = ko.observable("only");
+        self.effect = ko.observable("disable");
+        self.choices = ko.observableArray([]);
+        self.picked = ko.observableArray([]);
+        self.typed = ko.observable("");
+        self.loading = ko.observable(false);
+        self._seq = 0;
+
+        // one checkbox per word when the control lists its states; otherwise a text box takes the words
+        self.hasChoices = ko.pureComputed(() => self.choices().length > 0);
+        self.words = ko.pureComputed(() => {
+            if (!self.hasChoices()) return parseWords(self.typed());
+            const known = self.choices().filter((w) => self.picked().includes(w));
+            return known.concat(self.picked().filter((w) => !self.choices().includes(w)));
+        });
+
+        self.error = ko.pureComputed(() => {
+            if (self.visible() && self.enabled() && !self.words().length) return gettext("Pick at least one state.");
+            return "";
+        });
+        self.enableLabel = ko.pureComputed(() => gettext("Limit to") + " " + self.name() + " " + gettext("states"));
+        self.availableLabel = ko.pureComputed(() => gettext("Available when") + " " + self.name() + " " + gettext("is:"));
+
+        self.clear = () => {
+            self.enabled(false);
+            self.mode("only");
+            self.effect("disable");
+            self.picked([]);
+            self.typed("");
+        };
+
+        self.load = (when) => {
+            self.enabled(!!when);
+            self.mode(when && when.mode === "never" ? "never" : "only");
+            self.effect(when && when.effect === "hide" ? "hide" : "disable");
+            const saved = when && Array.isArray(when.states) ? when.states.slice() : [];
+            self.picked(saved);
+            self.typed(saved.join(", "));
+        };
+
+        self.toWhen = () => {
+            if (!self.visible() || !self.enabled()) return null;
+            return {mode: self.mode(), states: self.words(), effect: self.effect()};
+        };
+
+        // a new control clears the condition; a late states answer for an earlier control is dropped
+        self.attach = (device) => {
+            const seq = ++self._seq;
+            self.clear();
+            self.choices([]);
+            const spec = device && (device.read ? {read: device.read} : (device.status ? {status: device.status} : null));
+            self.name(device ? device.name || device.id : "");
+            self.visible(!!spec);
+            self.loading(!!spec);
+            if (!spec) return;
+            OctoPrint.simpleApiCommand("systemcommandeditor", "states", spec)
+                .done((response) => {
+                    if (seq === self._seq) self.choices((response && response.states) || []);
+                })
+                .always(() => {
+                    if (seq === self._seq) self.loading(false);
+                });
+        };
+    }
+
     function SystemCommandEditorEditor(owner) {
         const self = this;
 
@@ -227,6 +309,8 @@ $(function () {
         self.role = ko.observable("");
         self.value = ko.observable("");
         self.condition = new Condition();
+        self.control = new ControlCondition();
+        self.device.subscribe(() => self.control.attach(self.selectedDevice()));
 
         self.title = ko.pureComputed(() => {
             if (self.isCore()) return gettext("Edit built-in command");
@@ -306,7 +390,7 @@ $(function () {
 
         self.valid = ko.pureComputed(
             () => !self.nameError() && !self.commandError() && !self.deviceError() &&
-                !self.roleError() && !self.valueError() && !self.condition.error()
+                !self.roleError() && !self.valueError() && !self.condition.error() && !self.control.error()
         );
 
         // device, role, value and condition as the entry stores them
@@ -316,7 +400,9 @@ $(function () {
                 group: device,
                 role: device ? self.role() : "",
                 value: device && self.role() === "choice" ? self.value().trim() : "",
-                when: self.isSection() ? null : self.condition.toWhen()
+                when: self.isSection() ? null : self.condition.toWhen(),
+                // a built-in command never carries when_control: the server cannot check it
+                when_control: self.isSection() || self.isCore() ? null : self.control.toWhen()
             };
         };
 
@@ -396,6 +482,7 @@ $(function () {
             self.role(!section && entry.role ? entry.role : "");
             self.value(!section && entry.value ? String(entry.value) : "");
             self.condition.load(section ? null : entry.when);
+            self.control.load(section || core ? null : entry.when_control);
 
             owner.dialog.modal("show");
             window.setTimeout(() => {
@@ -728,6 +815,8 @@ $(function () {
                     action: action, name: command.name, role: command.role,
                     group: deviceId, preset: preset.preset
                 };
+                if (command.when) entry.when = command.when;
+                if (command.when_control) entry.when_control = command.when_control;
                 // a shell line is the command; anything else is a run call. Never both.
                 if (command.command) entry.command = command.command;
                 else entry.run = command.run;

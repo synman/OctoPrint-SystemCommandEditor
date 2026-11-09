@@ -56,6 +56,44 @@
 </div>
 
 {{ condition_block() }}
+{{ control_condition_block() }}
+<!-- /ko -->
+{% endmacro %}
+
+{% macro control_condition_block() %}
+<!-- ko if: control.visible() && !isCore() -->
+<div class="control-group" data-bind="css: { error: control.error() }">
+    <div class="controls">
+        <label class="checkbox"><input type="checkbox" data-bind="checked: control.enabled"> <span data-bind="text: control.enableLabel"></span></label>
+        <!-- ko if: control.enabled -->
+        <div class="sce-condition">
+            <p class="sce-condition-sentence">
+                <span data-bind="text: control.availableLabel"></span>
+                <select class="input-medium" data-bind="value: control.mode" aria-label="{{ _('Mode')|edq }}">
+                    <option value="only">{{ _('Only when') }}</option>
+                    <option value="never">{{ _('Never when') }}</option>
+                </select>
+                <!-- ko if: control.loading -->
+                <span class="muted">{{ _('Loading states…') }}</span>
+                <!-- /ko -->
+                <!-- ko if: control.hasChoices -->
+                <span class="sce-state-picks" data-bind="foreach: control.choices">
+                    <label class="checkbox inline"><input type="checkbox" data-bind="checkedValue: $data, checked: control.picked"> <span data-bind="text: $data"></span></label>
+                </span>
+                <!-- /ko -->
+                <!-- ko ifnot: control.hasChoices -->
+                <input type="text" class="input-block-level" data-bind="textInput: control.typed" placeholder="{{ _('e.g. Idle, Run')|edq }}" aria-label="{{ _('States')|edq }}">
+                <!-- /ko -->
+                <select class="input-medium" data-bind="value: control.effect" aria-label="{{ _('Effect')|edq }}">
+                    <option value="disable">{{ _('Gray out') }}</option>
+                    <option value="hide">{{ _('Hide') }}</option>
+                </select>.
+            </p>
+            <span class="help-block" data-bind="text: control.error, visible: control.error"></span>
+        </div>
+        <!-- /ko -->
+    </div>
+</div>
 <!-- /ko -->
 {% endmacro %}
 
