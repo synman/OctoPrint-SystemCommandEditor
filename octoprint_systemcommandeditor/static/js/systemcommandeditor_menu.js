@@ -29,6 +29,57 @@
         return null;
     }
 
+    // the state word of a control's status or read text: its first line, cut at the first ":" and trimmed. Empty is
+    // unknown (null); so is a missing text. Callers pass null for an errored read.
+    function stateWord(text) {
+        if (text === undefined || text === null) return null;
+        const word = String(text).split("\n")[0].split(":")[0].trim();
+        return word === "" ? null : word;
+    }
+
+    // whether a word is one of when_control's states: case-insensitive and exact
+    function stateListed(states, word) {
+        const w = String(word).toLowerCase();
+        return (states || []).some((s) => String(s).toLowerCase() === w);
+    }
+
+    // The state word a command judges its when_control by. Only a custom command has one: a built-in (core) command
+    // is never judged by its control, since the server cannot check it. Unknown is null: no result yet, an error,
+    // or an empty word.
+    function controlWordOf(source, result) {
+        if (source === "core") return null;
+        if (!result || result.error) return null;
+        return stateWord(result.output);
+    }
+
+    // The block one command gets from its printer when and its control's state, or null. effect is "hide" when any
+    // blocking condition says hide, else "disable". The reason is the printer's when when it blocks, else the
+    // control's. when_control counts only on an entry with a group, and only when the control word is known.
+    function commandBlock(entry, printerState, controlWord, controlName) {
+        const e = entry || {};
+        const printer = conditionEffect(e.when, printerState);
+        let control = null;
+        const wc = e.when_control;
+        const known = controlWord !== null && controlWord !== undefined && controlWord !== "";
+        if (e.group && wc && known) {
+            const listed = stateListed(wc.states, controlWord);
+            const blocks = (wc.mode === "never" && listed) || (wc.mode === "only" && !listed);
+            if (blocks) control = wc.effect === "disable" ? "disable" : "hide";
+        }
+        if (!printer && !control) return null;
+        const effect = printer === "hide" || control === "hide" ? "hide" : "disable";
+        let reason;
+        if (printer) {
+            const states = (e.when && e.when.states) || [];
+            reason = e.when.mode === "only"
+                ? "Only available while " + states.join(" or ")
+                : "Not available while " + states.join(" or ");
+        } else {
+            reason = "Not available while " + controlName + " is " + controlWord;
+        }
+        return {effect: effect, reason: reason};
+    }
+
     // One sentence under the condition editor: when the command or device is grayed out or hidden.
     // States are named in STATES order, joined "A", "A or B", "A, B or C". No states picked gives "".
     const CONDITION_STATES = [["printing", "Printing"], ["paused", "Paused"], ["ready", "Ready"],
@@ -295,6 +346,9 @@
         describeRun: describeRun,
         isPlacement: isPlacement,
         conditionEffect: conditionEffect,
+        stateWord: stateWord,
+        controlWordOf: controlWordOf,
+        commandBlock: commandBlock,
         conditionSummary: conditionSummary,
         members: members,
         switchView: switchView,
@@ -467,6 +521,18 @@ $(function () {
                 error: v("isError")
             });
         };
+
+        // a control's state word from its last status result: null (unknown) until a result arrives, or when it errored
+        self._controlWord = (source, id) => SceModel.controlWordOf(source, id ? self._status.get(id) : undefined);
+
+        self._controlName = (id) => {
+            const d = self._devices().find((x) => x.id === id);
+            return d ? d.name : id;
+        };
+
+        // a member command's block, judged on its printer when and on its control's state (see commandBlock)
+        self._judge = (source, entry, controlId) => SceModel.commandBlock(entry, self._printer(),
+            self._controlWord(source, controlId), self._controlName(controlId)) || {effect: null, reason: ""};
 
         self._condition = (when) => {
             const effect = SceModel.conditionEffect(when, self._printer());
@@ -725,7 +791,7 @@ $(function () {
             const box = node("span", ["sce-buttons"]);
             buttons.forEach((b) => {
                 const entry = self._entryOf(b.action);
-                const cond = self._condition(entry.when);
+                const cond = self._judge(self._sourceOf(b.action), entry, entry.group);
                 const btn = node("button", ["btn", "btn-mini", "sce-btn"]).attr({
                     type: "button",
                     title: entry.name || b.action
@@ -795,7 +861,7 @@ $(function () {
             const sub = node("ul", ["dropdown-menu"]);
             members.choices.forEach((c) => {
                 const entry = self._entryOf(c.action);
-                const cond = self._condition(entry.when);
+                const cond = self._judge(self._sourceOf(c.action), entry, d.id);
                 const item = node("li");
                 const a = node("a", ["sce-choice"]).attr("href", "javascript:void(0)");
                 const isCurrent = current !== undefined && current.action === c.action;

@@ -43,6 +43,7 @@ DEVICES = [
     {"id": "tplink", "type": "switch", "name": "Smart plug", "icon": "fa-solid fa-power-off",
      "read": {"plugin": "tplinksmartplug", "helper": "get_state", "live": False},
      "on_pattern": "^on$", "off_pattern": "^off$", "section": "Machine"},
+    {"id": "grbl", "type": "action", "name": "Grbl", "icon": "fa-solid fa-microchip", "status": "grbl-state"},
 ]
 
 # devices the menu is expected to draw: "ghost" has no member in core's command list, so it draws no row
@@ -93,6 +94,16 @@ ENTRIES = {
     "async_action": {"name": "Async action", "command": "async-cmd", "group": "", "role": "", "value": "",
                      "icon": "fa-solid fa-bolt-lightning", "async": True,
                      "confirm": "Run the async action now?"},
+    # control-state members of Grbl: Unlock only while Alarm, Home only while Idle or Alarm, Sleep never while Sleep
+    "grbl_unlock": {"name": "Unlock", "command": "unlock-cmd", "group": "grbl", "role": "run",
+                    "icon": "fa-solid fa-lock-open", "async": False, "confirm": "", "value": "",
+                    "when_control": {"mode": "only", "states": ["Alarm"], "effect": "disable"}},
+    "grbl_home": {"name": "Home", "command": "home-cmd", "group": "grbl", "role": "run",
+                  "icon": "fa-solid fa-house", "async": False, "confirm": "", "value": "",
+                  "when_control": {"mode": "only", "states": ["Idle", "Alarm"], "effect": "disable"}},
+    "grbl_sleep": {"name": "Sleep", "command": "sleep-cmd", "group": "grbl", "role": "run",
+                   "icon": "fa-solid fa-moon", "async": False, "confirm": "", "value": "",
+                   "when_control": {"mode": "never", "states": ["Sleep"], "effect": "disable"}},
 }
 
 CORE = {
@@ -109,6 +120,7 @@ STATUS = {
     "bkup": {"state": "Last backup 2 h ago", "output": "", "exit": 0, "error": None},
     "plug": {"state": "off", "output": "", "exit": None, "error": None},
     "tplink": {"state": "on", "output": "", "exit": None, "error": None},
+    "grbl": {"state": "Idle", "output": "Idle", "exit": 0, "error": None},
 }
 
 # controls whose read says live: false: a live check answers them skipped
@@ -137,6 +149,9 @@ CUSTOM_LIST = [
     {"action": "plug_blocked", "name": "Blocked plug command"},
     {"action": "tplink_on", "name": "Smart plug on", "command": "tplink-on-cmd"},
     {"action": "tplink_off", "name": "Smart plug off", "command": "tplink-off-cmd"},
+    {"action": "grbl_unlock", "name": "Unlock", "command": "unlock-cmd"},
+    {"action": "grbl_home", "name": "Home", "command": "home-cmd"},
+    {"action": "grbl_sleep", "name": "Sleep", "command": "sleep-cmd"},
     # readouts are drawn only at their placement entries: disk under Machine, upt under Status
     {"action": "disk", "name": "Disk", "device": "disk"},
     {"action": "divider", "name": "Status"},
@@ -357,6 +372,10 @@ STATUS_HEADING = """() => {
     const row = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="upt"]');
     return {heads: heads.length, rowFollows: heads.length === 1 && row !== null && heads[0].nextElementSibling === row};
 }"""
+
+# the Grbl control's member buttons in order (Unlock, Home, Sleep): title and whether the button is grayed out
+GRBL_BUTTONS = """() => [...document.querySelectorAll('#navbar_systemmenu li.sce-device[data-device-id="grbl"] button.sce-btn')]
+    .map(b => ({title: b.getAttribute('title'), disabled: b.classList.contains('disabled')}))"""
 
 PLUG_ROW = """() => {
     const li = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="plug"]');
@@ -717,6 +736,56 @@ def run_probe():
         check("live interval checks send live true, and the tplink row keeps its last state when skipped",
               len(interval_live) >= 2 and all(interval_live) and live_tplink == "On",
               "interval_live=%s tplink=%r" % (interval_live, live_tplink))
+
+        # S. a member command's when_control grays its button from the control's status word: Unlock needs Alarm,
+        #    Home needs Idle or Alarm, Sleep is blocked only by Sleep. An errored or unknown word blocks nothing.
+        def grbl_phase(output, error):
+            STATUS["grbl"]["output"] = output
+            STATUS["grbl"]["error"] = error
+            if page.evaluate(MENU_OPEN):
+                page.click(TOGGLE)
+                pump(300)
+            open_menu()     # opening the menu checks the status again
+
+        def grbl_matches(expected):
+            rows = page.evaluate(GRBL_BUTTONS) or []
+            if len(rows) != 3:
+                return False
+            return all(r["disabled"] == d and r["title"] == t for r, (d, t) in zip(rows, expected))
+
+        idle = [(True, "Not available while Grbl is Idle"), (False, "Home"), (False, "Sleep")]
+        alarm = [(False, "Unlock"), (False, "Home"), (False, "Sleep")]
+        errored = [(False, "Unlock"), (False, "Home"), (False, "Sleep")]
+        not_connected = [(True, "Not available while Grbl is N/A"), (True, "Not available while Grbl is N/A"),
+                         (False, "Sleep")]
+
+        grbl_phase("Idle", None)
+        idle_ok = wait_until(lambda: grbl_matches(idle), 6)
+        check("Unlock is grayed with its reason while Idle, and Home and Sleep stay enabled", idle_ok,
+              json.dumps(page.evaluate(GRBL_BUTTONS)))
+        page.locator('li.sce-device[data-device-id="grbl"] button.sce-btn').nth(0).click(force=True)
+        pump(400)
+        check("a grayed-out command's click runs nothing", "grbl_unlock" not in calls, "calls=%s" % calls)
+        page.locator('li.sce-device[data-device-id="grbl"] button.sce-btn').nth(1).click()
+        pump(int((SYNC_DELAY + 1.2) * 1000))
+        check("an enabled member still runs while its neighbour is grayed out", "grbl_home" in calls,
+              "calls=%s" % calls)
+
+        grbl_phase("Alarm", None)
+        check("Alarm enables Unlock", wait_until(lambda: grbl_matches(alarm), 6),
+              json.dumps(page.evaluate(GRBL_BUTTONS)))
+
+        grbl_phase("Idle", "boom")
+        check("a status error leaves every member enabled", wait_until(lambda: grbl_matches(errored), 6),
+              json.dumps(page.evaluate(GRBL_BUTTONS)))
+        STATUS["grbl"]["error"] = None
+
+        grbl_phase("N/A", None)
+        check("a reported N/A word grays out Unlock and Home, and Sleep stays enabled",
+              wait_until(lambda: grbl_matches(not_connected), 6), json.dumps(page.evaluate(GRBL_BUTTONS)))
+        if page.evaluate(MENU_OPEN):
+            page.click(TOGGLE)
+            pump(300)
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)

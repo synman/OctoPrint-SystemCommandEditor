@@ -29,6 +29,9 @@ CORE_FIXTURE = [
 STATE_PICK = "label:has-text('{}') input"
 FIXTURE_DEVICES = [
     {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "df -h", "preset": "disk"},
+    # a plugin read: its state words come from the states call as a list
+    {"id": "grbl", "type": "action", "name": "Grbl", "icon": "fa-solid fa-microchip",
+     "read": {"plugin": "bettergrblsupport", "helper": "state"}},
     # made by hand with a preset's id but no marker: the picker must not count it as that preset
     {"id": "throttle", "type": "readout", "name": "My throttle", "icon": "fa-solid fa-bolt", "status": "echo ok"},
 ]
@@ -117,6 +120,9 @@ FIXTURE_ACTIONS = [
 
 results = []
 posts = []
+# the states calls the page made, and the words the fixture answers a plugin read with
+state_calls = []
+GRBL_WORDS = ["Idle", "Run", "Hold", "Jog", "Alarm", "Door", "Check", "Home", "Sleep", "Reset", "N/A"]
 # plugin Run now: the run calls the probe saw, OctoPrint's own command executes (must stay empty for a plugin
 # command), and the answer the route gives
 runs = []
@@ -160,6 +166,15 @@ def handle_settings(route, request):
 
 def handle_presets(route, request):
     body = request.post_data_json or {} if request.method == "POST" else {}
+    if body.get("command") == "states":
+        # a plugin read answers its helper's words; a shell status answers free, with no list
+        state_calls.append(copy.deepcopy(body))
+        if "read" in body:
+            answer = {"source": "helper", "states": GRBL_WORDS}
+        else:
+            answer = {"source": "free", "states": []}
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(answer))
+        return
     if body.get("command") == "run":
         # a plugin command's Run now: recorded, answered from RUN_ANSWER, never forwarded
         runs.append(copy.deepcopy(body))
@@ -1053,6 +1068,89 @@ def run_probe():
         check("a new command offers no Duplicate", page.locator("#sce-editor .modal-footer button:has-text('Duplicate')").count() == 0)
         page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
         wait_hidden("#sce-editor")
+
+        # Phase S: a command's control condition. A control with a plugin read lists its words as checkboxes, a control
+        # with a shell status gets a text box, both save when_control, Done waits for a picked state, and a new control
+        # clears the condition.
+        page.get_by_role("button", name="Add control").click()
+        wait_visible("#sce-device-editor")
+        page.select_option("#sce-device-type", label="Action")
+        page.fill("#sce-device-name", "Heater")
+        page.fill("#sce-device-status", "echo heat")
+        modal_done("#sce-device-editor")
+
+        page.get_by_role("button", name="Add command").click()
+        wait_visible("#sce-editor")
+        page.fill("#sce-editor-name", "Grbl unlock")
+        page.fill("#sce-editor-command", "echo unlock")
+        page.select_option("#sce-editor-device", label="Grbl")
+        page.select_option("#sce-editor .sce-role", value="run")
+        page.check("#sce-editor label:has-text('Limit to Grbl states') input")
+        wait_visible("#sce-editor .sce-state-picks")
+        boxes = page.locator("#sce-editor .sce-state-picks label").count()
+        check("a control with a plugin read lists its words as one checkbox each",
+              boxes == len(GRBL_WORDS) and page.locator("#sce-editor input[data-bind='textInput: control.typed']").count() == 0,
+              "boxes=%s" % boxes)
+        page.check("#sce-editor .sce-state-picks label:has-text('Alarm') input")
+        modal_done("#sce-editor")
+        body = save_settings() or {}
+        unlock = [a for a in ((body.get("system") or {}).get("actions") or [])
+                  if isinstance(a, dict) and a.get("name") == "Grbl unlock"]
+        check("ticking Alarm with Only when saves when_control with only Alarm, disabled",
+              len(unlock) == 1 and unlock[0].get("when_control") == {"mode": "only", "states": ["Alarm"], "effect": "disable"},
+              json.dumps(unlock))
+        check("the states call asked the plugin read for its words",
+              any("read" in c and c["read"].get("plugin") == "bettergrblsupport" for c in state_calls),
+              json.dumps(state_calls))
+
+        edit_command("Grbl unlock")
+        page.select_option("#sce-editor-device", label="Heater")
+        page.wait_for_timeout(300)
+        cleared = not page.is_checked("#sce-editor label:has-text('Limit to Heater states') input")
+        check("changing the control clears the control condition", cleared)
+        page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
+        wait_hidden("#sce-editor")
+
+        page.get_by_role("button", name="Add command").click()
+        wait_visible("#sce-editor")
+        page.fill("#sce-editor-name", "Heat on")
+        page.fill("#sce-editor-command", "echo on")
+        page.select_option("#sce-editor-device", label="Heater")
+        page.select_option("#sce-editor .sce-role", value="run")
+        page.check("#sce-editor label:has-text('Limit to Heater states') input")
+        wait_visible("#sce-editor input[data-bind='textInput: control.typed']")
+        page.wait_for_timeout(200)
+        empty_error = page.locator("#sce-editor .help-block:visible", has_text="Pick at least one state.").count() == 1
+        empty_disabled = page.locator("#sce-editor .modal-footer .btn-primary").is_disabled()
+        check("enabled with nothing picked shows the error and disables Done", empty_error and empty_disabled,
+              "error=%s disabled=%s" % (empty_error, empty_disabled))
+        page.fill("#sce-editor input[data-bind='textInput: control.typed']", "Idle, Run")
+        page.wait_for_timeout(200)
+        modal_done("#sce-editor")
+        body = save_settings() or {}
+        heat = [a for a in ((body.get("system") or {}).get("actions") or [])
+                if isinstance(a, dict) and a.get("name") == "Heat on"]
+        check("a shell status control takes free words: Idle, Run saves states Idle and Run",
+              len(heat) == 1 and heat[0].get("when_control") == {"mode": "only", "states": ["Idle", "Run"], "effect": "disable"},
+              json.dumps(heat))
+        check("a shell status asks the states call for its status line",
+              any("status" in c and c["status"] == "echo heat" for c in state_calls), json.dumps(state_calls))
+
+        # Phase C: a built-in command never offers or saves the control condition, even on a control that has a read
+        button = core_row("reboot")
+        check("the built-in reboot command is listed for the check", button is not None, "actions=%s" % core_actions())
+        if button is not None:
+            button.click()
+            wait_visible("#sce-editor")
+            page.select_option("#sce-editor-device", label="Grbl")
+            page.wait_for_timeout(300)
+            offered = page.locator("#sce-editor label:has-text('Limit to Grbl states')").count()
+            check("a built-in command offers no control condition block", offered == 0, "offered=%s" % offered)
+            modal_done("#sce-editor")
+            body = save_settings() or {}
+            saved_core = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("core") or {}
+            check("a built-in command saves no when_control",
+                  "when_control" not in (saved_core.get("reboot") or {}), json.dumps(saved_core.get("reboot")))
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)
