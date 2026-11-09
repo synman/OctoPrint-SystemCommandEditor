@@ -96,7 +96,7 @@
 <h3>{{ _('System Commands') }}</h3>
 
 <p class="muted">
-    {{ _('Controls show a state and gather the commands that drive it: switches, selectors, actions, readouts and links. Built-in controls are OctoPrint\'s own commands. Custom controls are your own commands, section headings and placed readouts, in menu order. Changes take effect when you click Save.') }}
+    {{ _('Controls show a state and gather the commands that drive it: switches, selectors, actions, readouts and links. Built-in commands are OctoPrint\'s own. Custom commands are yours, with section headings and placed readouts, in menu order. Changes take effect when you click Save.') }}
 </p>
 
 <div class="sce-options">
@@ -159,7 +159,7 @@
 </div>
 
 <!-- ko if: coreEntries().length -->
-<h4 class="sce-group-title">{{ _('Built-in controls') }}</h4>
+<h4 class="sce-group-title">{{ _('Built-in commands') }}</h4>
 <p class="muted">
     {{ _('OctoPrint\'s own shutdown, reboot and restart commands. Change their icon or heading, or put them on a control. What they run is set under') }}
     <a href="javascript:void(0)" data-bind="click: showServerSettings">{{ _('Server') }}</a>.
@@ -199,13 +199,13 @@
 </div>
 <!-- /ko -->
 
-<h4 class="sce-group-title">{{ _('Custom controls') }}</h4>
+<h4 class="sce-group-title">{{ _('Custom commands') }}</h4>
 <p class="muted">
     {{ _('Your own commands, section headings and placed readouts, in the order the System menu shows them.') }}
 </p>
 <div class="sce-list" data-bind="css: { 'sce-list-empty': entries().length === 0 }">
     <div class="sce-empty muted" data-bind="visible: entries().length === 0">
-        {{ _('You have no custom controls yet. Add one with the buttons below.') }}
+        {{ _('You have no custom commands yet. Add one with the buttons below.') }}
     </div>
 
     <!-- ko foreach: customRows -->

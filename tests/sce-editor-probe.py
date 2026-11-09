@@ -462,7 +462,7 @@ def run_probe():
         core_ok = core_edit("shutdown", "Power", "off") and core_ok
         check("core editor opened for reboot and shutdown", core_ok)
         power = page.locator("#settings_plugin_systemcommandeditor .sce-core-list .sce-control", has_text="Power")
-        check("Built-in controls draws one Power row with one button per member and no member rows",
+        check("Built-in commands draws one Power row with one button per member and no member rows",
               power.count() == 1 and power.locator("button[data-core-action='reboot']").count() == 1 and
               power.locator("button[data-core-action='shutdown']").count() == 1 and
               page.locator("#settings_plugin_systemcommandeditor .sce-core-list .sce-command",

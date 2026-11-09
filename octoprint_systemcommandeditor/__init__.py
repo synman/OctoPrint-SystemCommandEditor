@@ -230,7 +230,7 @@ class SystemCommandEditorPlugin(
             self._settings.global_set(["system", "actions"], new_actions)
         if new_devices != devices:
             self._settings.set(["devices"], new_devices)
-        self._logger.info("Placed readouts in the custom controls list")
+        self._logger.info("Placed readouts in the custom commands list")
 
     def _convert_legacy_commands(self):
         system_actions = copy.deepcopy(self._settings.global_get(["system", "actions"]) or [])
