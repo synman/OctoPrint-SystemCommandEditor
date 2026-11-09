@@ -197,7 +197,12 @@ class SystemCommandEditorPlugin(
 
     def get_assets(self):
         return {
-            "js": ["js/systemcommandeditor.js", "js/systemcommandeditor_menu.js"],
+            "js": [
+                "js/systemcommandeditor_icons.js",
+                "js/systemcommandeditor_iconsearch.js",
+                "js/systemcommandeditor.js",
+                "js/systemcommandeditor_menu.js",
+            ],
             "css": ["css/systemcommandeditor.css"],
         }
 

@@ -328,3 +328,43 @@
 #sce-presets .sce-preset-row label {
   margin: 0 8px 0 0;
 }
+
+/* icon suggestions under the icon inputs */
+.sce-icon-field {
+    position: relative;
+}
+.sce-icon-suggest {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    z-index: 1060;
+    max-height: 280px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+.sce-icon-suggest-item {
+    padding: 3px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sce-icon-suggest-item i {
+    width: 1.25em;
+    text-align: center;
+}
+.sce-icon-suggest-item.active {
+    background: #e6f0fa;
+}
+.sce-icon-suggest-cls {
+    font-family: monospace;
+    margin: 0 6px;
+}
+.sce-icon-suggest-more {
+    padding: 3px 8px;
+    font-size: 0.9em;
+}

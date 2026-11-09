@@ -12,6 +12,64 @@ $(function () {
 
     const isSection = (entry) => entry.action === DIVIDER;
 
+    // Icon suggestions under an icon input. The command and device editors each call this once with their icon
+    // observable and bind the result to their input and list (see the icon_field macro in the settings template).
+    function iconSuggest(icon) {
+        const s = {};
+        s.focused = ko.observable(false);
+        s.open = ko.observable(true);
+        s.index = ko.observable(0);
+        s.swallowEscape = false;
+        s.result = ko.pureComputed(() => window.SceIconSearch.search(window.SceIcons, icon() || "", 40));
+        s.items = ko.pureComputed(() => s.result().items);
+        s.more = ko.pureComputed(() => s.result().more);
+        s.visible = ko.pureComputed(() => {
+            if (!s.focused() || !s.open() || s.items().length === 0) return false;
+            const text = (icon() || "").trim();
+            return !s.items().some((item) => item.cls === text);
+        });
+        icon.subscribe(() => {
+            s.index(0);
+            s.open(true);
+        });
+        s.pick = (item) => {
+            icon(item.cls);
+            s.open(false);
+            return false;
+        };
+        s.keydown = (data, event) => {
+            if (!s.visible()) return true;
+            const n = s.items().length;
+            switch (event.key) {
+                case "ArrowDown":
+                    s.index((s.index() + 1) % n);
+                    return false;
+                case "ArrowUp":
+                    s.index((s.index() - 1 + n) % n);
+                    return false;
+                case "Enter":
+                case "Tab":
+                    s.pick(s.items()[s.index()]);
+                    return false;
+                case "Escape":
+                    // hide the list only; the keyup that follows must not close the modal
+                    s.open(false);
+                    s.swallowEscape = true;
+                    return false;
+            }
+            return true;
+        };
+        s.keyup = (data, event) => {
+            if (s.swallowEscape && event.key === "Escape") {
+                s.swallowEscape = false;
+                event.stopPropagation();   // Bootstrap's modal closes on an Escape keyup that reaches it
+                return false;
+            }
+            return true;
+        };
+        return s;
+    }
+
     const slugify = (text) =>
         (text || "")
             .toLowerCase()
@@ -117,6 +175,7 @@ $(function () {
         self.action = ko.observable("");
         self.command = ko.observable("");
         self.icon = ko.observable("");
+        self.iconSuggest = iconSuggest(self.icon);
         self.useConfirm = ko.observable(false);
         self.confirmMessage = ko.observable("");
         self.async = ko.observable(false);
@@ -339,6 +398,7 @@ $(function () {
         self.name = ko.observable("");
         self.identifier = ko.observable("");
         self.icon = ko.observable("");
+        self.iconSuggest = iconSuggest(self.icon);
         self.status = ko.observable("");
         self.onPattern = ko.observable("");
         self.offPattern = ko.observable("");

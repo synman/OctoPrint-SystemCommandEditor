@@ -204,6 +204,62 @@ def first_actions(body):
     return {a.get("action"): a for a in ((body.get("system") or {}).get("actions") or []) if isinstance(a, dict)}
 
 
+def icon_picker_checks():
+    """Icon suggestions in the command editor. Opens the 'Laser on' fixture command and cancels it at the end."""
+    edit_command("Laser on")
+    # the editor moves focus to its first field 300 ms after it opens; wait for that so it cannot steal the typing
+    page.wait_for_function("() => document.activeElement && document.activeElement.id === 'sce-editor-name'",
+                           timeout=5000)
+    icon = page.locator("#sce-editor-icon")
+    classes = page.locator("#sce-editor .sce-icon-suggest-item .sce-icon-suggest-cls")
+
+    icon.click()
+    icon.fill("")
+    icon.type("trash", delay=30)
+    wait_visible("#sce-editor .sce-icon-suggest-item")
+    texts = classes.all_inner_texts()
+    check("typing trash lists solid and regular trash-can",
+          "fa-solid fa-trash-can" in texts and "fa-regular fa-trash-can" in texts, "items=%r" % texts)
+
+    second = classes.nth(1).inner_text().strip()
+    icon.press("ArrowDown")
+    icon.press("Enter")
+    check("ArrowDown then Enter sets the input to the second suggestion",
+          icon.input_value() == second, "input=%r want=%r" % (icon.input_value(), second))
+    check("picking hides the suggestion list", not visible("#sce-editor .sce-icon-suggest"))
+    check("Enter does not close the modal", visible("#sce-editor"))
+
+    icon.fill("")
+    icon.type("fa-brands git", delay=30)
+    wait_visible("#sce-editor .sce-icon-suggest-item")
+    texts = classes.all_inner_texts()
+    check("fa-brands git lists only brands classes",
+          len(texts) > 0 and all(t.startswith("fa-brands ") for t in texts), "items=%d" % len(texts))
+
+    icon.press("Escape")
+    check("Escape hides the suggestion list", not visible("#sce-editor .sce-icon-suggest"))
+    check("Escape leaves the typed text unchanged", icon.input_value() == "fa-brands git",
+          "input=%r" % icon.input_value())
+    check("Escape keeps the modal open", visible("#sce-editor"))
+
+    page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
+    wait_hidden("#sce-editor")
+
+    # a new device's identifier follows its name: lowercase, with spaces and other characters turned into _
+    page.get_by_role("button", name="Add device").click()
+    wait_visible("#sce-device-editor")
+    page.wait_for_timeout(400)
+    got = {}
+    for text in ("Chamber Light #2", "Wi-Fi  (5 GHz)", "Café plug"):
+        page.fill("#sce-device-name", text)
+        got[text] = page.input_value("#sce-device-identifier")
+    check("a new device's identifier is built from its name",
+          got == {"Chamber Light #2": "chamber_light_2", "Wi-Fi  (5 GHz)": "wi_fi_5_ghz", "Café plug": "cafe_plug"},
+          json.dumps(got))
+    page.locator("#sce-device-editor .modal-footer .btn:has-text('Cancel')").click()
+    wait_hidden("#sce-device-editor")
+
+
 def run_probe():
     global page
     started = time.time()
@@ -239,6 +295,8 @@ def run_probe():
                       if isinstance(v, dict) and v.get("when")]
         with_when += ["device." + d.get("id", "") for d in plugin_base.get("devices") or [] if d.get("when")]
         check("fresh fixture carries no condition", not with_when, json.dumps(with_when))
+
+        icon_picker_checks()
 
         # Phase A: a switch device with two custom commands, a live consent preview, one condition
         add_switch_device("Laser")

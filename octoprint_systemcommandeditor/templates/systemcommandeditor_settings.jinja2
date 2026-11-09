@@ -1,3 +1,33 @@
+{% macro icon_field(input_id, fallback) %}
+<div class="control-group">
+    <label class="control-label" for="{{ input_id }}">{{ _('Icon') }}</label>
+    <div class="controls">
+        <div class="sce-icon-field">
+            <div class="input-prepend sce-icon-input">
+                <span class="add-on"><i data-bind="css: icon() || '{{ fallback }}'"></i></span>
+                <input type="text" id="{{ input_id }}" autocomplete="off" placeholder="{{ fallback }}" data-bind="textInput: icon, hasFocus: iconSuggest.focused, event: { keydown: iconSuggest.keydown, keyup: iconSuggest.keyup }">
+            </div>
+            <div class="sce-icon-suggest" data-bind="visible: iconSuggest.visible">
+                <div data-bind="with: iconSuggest">
+                    <div data-bind="foreach: items">
+                        <div class="sce-icon-suggest-item" data-bind="css: { active: $index() === $parent.index() }, event: { mousedown: $parent.pick }">
+                            <i data-bind="css: $data.cls"></i>
+                            <span class="sce-icon-suggest-cls" data-bind="text: $data.cls"></span>
+                            <span class="muted" data-bind="text: $data.label"></span>
+                        </div>
+                    </div>
+                    <div class="muted sce-icon-suggest-more" data-bind="visible: more() > 0, text: 'and ' + more() + ' more, keep typing'"></div>
+                </div>
+            </div>
+        </div>
+        <div class="sce-icon-picks" data-bind="foreach: $root.iconChoices">
+            <button type="button" class="btn btn-mini" data-bind="click: function() { $parent.icon($data) }, attr: { title: $data }, css: { active: $parent.icon() === $data }"><i data-bind="css: $data"></i></button>
+        </div>
+        <span class="help-block">{{ _('Any Font Awesome 6 icon class.') }}</span>
+    </div>
+</div>
+{% endmacro %}
+
 {% macro device_block() %}
 <!-- ko ifnot: isSection() -->
 <div class="control-group" data-bind="css: { error: deviceError() || roleError() || valueError() }">
@@ -236,19 +266,7 @@
             {{ device_block() }}
 
             <!-- ko ifnot: isSection() -->
-            <div class="control-group">
-                <label class="control-label" for="sce-editor-icon">{{ _('Icon') }}</label>
-                <div class="controls">
-                    <div class="input-prepend sce-icon-input">
-                        <span class="add-on"><i data-bind="css: icon() || 'fa-solid fa-terminal'"></i></span>
-                        <input type="text" id="sce-editor-icon" data-bind="textInput: icon" placeholder="fa-solid fa-terminal">
-                    </div>
-                    <div class="sce-icon-picks" data-bind="foreach: $root.iconChoices">
-                        <button type="button" class="btn btn-mini" data-bind="click: function() { $parent.icon($data) }, attr: { title: $data }, css: { active: $parent.icon() === $data }"><i data-bind="css: $data"></i></button>
-                    </div>
-                    <span class="help-block">{{ _('Any Font Awesome 6 icon class.') }}</span>
-                </div>
-            </div>
+            {{ icon_field('sce-editor-icon', 'fa-solid fa-terminal') }}
 
             <!-- /ko -->
 
@@ -347,19 +365,7 @@
                 </div>
             </div>
 
-            <div class="control-group">
-                <label class="control-label" for="sce-device-icon">{{ _('Icon') }}</label>
-                <div class="controls">
-                    <div class="input-prepend sce-icon-input">
-                        <span class="add-on"><i data-bind="css: icon() || 'fa-solid fa-plug'"></i></span>
-                        <input type="text" id="sce-device-icon" data-bind="textInput: icon" placeholder="fa-solid fa-plug">
-                    </div>
-                    <div class="sce-icon-picks" data-bind="foreach: $root.iconChoices">
-                        <button type="button" class="btn btn-mini" data-bind="click: function() { $parent.icon($data) }, attr: { title: $data }, css: { active: $parent.icon() === $data }"><i data-bind="css: $data"></i></button>
-                    </div>
-                    <span class="help-block">{{ _('Any Font Awesome 6 icon class.') }}</span>
-                </div>
-            </div>
+            {{ icon_field('sce-device-icon', 'fa-solid fa-plug') }}
 
             <!-- ko if: hasStatus -->
             <div class="control-group" data-bind="css: { error: statusError() }">
