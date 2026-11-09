@@ -78,7 +78,7 @@
                 <!-- /ko -->
                 <!-- ko if: control.hasChoices -->
                 <span class="sce-state-picks" data-bind="foreach: control.choices">
-                    <label class="checkbox inline"><input type="checkbox" data-bind="checkedValue: $data, checked: control.picked"> <span data-bind="text: $data"></span></label>
+                    <label class="checkbox inline"><input type="checkbox" data-bind="checkedValue: $data, checked: $parent.control.picked"> <span data-bind="text: $data"></span></label>
                 </span>
                 <!-- /ko -->
                 <!-- ko ifnot: control.hasChoices -->
