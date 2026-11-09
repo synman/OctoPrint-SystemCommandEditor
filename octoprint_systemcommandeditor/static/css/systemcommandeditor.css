@@ -445,3 +445,34 @@
   margin: 4px 8px 4px 0;
   vertical-align: middle;
 }
+
+/* an option's checkbox, words and number input sit on one centered line */
+#settings_plugin_systemcommandeditor .sce-option label.checkbox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-left: 0;
+  margin-bottom: 0;
+}
+
+#settings_plugin_systemcommandeditor .sce-option label.checkbox input[type="checkbox"] {
+  float: none;
+  margin: 0;
+}
+
+#settings_plugin_systemcommandeditor .sce-option label.checkbox input.input-mini {
+  width: 50px;
+  height: auto;
+  margin: 0;
+  padding: 1px 4px;
+  text-align: right;
+}
+
+#settings_plugin_systemcommandeditor .sce-option .help-block {
+  margin: 2px 0 0 19px;
+}
+
+#settings_plugin_systemcommandeditor .sce-option.sce-busy-icon .help-block {
+  margin-left: 0;
+}
