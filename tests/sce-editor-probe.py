@@ -29,9 +29,6 @@ CORE_FIXTURE = [
 STATE_PICK = "label:has-text('{}') input"
 FIXTURE_DEVICES = [
     {"id": "disk", "type": "readout", "name": "Disk", "icon": "fa-solid fa-hard-drive", "status": "df -h", "preset": "disk"},
-    # a plugin read: its state words come from the states call as a list
-    {"id": "grbl", "type": "action", "name": "Grbl", "icon": "fa-solid fa-microchip",
-     "read": {"plugin": "bettergrblsupport", "helper": "state"}},
     # made by hand with a preset's id but no marker: the picker must not count it as that preset
     {"id": "throttle", "type": "readout", "name": "My throttle", "icon": "fa-solid fa-bolt", "status": "echo ok"},
 ]
@@ -120,6 +117,9 @@ FIXTURE_ACTIONS = [
 
 results = []
 posts = []
+# a control with a plugin read, added to the saved settings only by Phase S, so earlier phases see FIXTURE_DEVICES alone
+GRBL_DEVICE = {"id": "grbl", "type": "action", "name": "Grbl", "icon": "fa-solid fa-microchip",
+               "read": {"plugin": "bettergrblsupport", "helper": "state"}}
 # the states calls the page made, and the words the fixture answers a plugin read with
 state_calls = []
 GRBL_WORDS = ["Idle", "Run", "Hold", "Jog", "Alarm", "Door", "Check", "Home", "Sleep", "Reset", "N/A"]
@@ -1072,6 +1072,12 @@ def run_probe():
         # Phase S: a command's control condition. A control with a plugin read lists its words as checkboxes, a control
         # with a shell status gets a text box, both save when_control, Done waits for a picked state, and a new control
         # clears the condition.
+        plugin_saved = state["current"].setdefault("plugins", {}).setdefault("systemcommandeditor", {})
+        plugin_saved.setdefault("devices", []).append(dict(GRBL_DEVICE, read=dict(GRBL_DEVICE["read"])))
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function("typeof ko !== 'undefined' && document.querySelector('#navbar_show_settings') !== null",
+                               timeout=20000)
+        open_settings()
         page.get_by_role("button", name="Add control").click()
         wait_visible("#sce-device-editor")
         page.select_option("#sce-device-type", label="Action")
@@ -1143,6 +1149,7 @@ def run_probe():
             button.click()
             wait_visible("#sce-editor")
             page.select_option("#sce-editor-device", label="Grbl")
+            page.select_option("#sce-editor .sce-role", value="run")
             page.wait_for_timeout(300)
             offered = page.locator("#sce-editor label:has-text('Limit to Grbl states')").count()
             check("a built-in command offers no control condition block", offered == 0, "offered=%s" % offered)
