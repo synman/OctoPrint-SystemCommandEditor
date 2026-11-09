@@ -11,6 +11,7 @@ non-zero on any FAIL.
 import copy
 import json
 import os
+import re
 import sys
 import time
 
@@ -460,6 +461,18 @@ def set_list(entries, devices):
     }""", [entries, devices])
 
 
+def heading_row(name):
+    """The custom list's heading row with this name; the core list's headings are not in the custom list."""
+    return page.locator("#settings_plugin_systemcommandeditor .sce-row.sce-section").filter(
+        has=page.locator(".sce-section-label", has_text=re.compile(r"^\s*%s\s*$" % re.escape(name)))).first
+
+
+def control_row(member_action):
+    """The custom list's control row that holds this member button."""
+    return page.locator("#settings_plugin_systemcommandeditor .sce-row.sce-control").filter(
+        has=page.locator("button[data-action='%s']" % member_action)).first
+
+
 def list_names():
     """Each list entry as 'Name' for a command, '#Name' for a heading, in list order."""
     return page.evaluate("""() => {
@@ -491,22 +504,19 @@ def list_ops_checks():
     page.wait_for_timeout(200)
 
     # Up on the heading below S moves its whole block above S
-    page.locator("#settings_plugin_systemcommandeditor .sce-row.sce-section", has_text="T").locator(
-        "button[title='Move up']").click()
+    heading_row("T").locator("button[title='Move up']").click()
     names = list_names()
     check("Up on a heading moves its whole block above the heading before it",
           names == ["#T", "Plain T", "#S", "Plain S", "Ctl on", "Ctl off"], "names=%s" % names)
 
     # dragging the heading S onto the heading T moves S's block above T
-    page.drag_and_drop("#settings_plugin_systemcommandeditor .sce-row.sce-section >> nth=1",
-                       "#settings_plugin_systemcommandeditor .sce-row.sce-section >> nth=0")
+    heading_row("S").drag_to(heading_row("T"))
     names = list_names()
     check("dragging a heading moves its block to the drop place",
           names == ["#S", "Plain S", "Ctl on", "Ctl off", "#T", "Plain T"], "names=%s" % names)
 
     # Duplicate on the heading S: "Copy of S" right after S with copies of its items, the copied control joined
-    page.locator("#settings_plugin_systemcommandeditor .sce-row.sce-section", has_text="S").first.locator(
-        "button[title='Duplicate']").click()
+    heading_row("S").locator("button[title='Duplicate']").click()
     names = list_names()
     check("Duplicate on a heading adds Copy of S right after S with copies of its items",
           names == ["#S", "Plain S", "Ctl on", "Ctl off", "#Copy of S", "Copy of Plain S", "Ctl on", "Ctl off",
@@ -518,8 +528,7 @@ def list_ops_checks():
           "devices=%s" % [d["name"] for d in state_now["devices"]])
 
     # the control row's copy button adds a Copy of control with its custom members right after the original unit
-    page.locator("#settings_plugin_systemcommandeditor .sce-row.sce-control").first.locator(
-        "button[title='Duplicate']").click()
+    control_row("ctl_on").locator("button[title='Duplicate']").click()
     state_now = list_state()
     ctl_copies = [d for d in state_now["devices"] if d["name"].startswith("Copy") and d["name"].endswith("of Ctl")]
     names = list_names()
@@ -1217,11 +1226,26 @@ def run_probe():
         names = [e.get("name") for e in st["entries"]]
         at = names.index("Back up OctoPrint now") if "Back up OctoPrint now" in names else -1
         copies = [e for e in st["entries"] if (e.get("name") or "").startswith("Copy")]
-        check("a command copy is named Copy of, then Copy 2 of, sits after the original and drops preset, group and role",
+        # the command is a run member of Upkeep, so its copies keep the control and the run role, and drop the preset
+        check("a run command's copy is named Copy of, then Copy 2 of, sits after the original, keeps its control and role, and drops the preset",
               at >= 0 and names[at + 1:at + 3] == ["Copy 2 of Back up OctoPrint now", "Copy of Back up OctoPrint now"]
               and sorted(e.get("action") for e in copies) == ["copy_2_of_back_up_octoprint_now", "copy_of_back_up_octoprint_now"]
-              and not any(e.get(k) for e in copies for k in ("preset", "group", "role", "value")),
+              and all(e.get("group") == "upkeep" and e.get("role") == "run" and not e.get("preset") for e in copies),
               json.dumps({"after": names[at + 1:at + 3], "copies": copies}))
+        # a plain command has no control: its copy drops group, role and value, the other half of the rule
+        plain = page.evaluate("""() => { const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            const e = vm.entries().find(x => x.action !== 'divider' && !x.group && !x.device && x.command); return e ? e.name : null; }""")
+        if plain is not None:
+            edit_command(plain)
+            page.locator("#sce-editor .modal-footer button:has-text('Duplicate')").click()
+            wait_hidden("#sce-editor")
+            st = page.evaluate(state_js)
+            plain_copies = [e for e in st["entries"] if (e.get("name") or "").startswith("Copy") and (e.get("name") or "").endswith(" of " + plain)]
+            check("a plain command's copy drops group, role and value",
+                  len(plain_copies) == 1 and not any(plain_copies[0].get(k) for k in ("group", "role", "value", "preset")),
+                  json.dumps(plain_copies))
+        else:
+            check("a plain command is listed for the copy check", False, "no plain command in the list")
         open_cpu = """() => {
             const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
             vm.editDevice(vm.devices().find((d) => d.id === 'cpu'));

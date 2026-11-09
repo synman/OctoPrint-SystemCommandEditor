@@ -1423,14 +1423,33 @@ $(function () {
         // the context of one copy: a fresh hidden key for each copy, unique among every entry and control and among the
         // keys this copy has taken so far, and the names the copy must not repeat
         const copyContext = () => {
+            // used: every entry and control key taken; entryKeys: the entry keys only, which a readout's placement must avoid
             const used = new Set();
-            self.entries().forEach((e) => { if (!isSection(e)) used.add(e.action); });
+            const entryKeys = new Set();
+            self.entries().forEach((e) => { if (!isSection(e)) { used.add(e.action); entryKeys.add(e.action); } });
             self.devices().forEach((d) => used.add(d.id));
             return {
                 fresh: (name, fallback) => {
                     const key = keyFor(name, undefined, fallback, (k) => used.has(k));
                     used.add(key);
                     return key;
+                },
+                // a command's or member's key: fresh, and recorded as an entry key
+                freshEntry: (name, fallback) => {
+                    const key = keyFor(name, undefined, fallback, (k) => used.has(k));
+                    used.add(key);
+                    entryKeys.add(key);
+                    return key;
+                },
+                // a readout's placement key, as placementKey gives it: the base when no entry or divider has it, else
+                // base_2, base_3...; a key an earlier part of this copy took counts as taken
+                placementKey: (base) => {
+                    let candidate = base;
+                    let counter = 2;
+                    while (candidate === DIVIDER || entryKeys.has(candidate)) candidate = base + "_" + counter++;
+                    entryKeys.add(candidate);
+                    used.add(candidate);
+                    return candidate;
                 },
                 commandNames: self.entries().filter((e) => !isSection(e)).map((e) => e.name),
                 deviceNames: self.devices().map((d) => d.name)
@@ -1445,13 +1464,13 @@ $(function () {
             if (copy.role !== "run") copy = _.omit(copy, "group", "role", "value");
             copy.name = window.SceModel.copyName(entry.name, ctx.commandNames);
             ctx.commandNames.push(copy.name);
-            copy.action = ctx.fresh(copy.name, "command");
+            copy.action = ctx.freshEntry(copy.name, "command");
             return copy;
         };
         // a control member's copy: its own name and a fresh key, joined to the copied control, no preset
         const copyMember = (entry, controlId, ctx) => {
             const copy = _.extend(_.omit(entry, "preset"), {group: controlId});
-            copy.action = ctx.fresh(copy.name, "command");
+            copy.action = ctx.freshEntry(copy.name, "command");
             return copy;
         };
         // a control's copy: "Copy of" name and a fresh id, no preset
@@ -1468,9 +1487,9 @@ $(function () {
             const first = unit[0];
             if (self.isPlacement(first)) {
                 const device = self.deviceOf(first);
-                if (!device) return {devices: [], entries: [_.extend(_.omit(first, "preset"), {action: ctx.fresh(first.name || first.action, "placement")})]};
+                if (!device) return {devices: [], entries: [_.extend(_.omit(first, "preset"), {action: ctx.placementKey(first.name || first.action)})]};
                 const copy = copyControl(device, ctx);
-                return {devices: [copy], entries: [{action: ctx.fresh(copy.id, "placement"), name: copy.name, device: copy.id}]};
+                return {devices: [copy], entries: [{action: ctx.placementKey(copy.id), name: copy.name, device: copy.id}]};
             }
             const control = self.controlOf(first);
             if (control) {
@@ -1512,7 +1531,7 @@ $(function () {
             if (copy.type === "readout") {
                 const placed = list.findIndex((e) => self.isPlacement(e) && e.device === device.id);
                 list.splice(placed < 0 ? list.length : placed + 1, 0,
-                    {action: ctx.fresh(copy.id, "placement"), name: copy.name, device: copy.id});
+                    {action: ctx.placementKey(copy.id), name: copy.name, device: copy.id});
             }
             self.devices.push(copy);
             self.entries(list);
