@@ -84,6 +84,19 @@ $(function () {
             .replace(/[^a-z0-9]+/g, "_")
             .replace(/^_+|_+$/g, "");
 
+    // The hidden key of a command or control: its name with every run of other characters turned into _, then _2, _3...
+    // until no other entry or control has it. An unchanged name keeps the key it has, so renaming is what changes it.
+    const keyFor = (name, original, fallback, taken) => {
+        if (original !== undefined && original.name === name) return original.key;
+        const base = slugify(name) || fallback;
+        let candidate = base;
+        let counter = 2;
+        while (candidate === DIVIDER || taken(candidate)) {
+            candidate = base + "_" + counter++;
+        }
+        return candidate;
+    };
+
     // Copy an entry, dropping empty optional values, keeping keys this editor does not know about
     const clean = (entry) => {
         const result = {};
@@ -177,7 +190,6 @@ $(function () {
         self._deferred = undefined;
         // observable, so validation re-runs when the dialog opens on another entry with the same identifier
         self._original = ko.observable(undefined);
-        self._actionTouched = false;
 
         self.isSection = ko.observable(false);
         // one of OctoPrint's own entries: only its icon, heading and device can change
@@ -212,36 +224,16 @@ $(function () {
             return self.editing() ? gettext("Edit command") : gettext("Add command");
         });
 
-        // Until the identifier is edited by hand, it follows the name
-        self.name.subscribe((value) => {
-            if (!self.isSection() && !self.isCore() && !self._actionTouched) {
-                self.action(slugify(value));
-            }
-        });
-        self.actionEdited = () => {
-            self._actionTouched = true;
-            return true;
+        // a command's key is hidden: it comes from the name, and a rename makes a new one
+        self.key = () => {
+            const original = self._original();
+            return keyFor(self.name().trim(), original && {name: (original.name || "").trim(), key: original.action},
+                "command", (key) => owner.actionInUse(key, original));
         };
 
         self.nameError = ko.pureComputed(() => {
             if (self.isSection() || self.isCore()) return "";
             return self.name().trim() ? "" : gettext("A name is required.");
-        });
-        self.actionError = ko.pureComputed(() => {
-            if (self.isSection() || self.isCore()) return "";
-            const action = self.action().trim();
-            if (!action) return gettext("An identifier is required.");
-            if (action === DIVIDER) return gettext("This identifier is reserved.");
-            // OctoPrint accepts any identifier for these commands and older versions of this editor did not check
-            // it, so an existing one is left alone; only a new or changed identifier has to follow the pattern
-            const original = self._original();
-            const unchanged = original && original.action === action;
-            if (!unchanged && !ACTION_PATTERN.test(action))
-                return gettext("Use lowercase letters, digits, - and _ only.");
-            if (owner.actionInUse(action, self._original())) {
-                return gettext("Another command already uses this identifier.");
-            }
-            return "";
         });
         self.commandError = ko.pureComputed(() => {
             if (self.isSection() || self.isCore()) return "";
@@ -299,7 +291,7 @@ $(function () {
         });
 
         self.valid = ko.pureComputed(
-            () => !self.nameError() && !self.actionError() && !self.commandError() && !self.deviceError() &&
+            () => !self.nameError() && !self.commandError() && !self.deviceError() &&
                 !self.roleError() && !self.valueError() && !self.condition.error()
         );
 
@@ -326,7 +318,7 @@ $(function () {
                 return clean(_.extend({}, self._original() || {}, {action: DIVIDER, name: self.name().trim()}));
             }
             const entry = _.extend({}, self._original() || {}, {
-                action: self.action().trim(),
+                action: self.key(),
                 name: self.name().trim(),
                 command: self.command().trim(),
                 icon: self.icon().trim(),
@@ -360,7 +352,6 @@ $(function () {
 
             entry = entry || {};
             self._original(_.isEmpty(entry) ? undefined : entry);
-            self._actionTouched = !!entry.action;
             self.isSection(!!section);
             self.isCore(!!core);
             self.editing(!_.isEmpty(entry));
@@ -414,12 +405,10 @@ $(function () {
 
         self._deferred = undefined;
         self._original = ko.observable(undefined);
-        self._idTouched = false;
 
         self.editing = ko.observable(false);
         self.type = ko.observable("switch");
         self.name = ko.observable("");
-        self.identifier = ko.observable("");
         self.icon = ko.observable("");
         self.iconColor = ko.observable("");
         self.iconColorPick = colorPick(self.iconColor);
@@ -453,24 +442,16 @@ $(function () {
             return [{value: "", label: gettext("End of menu")}].concat(names);
         });
 
-        // Until the identifier is edited by hand, it follows the name
-        self.name.subscribe((value) => {
-            if (!self._idTouched) self.identifier(slugify(value));
-        });
-        self.identifierEdited = () => {
-            self._idTouched = true;
-            return true;
+        // a control's key is hidden: it comes from the name, and a rename makes a new one; it must not match another
+        // control or any entry but this control's own readout placements
+        self.key = () => {
+            const original = self._original();
+            return keyFor(self.name().trim(), original && {name: (original.name || "").trim(), key: original.id},
+                "control", (key) => owner.devices().some((d) => d !== original && d.id === key) ||
+                    owner.entries().some((e) => !isSection(e) && e.action === key && !(original && e.device === original.id)));
         };
 
         self.nameError = ko.pureComputed(() => (self.name().trim() ? "" : gettext("A name is required.")));
-        self.identifierError = ko.pureComputed(() => {
-            const id = self.identifier().trim();
-            if (!id) return gettext("An identifier is required.");
-            if (!ACTION_PATTERN.test(id)) return gettext("Use lowercase letters, digits, - and _ only.");
-            const original = self._original();
-            const taken = owner.devices().some((d) => d !== original && d.id === id);
-            return taken ? gettext("Another control already uses this identifier.") : "";
-        });
         self.statusError = ko.pureComputed(() => {
             if (self.type() !== "readout") return "";
             return self.status().trim() ? "" : gettext("A status command is required for a readout.");
@@ -480,14 +461,14 @@ $(function () {
             return self.url().trim() ? "" : gettext("A URL is required for a link.");
         });
         self.valid = ko.pureComputed(
-            () => !self.nameError() && !self.identifierError() && !self.statusError() && !self.urlError() &&
+            () => !self.nameError() && !self.statusError() && !self.urlError() &&
                 !(self.isLink() && self.condition.error())
         );
 
         self.toDevice = () => {
             const type = self.type();
             const device = {
-                id: self.identifier().trim(),
+                id: self.key(),
                 type: type,
                 name: self.name().trim(),
                 icon: self.icon().trim(),
@@ -512,11 +493,9 @@ $(function () {
             device = device || {};
             const editing = !_.isEmpty(device);
             self._original(editing ? device : undefined);
-            self._idTouched = editing;
             self.editing(editing);
 
             self.name(device.name || "");
-            self.identifier(device.id || "");
             self.type(device.type || "switch");
             self.icon(device.icon || "");
             self.iconColor(device.icon_color || "");

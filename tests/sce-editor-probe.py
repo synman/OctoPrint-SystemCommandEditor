@@ -306,15 +306,38 @@ def icon_picker_checks():
     over = page.evaluate("""() => { const b = document.querySelector('#sce-device-editor .modal-body');
         return b.scrollWidth - b.clientWidth; }""")
     check("the device editor has no horizontal scroll", over <= 0, "overflow=%spx" % over)
+    check("no editor shows an identifier field",
+          page.locator("#sce-device-editor label:has-text('Identifier'), #sce-editor label:has-text('Identifier')").count() == 0)
     got = {}
-    for text in ("Chamber Light #2", "Wi-Fi  (5 GHz)", "Café plug"):
+    for text in ("Chamber Light #2", "Wi-Fi  (5 GHz)", "Café plug", "Disk"):
         page.fill("#sce-device-name", text)
-        got[text] = page.input_value("#sce-device-identifier")
-    check("a new device's identifier is built from its name",
-          got == {"Chamber Light #2": "chamber_light_2", "Wi-Fi  (5 GHz)": "wi_fi_5_ghz", "Café plug": "cafe_plug"},
-          json.dumps(got))
+        got[text] = page.evaluate("() => ko.dataFor(document.querySelector('#sce-device-name')).key()")
+    check("a new control's hidden key is built from its name, and a taken one gets _2",
+          got == {"Chamber Light #2": "chamber_light_2", "Wi-Fi  (5 GHz)": "wi_fi_5_ghz", "Café plug": "cafe_plug",
+                  "Disk": "disk_2"}, json.dumps(got))
     page.locator("#sce-device-editor .modal-footer .btn:has-text('Cancel')").click()
     wait_hidden("#sce-device-editor")
+
+    # the hidden key follows a rename: an unchanged name keeps an existing key, even an old hand-typed one
+    keys = page.evaluate("""() => {
+        const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+        const out = {};
+        vm.editor.show({action: 'Old.Key', name: 'Webcam on', command: 'echo on'});
+        out.kept = vm.editor.key();
+        vm.editor.name('Webcam power on');
+        out.renamed = vm.editor.key();
+        vm.deviceEditor.show({id: 'cam', type: 'switch', name: 'Camera'});
+        out.controlKept = vm.deviceEditor.key();
+        vm.deviceEditor.name('Front camera');
+        out.controlRenamed = vm.deviceEditor.key();
+        return out;
+    }""")
+    check("a rename makes a new hidden key and an unchanged name keeps the old one",
+          keys == {"kept": "Old.Key", "renamed": "webcam_power_on", "controlKept": "cam", "controlRenamed": "front_camera"},
+          json.dumps(keys))
+    for modal in ("#sce-device-editor", "#sce-editor"):
+        page.locator(modal + " .modal-footer .btn:has-text('Cancel')").click()
+        wait_hidden(modal)
 
 
 BUSY_PICKS = """() => [...document.querySelectorAll('#settings_plugin_systemcommandeditor .sce-busy-icon .sce-icon-picks button i')]

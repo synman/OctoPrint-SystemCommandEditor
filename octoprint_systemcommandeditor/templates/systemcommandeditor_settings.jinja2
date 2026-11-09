@@ -324,15 +324,6 @@
                 </div>
             </div>
 
-            <div class="control-group" data-bind="css: { error: actionError() }">
-                <label class="control-label" for="sce-editor-action">{{ _('Identifier') }}</label>
-                <div class="controls">
-                    <input type="text" id="sce-editor-action" class="input-block-level" data-bind="textInput: action, event: { input: actionEdited }">
-                    <span class="help-block" data-bind="visible: !actionError()">{{ _('Used by OctoPrint to run the command. Lowercase letters, digits, - and _ only.') }}</span>
-                    <span class="help-block" data-bind="text: actionError, visible: actionError"></span>
-                </div>
-            </div>
-
             <div class="control-group" data-bind="css: { error: commandError() }">
                 <label class="control-label" for="sce-editor-command">{{ _('Command') }}</label>
                 <div class="controls">
@@ -466,15 +457,6 @@
                 <div class="controls">
                     <input type="text" id="sce-device-name" class="input-block-level" data-bind="textInput: name" placeholder="{{ _('e.g. Laser')|edq }}">
                     <span class="help-block" data-bind="text: nameError, visible: nameError"></span>
-                </div>
-            </div>
-
-            <div class="control-group" data-bind="css: { error: identifierError() }">
-                <label class="control-label" for="sce-device-identifier">{{ _('Identifier') }}</label>
-                <div class="controls">
-                    <input type="text" id="sce-device-identifier" class="input-block-level" data-bind="textInput: identifier, event: { input: identifierEdited }">
-                    <span class="help-block" data-bind="visible: !identifierError()">{{ _('Lowercase letters, digits, - and _ only.') }}</span>
-                    <span class="help-block" data-bind="text: identifierError, visible: identifierError"></span>
                 </div>
             </div>
 
