@@ -6,6 +6,7 @@
  */
 $(function () {
     const DIVIDER = "divider";
+    const PLUGIN_DIVIDER = "Plugin devices";
     const ACTION_PATTERN = /^[a-z0-9_-]+$/;
     const FLAGS = ["async", "fresh_credentials", "ignore", "icon_invert"];
     const STATES = ["printing", "paused", "ready", "offline", "error"];
@@ -210,6 +211,9 @@ $(function () {
         self.async = ko.observable(false);
         self.freshCredentials = ko.observable(false);
         self.ignore = ko.observable(false);
+        // a plugin command's run call, kept as saved; such a command has no shell command
+        self.runCall = ko.observable(undefined);
+        self.runText = ko.pureComputed(() => window.SceModel.describeRun(self.runCall()));
 
         self.device = ko.observable("");
         self.role = ko.observable("");
@@ -236,7 +240,7 @@ $(function () {
             return self.name().trim() ? "" : gettext("A name is required.");
         });
         self.commandError = ko.pureComputed(() => {
-            if (self.isSection() || self.isCore()) return "";
+            if (self.isSection() || self.isCore() || self.runCall()) return "";
             return self.command().trim() ? "" : gettext("A command is required.");
         });
 
@@ -320,7 +324,6 @@ $(function () {
             const entry = _.extend({}, self._original() || {}, {
                 action: self.key(),
                 name: self.name().trim(),
-                command: self.command().trim(),
                 icon: self.icon().trim(),
                 icon_color: self.iconColor(),
                 icon_invert: self.iconInvert(),
@@ -329,6 +332,11 @@ $(function () {
                 fresh_credentials: self.freshCredentials(),
                 ignore: self.ignore()
             }, deviceFields());
+            if (self.runCall()) {
+                entry.run = self.runCall();
+            } else {
+                entry.command = self.command().trim();
+            }
             return clean(entry);
         };
 
@@ -360,6 +368,7 @@ $(function () {
             self.name(entry.name || "");
             self.action(entry.action && entry.action !== DIVIDER ? entry.action : "");
             self.command(entry.command || "");
+            self.runCall(entry.run);
             self.icon(entry.icon || "");
             self.iconColor(entry.icon_color || "");
             self.iconInvert(!!entry.icon_invert);
@@ -443,6 +452,15 @@ $(function () {
         self.hasStatus = ko.pureComputed(() => self.type() !== "link");
         self.hasSection = ko.pureComputed(() => self.type() === "link");
 
+        // a control that reads through another plugin or MQTT keeps its read as saved; its status is not edited
+        self.readCall = ko.observable(undefined);
+        self.readText = ko.pureComputed(() => {
+            const read = self.readCall();
+            if (!read) return "";
+            return read.mqtt ? "MQTT: " + read.mqtt : window.SceModel.describeRun(read);
+        });
+        self.hasRead = ko.pureComputed(() => self.hasStatus() && !!self.readCall());
+
         self.title = ko.pureComputed(() => (self.editing() ? gettext("Edit control") : gettext("Add control")));
 
         self.sectionChoices = ko.pureComputed(() => {
@@ -461,7 +479,7 @@ $(function () {
 
         self.nameError = ko.pureComputed(() => (self.name().trim() ? "" : gettext("A name is required.")));
         self.statusError = ko.pureComputed(() => {
-            if (self.type() !== "readout") return "";
+            if (self.type() !== "readout" || self.readCall()) return "";
             return self.status().trim() ? "" : gettext("A status command is required for a readout.");
         });
         self.urlError = ko.pureComputed(() => {
@@ -483,7 +501,13 @@ $(function () {
                 icon_color: self.iconColor(),
                 icon_invert: self.iconInvert() || undefined
             };
-            if (type !== "link") device.status = self.status().trim();
+            if (type !== "link") {
+                if (self.readCall()) {
+                    device.read = self.readCall();
+                } else {
+                    device.status = self.status().trim();
+                }
+            }
             if (type === "switch") {
                 device.on_pattern = self.onPattern().trim();
                 device.off_pattern = self.offPattern().trim();
@@ -493,6 +517,7 @@ $(function () {
             if (type === "link") device.when = self.condition.toWhen();
             const original = self._original();
             if (original && original.preset) device.preset = original.preset;
+            if (original && original.live !== undefined) device.live = original.live;
             return dropEmpty(device);
         };
 
@@ -511,6 +536,7 @@ $(function () {
             self.iconColor(device.icon_color || "");
             self.iconInvert(!!device.icon_invert);
             self.status(device.status || "");
+            self.readCall(device.read);
             self.onPattern(device.on_pattern || "");
             self.offPattern(device.off_pattern || "");
             self.url(device.url || "");
@@ -593,10 +619,13 @@ $(function () {
         self.switches = ko.observableArray([]);
         self.readouts = ko.observableArray([]);
         self.maintenance = ko.observableArray([]);
+        // one group per plugin: {name, rows}; a group has a row per preset the plugin offers
+        self.plugins = ko.observableArray([]);
         // a row differs when its tick no longer matches whether it is present
         const differs = (row) => row.checked() !== row.added;
         self.canApply = ko.pureComputed(() =>
-            self.switches().some(differs) || self.readouts().some(differs) || self.maintenance().some(differs));
+            self.switches().some(differs) || self.readouts().some(differs) || self.maintenance().some(differs) ||
+            self.plugins().some((group) => group.rows.some(differs)));
 
         // the picker is a checklist of what is present: present rows start ticked, every other row starts unticked
         const rowOf = (item, added) => ({
@@ -611,6 +640,7 @@ $(function () {
             self.readouts([]);
             self.maintenance([]);
             self.failed(false);
+            self.plugins([]);
             self.loading(true);
             owner.presetDialog.modal("show");
             OctoPrint.simpleApiCommand("systemcommandeditor", "presets", {})
@@ -624,6 +654,10 @@ $(function () {
                     self.maintenance(((response && response.maintenance) || []).map((preset) =>
                         rowOf(preset, presentBy(preset.action))
                     ));
+                    self.plugins(((response && response.plugins) || []).map((group) => ({
+                        name: group.name || group.plugin || "",
+                        rows: (group.presets || []).map(pluginRow)
+                    })));
                 })
                 .fail(() => self.failed(true))
                 .always(() => self.loading(false));
@@ -635,14 +669,45 @@ $(function () {
             return row.note || gettext("Not detected on this system");
         };
 
-        // removes the Maintenance divider when the removals left it with nothing under it
-        const pruneEmptyMaintenance = () => {
+        // removes the named divider when the removals left it with nothing under it
+        const pruneEmptyDivider = (name) => {
             const entries = owner.entries();
             const kept = entries.filter((entry, i) => !(
-                entry.action === DIVIDER && entry.name === "Maintenance" &&
+                entry.action === DIVIDER && entry.name === name &&
                 (i + 1 === entries.length || isSection(entries[i + 1]))
             ));
             if (kept.length !== entries.length) owner.entries(kept);
+        };
+
+        // a plugin preset's row, labelled with its control's type
+        const pluginRow = (preset) => _.extend(rowOf(preset, presentBy(preset.preset)), {
+            type: TYPE_LABELS[preset.control.type] ? TYPE_LABELS[preset.control.type]() : ""
+        });
+
+        // a plugin preset's control, then its commands at the end under a Plugin devices divider (made when missing);
+        // each command keeps its run call and role, and its group is the control's key
+        const addPlugin = (preset) => {
+            const control = preset.control;
+            const deviceId = keyFor(control.name, undefined, "control", controlTaken);
+            const device = {
+                id: deviceId, type: control.type, name: control.name, icon: control.icon,
+                read: control.read, preset: preset.preset
+            };
+            if (control.on_pattern) device.on_pattern = control.on_pattern;
+            if (control.off_pattern) device.off_pattern = control.off_pattern;
+            owner.devices.push(device);
+            const commands = preset.commands || [];
+            if (!commands.length) return;
+            if (!owner.dividerNames().includes(PLUGIN_DIVIDER)) owner.entries.push({action: DIVIDER, name: PLUGIN_DIVIDER});
+            commands.forEach((command) => {
+                const action = keyFor(`${preset.name} ${command.name}`, undefined, "command", (key) => owner.actionInUse(key));
+                const entry = {
+                    action: action, name: command.name, run: command.run, role: command.role,
+                    group: deviceId, preset: preset.preset
+                };
+                if (command.confirm) entry.confirm = command.confirm;
+                owner.entries.push(entry);
+            });
         };
 
         // every control and every command carrying the marker goes; a removed control's other members are detached,
@@ -688,7 +753,7 @@ $(function () {
             });
             const removed = self.maintenance().filter((row) => row.added && !row.checked());
             removed.forEach((row) => removePreset(row.item.action));
-            if (removed.length) pruneEmptyMaintenance();
+            if (removed.length) pruneEmptyDivider("Maintenance");
             const picked = [];
             self.maintenance().filter((row) => row.checked() && !row.added).forEach((row) => {
                 const preset = row.item;
@@ -705,6 +770,11 @@ $(function () {
                 }
                 picked.forEach((entry) => owner.entries.push(entry));
             }
+            const pluginRows = self.plugins().reduce((all, group) => all.concat(group.rows), []);
+            const pluginRemoved = pluginRows.filter((row) => row.added && !row.checked());
+            pluginRemoved.forEach((row) => removePreset(row.item.preset));
+            if (pluginRemoved.length) pruneEmptyDivider(PLUGIN_DIVIDER);
+            pluginRows.filter((row) => row.checked() && !row.added).forEach((row) => addPlugin(row.item));
             if (pending) owner.changed();
             owner.presetDialog.modal("hide");
         };
@@ -1131,6 +1201,24 @@ $(function () {
             _.some(self._saved(), (saved) => _.isEqual(clean(saved), clean(entry)));
 
         self.run = (entry) => {
+            // a plugin command runs through this plugin's run command, which runs the saved entry
+            if (entry.run) {
+                OctoPrint.simpleApiCommand("systemcommandeditor", "run", {action: entry.action})
+                    .done((response) => {
+                        if (response && response.ok) {
+                            // PNotify renders text as HTML; the output came from another plugin, so it is escaped
+                            new PNotify({title: gettext("Done"),
+                                text: _.escape(response.output || gettext("The command finished.")), type: "success"});
+                        } else {
+                            new PNotify({title: gettext("The command failed"),
+                                text: _.escape((response && response.error) || gettext("The command failed.")), type: "error"});
+                        }
+                    })
+                    .fail(() => {
+                        new PNotify({title: gettext("The command failed"), text: gettext("The command failed."), type: "error"});
+                    });
+                return;
+            }
             const spec = _.find(
                 self.systemViewModel.systemActions(),
                 (item) => item.actionSource === "custom" && item.action === entry.action

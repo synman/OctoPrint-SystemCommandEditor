@@ -324,6 +324,16 @@
                 </div>
             </div>
 
+            <!-- ko if: runCall -->
+            <div class="control-group">
+                <label class="control-label">{{ _('Runs') }}</label>
+                <div class="controls">
+                    <code class="sce-run-line" data-bind="text: runText"></code>
+                    <span class="help-block">{{ _('A command another plugin provides. It runs through that plugin, not in a shell.') }}</span>
+                </div>
+            </div>
+            <!-- /ko -->
+            <!-- ko ifnot: runCall -->
             <div class="control-group" data-bind="css: { error: commandError() }">
                 <label class="control-label" for="sce-editor-command">{{ _('Command') }}</label>
                 <div class="controls">
@@ -332,6 +342,7 @@
                     <span class="help-block" data-bind="text: commandError, visible: commandError"></span>
                 </div>
             </div>
+            <!-- /ko -->
 
             <!-- /ko -->
 
@@ -433,6 +444,26 @@
             </div>
             <!-- /ko -->
         </div>
+        <!-- ko if: plugins().length -->
+        <h4 data-bind="visible: !loading() && !failed()">{{ _('Plugin devices') }}</h4>
+        <!-- ko foreach: plugins -->
+        <h5 class="sce-plugin-group" data-bind="text: $data.name, visible: !$parent.loading() && !$parent.failed()"></h5>
+        <div class="sce-list" data-group="plugins" data-bind="visible: !$parent.loading() && !$parent.failed()">
+            <!-- ko foreach: rows -->
+            <div class="sce-row sce-preset-row sce-plugin-row">
+                <label>
+                    <input type="checkbox" data-bind="checked: checked">
+                </label>
+                <span class="sce-icon"><i data-bind="css: $data.item.control.icon || ''"></i></span>
+                <span class="sce-text">
+                    <span class="sce-name" data-bind="text: $data.item.name"></span>
+                    <span class="muted" data-bind="text: $data.type"></span>
+                </span>
+            </div>
+            <!-- /ko -->
+        </div>
+        <!-- /ko -->
+        <!-- /ko -->
     </div>
     <div class="modal-footer">
         <button type="button" class="btn" data-bind="click: cancel">{{ _('Cancel') }}</button>
@@ -465,13 +496,23 @@
 
             {{ icon_field('sce-device-icon', 'fa-solid fa-plug') }}
 
-            <!-- ko if: hasStatus -->
+            <!-- ko if: hasStatus() && !hasRead() -->
             <div class="control-group" data-bind="css: { error: statusError() }">
                 <label class="control-label" for="sce-device-status">{{ _('Status command') }}</label>
                 <div class="controls">
                     <textarea id="sce-device-status" class="input-block-level sce-mono" rows="2" data-bind="textInput: status"></textarea>
                     <span class="help-block">{{ _('Runs on the OctoPrint server when the System menu opens.') }}</span>
                     <span class="help-block" data-bind="text: statusError, visible: statusError"></span>
+                </div>
+            </div>
+            <!-- /ko -->
+
+            <!-- ko if: hasRead -->
+            <div class="control-group">
+                <label class="control-label">{{ _('Reads') }}</label>
+                <div class="controls">
+                    <code class="sce-read-line" data-bind="text: readText"></code>
+                    <span class="help-block">{{ _('Read when the System menu opens. Reads come from another plugin or an MQTT topic.') }}</span>
                 </div>
             </div>
             <!-- /ko -->

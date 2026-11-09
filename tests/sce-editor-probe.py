@@ -63,6 +63,26 @@ SWITCHES = [
      "members": {"restart": "restart", "restart_safe": "safe_restart"}, "available": True},
 ]
 
+# plugin presets answer: a PSU Control switch reading get_psu_state with On and Off runs, and a Better Grbl Support
+# action reading state with one field, with Home and a confirmed Reset
+PLUGINS = [
+    {"plugin": "psucontrol", "name": "PSU Control", "presets": [
+        {"preset": "psucontrol:psu", "name": "PSU Control",
+         "control": {"type": "switch", "name": "PSU Control", "icon": "fa-solid fa-bolt",
+                     "read": {"plugin": "psucontrol", "api": "get_psu_state"}},
+         "commands": [
+             {"name": "On", "run": {"plugin": "psucontrol", "api": "turn_psu_on"}, "role": "on"},
+             {"name": "Off", "run": {"plugin": "psucontrol", "api": "turn_psu_off"}, "role": "off"}]}]},
+    {"plugin": "bettergrblsupport", "name": "Better Grbl Support", "presets": [
+        {"preset": "bettergrblsupport:grbl", "name": "Grbl",
+         "control": {"type": "action", "name": "Grbl", "icon": "fa-solid fa-ruler",
+                     "read": {"plugin": "bettergrblsupport", "api": "state", "field": "state"}},
+         "commands": [
+             {"name": "Home", "run": {"plugin": "bettergrblsupport", "api": "home"}, "role": "run"},
+             {"name": "Reset", "run": {"plugin": "bettergrblsupport", "api": "reset"}, "role": "run",
+              "confirm": "Reset the controller?"}]}]},
+]
+
 FIXTURE_ACTIONS = [
     {"action": "divider", "name": "Webcam"},
     {"action": "laser_on_cmd", "name": "Laser on", "command": "echo on", "icon": "fa-solid fa-lightbulb"},
@@ -73,6 +93,11 @@ FIXTURE_ACTIONS = [
 
 results = []
 posts = []
+# plugin Run now: the run calls the probe saw, OctoPrint's own command executes (must stay empty for a plugin
+# command), and the answer the route gives
+runs = []
+executes = []
+RUN_ANSWER = {"ok": True, "output": "done"}
 state = {"base": None, "current": None}
 page = None
 
@@ -111,11 +136,17 @@ def handle_settings(route, request):
 
 def handle_presets(route, request):
     body = request.post_data_json or {} if request.method == "POST" else {}
+    if body.get("command") == "run":
+        # a plugin command's Run now: recorded, answered from RUN_ANSWER, never forwarded
+        runs.append(copy.deepcopy(body))
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(RUN_ANSWER))
+        return
     if body.get("command") != "presets":
         route.continue_()
         return
     route.fulfill(status=200, content_type="application/json",
-                  body=json.dumps({"presets": PRESETS, "maintenance": MAINTENANCE, "switches": SWITCHES}))
+                  body=json.dumps({"presets": PRESETS, "maintenance": MAINTENANCE, "switches": SWITCHES,
+                                   "plugins": PLUGINS}))
 
 
 def handle_commands(route, request):
@@ -128,6 +159,15 @@ def handle_commands(route, request):
     core += [c for c in CORE_FIXTURE if c["action"] not in present]
     real["core"] = core
     route.fulfill(status=200, content_type="application/json", body=json.dumps(real))
+
+
+def handle_execute(route, request):
+    # OctoPrint's own execute of a custom command: recorded and answered, never forwarded
+    if request.method == "POST":
+        executes.append(request.url)
+        route.fulfill(status=204, body="")
+        return
+    route.continue_()
 
 
 def visible(selector):
@@ -375,6 +415,7 @@ def run_probe():
         page.route(SETTINGS_URL, handle_settings)
         page.route(COMMANDS_URL, handle_commands)
         page.route(PLUGIN_URL, handle_presets)
+        page.route("**/api/system/commands/**", handle_execute)
         # OctoPrint asks for a fresh login before it posts system.actions and opens a password dialog. The probe has
         # no password, so the client is told there are no reauthentication requirements. The POST is still answered
         # by the probe, never forwarded, so the server enforces nothing here and no setting changes.
@@ -683,6 +724,131 @@ def run_probe():
               not [d for d in after.get("devices") or [] if d.get("id") == "host"]
               and not (after_core.get("reboot") or {}).get("group") and not (after_core.get("shutdown") or {}).get("group"),
               json.dumps({"devices": [d.get("id") for d in after.get("devices") or []], "core": after_core}))
+
+        # Phase D3: plugin presets. PSU Control is a switch reading get_psu_state, with On and Off run commands
+        open_settings()
+        page.get_by_role("button", name="Add from presets").click()
+        wait_visible("#sce-presets .sce-plugin-row")
+        plugin_rows = page.locator("#sce-presets .sce-plugin-row")
+        psu_row = plugin_rows.filter(has_text="PSU Control")
+        grbl_row = plugin_rows.filter(has_text="Grbl")
+        check("the presets picker shows a Plugin devices section with both plugin presets unticked",
+              page.locator("#sce-presets h4", has_text="Plugin devices").count() == 1 and plugin_rows.count() == 2
+              and not psu_row.locator("input").is_checked() and not grbl_row.locator("input").is_checked(),
+              "rows=%d" % plugin_rows.count())
+        psu_row.locator("input").check()
+        page.locator("#sce-presets .modal-footer .btn-primary").click()
+        wait_hidden("#sce-presets")
+        body = save_settings()
+        if body is None:
+            check("save after plugin pick posts the settings", False, "no POST captured")
+        else:
+            plugin = (body.get("plugins") or {}).get("systemcommandeditor") or {}
+            devices = plugin.get("devices") or []
+            psu = [d for d in devices if d.get("id") == "psu_control"]
+            saved = list((body.get("system") or {}).get("actions") or [])
+            check("POST carries the PSU control with its marker, its read and a key from its name",
+                  len(psu) == 1 and psu[0].get("preset") == "psucontrol:psu" and psu[0].get("type") == "switch"
+                  and psu[0].get("read") == {"plugin": "psucontrol", "api": "get_psu_state"}, json.dumps(psu))
+            div_at = [i for i, a in enumerate(saved) if a == {"action": "divider", "name": "Plugin devices"}]
+            on_entry = next((a for a in saved if a.get("action") == "psu_control_on"), {})
+            off_entry = next((a for a in saved if a.get("action") == "psu_control_off"), {})
+            check("POST places On and Off under a Plugin devices divider, each with run, role, group and marker",
+                  len(div_at) == 1 and on_entry.get("run") == {"plugin": "psucontrol", "api": "turn_psu_on"}
+                  and on_entry.get("role") == "on" and on_entry.get("group") == "psu_control"
+                  and on_entry.get("preset") == "psucontrol:psu" and div_at and
+                  saved.index(on_entry) > div_at[0] and
+                  off_entry.get("run") == {"plugin": "psucontrol", "api": "turn_psu_off"}
+                  and off_entry.get("role") == "off" and off_entry.get("group") == "psu_control"
+                  and off_entry.get("preset") == "psucontrol:psu",
+                  json.dumps({"on": on_entry, "off": off_entry, "dividers": div_at}))
+        open_settings()  # the save closed the settings pane
+        edit_command("On")
+        run_line = page.locator("#sce-editor .sce-run-line").inner_text().strip()
+        no_command_box = page.locator("#sce-editor #sce-editor-command").count() == 0
+        done_on = not page.locator("#sce-editor .modal-footer .btn-primary").is_disabled()
+        check("the PSU On command editor shows its plugin call with no Command textarea and Done enabled",
+              run_line == "psucontrol: turn_psu_on" and no_command_box and done_on,
+              "run=%r no_box=%s done=%s" % (run_line, no_command_box, done_on))
+        page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
+        wait_hidden("#sce-editor")
+        page.locator("#settings_plugin_systemcommandeditor .sce-device-row", has_text="PSU Control").locator(
+            'button[title="Edit"]').click()
+        wait_visible("#sce-device-editor")
+        read_line = page.locator("#sce-device-editor .sce-read-line").inner_text().strip()
+        no_status_box = page.locator("#sce-device-status").count() == 0
+        check("the PSU control editor shows its read call with no Status command textarea",
+              read_line == "psucontrol: get_psu_state" and no_status_box,
+              "read=%r no_status_box=%s" % (read_line, no_status_box))
+        page.locator("#sce-device-editor .modal-footer .btn:has-text('Cancel')").click()
+        wait_hidden("#sce-device-editor")
+
+        # Run now on the saved PSU On command (saved and unchanged, so it can run): the plugin's run is posted and
+        # OctoPrint's own execute is not; then an error answer shows its text literally in the toast
+        open_settings()
+        edit_command("On")
+        run_now = page.locator("#sce-editor .modal-footer button:has-text('Run now')")
+        page.wait_for_timeout(300)
+        runnable = run_now.is_enabled()
+        runs_before, executes_before = len(runs), len(executes)
+        run_now.click()
+        end = time.time() + 8
+        while len(runs) == runs_before and time.time() < end:
+            page.wait_for_timeout(100)
+        page.wait_for_timeout(300)
+        check("Run now is enabled on the saved PSU On command", runnable)
+        check("Run now posts the plugin's run command with the action, never OctoPrint's own execute",
+              len(runs) == runs_before + 1 and runs[-1] == {"command": "run", "action": "psu_control_on"}
+              and len(executes) == executes_before,
+              "runs=%s executes=%s" % (runs[runs_before:], executes[executes_before:]))
+
+        RUN_ANSWER.clear()
+        RUN_ANSWER.update({"ok": False, "error": "<b>bad</b>"})
+        runs_before = len(runs)
+        run_now.click()
+        end = time.time() + 8
+        while len(runs) == runs_before and time.time() < end:
+            page.wait_for_timeout(100)
+        toast = page.locator(".ui-pnotify-text").last
+        toast.wait_for(state="visible", timeout=8000)
+        toast_text = toast.inner_text()
+        toast_bold = page.locator(".ui-pnotify .ui-pnotify-text b").count()
+        check("a failed Run now shows its error as literal text, with no bold element in the toast",
+              "<b>bad</b>" in toast_text and toast_bold == 0,
+              "text=%r bold=%d" % (toast_text, toast_bold))
+        page.locator("#sce-editor .modal-footer .btn:has-text('Cancel')").click()
+        wait_hidden("#sce-editor")
+        RUN_ANSWER.clear()
+        RUN_ANSWER.update({"ok": True, "output": "done"})
+
+        # saving the PSU control through its editor keeps its plugin read and adds no status command
+        page.locator("#settings_plugin_systemcommandeditor .sce-device-row", has_text="PSU Control").locator(
+            'button[title="Edit"]').click()
+        wait_visible("#sce-device-editor")
+        modal_done("#sce-device-editor")
+        psu = page.evaluate("""() => ko.toJS(ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'))
+            .devices()).find((d) => d.preset === 'psucontrol:psu')""")
+        check("saving a plugin control through its editor keeps its read and adds no status",
+              psu is not None and psu.get("read") == {"plugin": "psucontrol", "api": "get_psu_state"}
+              and not psu.get("status"), json.dumps(psu))
+
+        open_settings()
+        page.get_by_role("button", name="Add from presets").click()
+        wait_visible("#sce-presets .sce-plugin-row")
+        check("a present plugin preset starts ticked",
+              plugin_rows.filter(has_text="PSU Control").locator("input").is_checked())
+        plugin_rows.filter(has_text="PSU Control").locator("input").uncheck()
+        page.locator("#sce-presets .modal-footer .btn-primary").click()
+        wait_hidden("#sce-presets")
+        body = save_settings() or {}
+        plugin = (body.get("plugins") or {}).get("systemcommandeditor") or {}
+        left_devices = [d.get("id") for d in plugin.get("devices") or []]
+        left_actions = list((body.get("system") or {}).get("actions") or [])
+        check("unticking the PSU preset removes its control, both commands and the empty Plugin devices divider",
+              "psu_control" not in left_devices
+              and not [a for a in left_actions if a.get("preset") == "psucontrol:psu" or a.get("group") == "psu_control"]
+              and not [a for a in left_actions if a == {"action": "divider", "name": "Plugin devices"}],
+              json.dumps({"devices": left_devices, "actions": left_actions[-3:]}))
 
         # Phase E: an action control; its command takes the Run role, and the role list is just Run
         open_settings()   # the settings pane closes on each successful save
