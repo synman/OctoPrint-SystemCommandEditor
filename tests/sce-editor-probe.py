@@ -809,9 +809,12 @@ def run_probe():
         end = time.time() + 8
         while len(runs) == runs_before and time.time() < end:
             page.wait_for_timeout(100)
-        toast = page.locator(".ui-pnotify-text").last
-        toast.wait_for(state="visible", timeout=8000)
-        toast_text = toast.inner_text()
+        # the earlier success toast may still be showing, so look for the error toast by its text
+        end = time.time() + 8
+        toast_text = ""
+        while time.time() < end and "bad" not in toast_text:
+            toast_text = " | ".join(page.locator(".ui-pnotify-text").all_inner_texts())
+            page.wait_for_timeout(100)
         toast_bold = page.locator(".ui-pnotify .ui-pnotify-text b").count()
         check("a failed Run now shows its error as literal text, with no bold element in the toast",
               "<b>bad</b>" in toast_text and toast_bold == 0,
