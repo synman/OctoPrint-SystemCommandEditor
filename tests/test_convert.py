@@ -147,3 +147,12 @@ def test_place_readouts_no_readouts_is_unchanged():
     assert changed is False
     assert new_devices is devices
     assert actions == [cmd("a")]
+
+
+def test_a_run_entry_without_a_device_is_not_a_placement():
+    entry = {"action": "boot", "name": "Boot", "run": {"plugin": "p", "helper": "boot"}}
+    assert convert_module._is_placement(entry) is False
+
+
+def test_an_entry_naming_its_readout_is_a_placement():
+    assert convert_module._is_placement({"action": "disk", "name": "Disk", "device": "disk"}) is True

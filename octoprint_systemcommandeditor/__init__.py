@@ -6,6 +6,7 @@ __license__ = "GNU Affero General Public License http://www.gnu.org/licenses/agp
 
 import copy
 import io
+import json
 import os
 import socket
 import sys
@@ -18,18 +19,20 @@ import yaml
 import octoprint.plugin
 from octoprint.access.permissions import Permissions
 
+from .adapters import MqttCache, carried, is_plugin_run, read_outcome, run_call, run_with_timeout
 from .convert import command_count, convert, place_readouts
 from .presets import (
     SYSTEM_SWITCHES,
     action_of,
     detect,
     detect_maintenance,
+    harvest,
     mark_presets,
     maintenance_actions,
     sample_devices,
     system_switches,
 )
-from .status import check_devices
+from .status import check_devices, run_status
 
 API_ENTRY_KEYS = (
     "name",
@@ -46,6 +49,7 @@ API_ENTRY_KEYS = (
     "value",
     "when",
     "device",
+    "run",
 )
 
 # the divider a sample readout's placement goes under on first start
@@ -65,6 +69,32 @@ SYSTEM_GROUPS = {
 }
 
 
+def printer_state(printer):
+    # the printer's state as the menu names it; the first of these that holds wins
+    if printer.is_printing():
+        return "printing"
+    if printer.is_paused():
+        return "paused"
+    if printer.is_error():
+        return "error"
+    if printer.is_operational():
+        return "ready"
+    return "offline"
+
+
+def condition_effect(when, state):
+    """What a command's ``when`` does in ``state``: "hide" or "disable", or None when it does not apply."""
+    if not when:
+        return None
+    listed = state in (when.get("states") or [])
+    effect = "disable" if when.get("effect") == "disable" else "hide"
+    if when.get("mode") == "never" and listed:
+        return effect
+    if when.get("mode") == "only" and not listed:
+        return effect
+    return None
+
+
 class SystemCommandEditorPlugin(
     octoprint.plugin.SettingsPlugin,
     octoprint.plugin.TemplatePlugin,
@@ -75,6 +105,10 @@ class SystemCommandEditorPlugin(
     # Commands live only in OctoPrint's own system.actions, which the settings dialog saves through the core
     # settings API. The plugin keeps no copy: versions before 2.0 did, and copying it back over system.actions
     # on startup is what made commands vanish.
+
+    def __init__(self):
+        # one MQTT cache per plugin instance: each topic is subscribed once for the life of the plugin
+        self._mqtt = MqttCache()
 
     def get_settings_defaults(self):
         # Icons and headings for OctoPrint's own System menu entries, which its config has no place for. These are
@@ -98,21 +132,76 @@ class SystemCommandEditorPlugin(
         return 4
 
     def get_api_commands(self):
-        return {"status": ["ids"], "presets": []}
+        return {"status": ["ids"], "presets": [], "run": ["action"]}
 
     def on_api_command(self, command, data):
         if not Permissions.SYSTEM.can():
             flask.abort(403)
         if command == "status":
-            devices = self._settings.get(["devices"]) or []
-            entries = self._action_entries() + self._core_entries()
-            return flask.jsonify(results=check_devices(devices, entries, data["ids"]))
+            return flask.jsonify(results=self._status(data["ids"], data.get("live") is True))
+        if command == "run":
+            return self._run(data["action"])
         if command == "presets":
             return flask.jsonify(
                 presets=detect(),
                 maintenance=detect_maintenance(self._maintenance_env()),
                 switches=system_switches(socket.gethostname()),
+                plugins=self._plugin_presets(),
             )
+
+    def _status(self, ids, live):
+        devices = []
+        reads = {}
+        skipped = {}
+        for device in self._settings.get(["devices"]) or []:
+            spec = device.get("read")
+            if spec is None:
+                devices.append(device)
+                continue
+            if live and spec.get("live") is False:
+                skipped[device.get("id")] = {"state": None, "output": "", "exit": None, "error": None, "skipped": True}
+                continue
+            # check_devices runs a status string; a read is keyed by its own JSON so the runner can tell them apart
+            token = json.dumps(spec, sort_keys=True)
+            reads[token] = spec
+            devices.append({**device, "status": token})
+
+        # made here, on the request's thread: check_devices runs the reads on worker threads that have no request
+        call = carried(run_call)
+
+        def runner(command, timeout):
+            if command in reads:
+                return read_outcome(reads[command], self._plugin_manager, timeout, call, self._mqtt)
+            return run_status(command, timeout)
+
+        entries = self._action_entries() + self._core_entries()
+        results = check_devices(devices, entries, [i for i in ids if i not in skipped], runner=runner)
+        results.update({i: skipped[i] for i in ids if i in skipped})
+        return results
+
+    def _run(self, action):
+        entry = next(
+            (item for item in self._settings.global_get(["system", "actions"]) or [] if item.get("action") == action),
+            None,
+        )
+        if entry is None or entry.get("run") is None:
+            flask.abort(404)
+        spec = entry["run"]
+        if not is_plugin_run(spec):
+            flask.abort(400, description="unsupported run kind")
+        state = printer_state(self._printer)
+        if condition_effect(entry.get("when"), state):
+            response = flask.jsonify(ok=False, error="Not available while the printer is {}".format(state))
+            response.status_code = 409
+            return response
+        output, error = run_with_timeout(spec, self._plugin_manager, call=carried(run_call))
+        return flask.jsonify(ok=error is None, output=output, error=error)
+
+    def _plugin_presets(self):
+        return harvest(
+            self._plugin_manager,
+            lambda plugin, key: self._settings.global_get(["plugins", plugin, key]),
+        )
 
     def on_after_startup(self):
         if self._settings.get_boolean(["presets_loaded"]):

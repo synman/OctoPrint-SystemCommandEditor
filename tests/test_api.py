@@ -1,16 +1,18 @@
 import logging
+import types
 
 import pytest
 
 pytest.importorskip("octoprint")
 
 import flask  # noqa: E402
-from werkzeug.exceptions import Forbidden  # noqa: E402
+from werkzeug.exceptions import BadRequest, Forbidden, NotFound  # noqa: E402
 
 from octoprint.access.permissions import Permissions  # noqa: E402
 
 import octoprint_systemcommandeditor as plugin_module  # noqa: E402
 from octoprint_systemcommandeditor import SystemCommandEditorPlugin  # noqa: E402
+from octoprint_systemcommandeditor import condition_effect, printer_state  # noqa: E402
 from octoprint_systemcommandeditor.presets import CATALOG, action_of, device_of, entry_of, maintenance  # noqa: E402
 
 
@@ -60,12 +62,51 @@ class FakeSettings:
         self.calls.append(("save",))
 
 
-def make_plugin(system_actions=(), devices=(), core=None, server_commands=None):
+class FakePlugins:
+    """The parts of the plugin manager the API uses: plugins given as keyword arguments are installed."""
+
+    def __init__(self, **impls):
+        self.impls = impls
+
+    def get_plugin_info(self, identifier, require_enabled=True):
+        impl = self.impls.get(identifier)
+        return None if impl is None else types.SimpleNamespace(implementation=impl, enabled=True)
+
+    def get_helpers(self, name, *helpers):
+        impl = self.impls.get(name)
+        if impl is None:
+            return None
+        exported = getattr(impl, "exported", {})
+        return {helper: exported[helper] for helper in helpers if helper in exported}
+
+
+class FakePrinter:
+    """The printer's state flags; the defaults are a connected, idle printer."""
+
+    def __init__(self, printing=False, paused=False, error=False, operational=True):
+        self.flags = dict(printing=printing, paused=paused, error=error, operational=operational)
+
+    def is_printing(self):
+        return self.flags["printing"]
+
+    def is_paused(self):
+        return self.flags["paused"]
+
+    def is_error(self):
+        return self.flags["error"]
+
+    def is_operational(self):
+        return self.flags["operational"]
+
+
+def make_plugin(system_actions=(), devices=(), core=None, server_commands=None, plugins=None, printer=None):
     plugin = SystemCommandEditorPlugin()
     plugin._settings = FakeSettings(
         list(system_actions), list(devices), core or {}, server_commands or {}
     )
     plugin._logger = logging.getLogger("test")
+    plugin._plugin_manager = FakePlugins(**(plugins or {}))
+    plugin._printer = printer or FakePrinter()
     return plugin
 
 
@@ -124,7 +165,7 @@ def test_get_reports_success_toast_when_turned_on(monkeypatch):
 
 
 def test_api_commands_declare_status_ids_and_presets():
-    assert SystemCommandEditorPlugin().get_api_commands() == {"status": ["ids"], "presets": []}
+    assert SystemCommandEditorPlugin().get_api_commands() == {"status": ["ids"], "presets": [], "run": ["action"]}
 
 
 def test_settings_default_presets_loaded_off():
@@ -143,6 +184,7 @@ def test_presets_command_returns_detected_list(monkeypatch):
     with request_context():
         body = plugin.on_api_command("presets", {}).get_json()
     assert body["presets"] == detected and body["maintenance"] == maintenance_listed
+    assert body["plugins"] == []
     # the host and OctoPrint switches, with the roles OctoPrint's own commands take on them, as first start uses
     assert body["switches"] == [
         {"id": "host", "type": "switch", "name": "atom-octo", "icon": "fa-solid fa-server",
@@ -206,6 +248,16 @@ def test_load_sample_presets_keeps_existing_devices(monkeypatch):
     ] + existing
     assert ("set", "presets_loaded", True) in plugin._settings.calls
     assert plugin._settings.calls[-1] == ("save",)
+
+
+def test_get_passes_a_plugin_commands_run_to_the_menu(monkeypatch):
+    # a plugin-backed command reaches the menu with its run, so the menu can send it to this plugin's run command
+    allow(monkeypatch)
+    run = {"plugin": "psucontrol", "helper": "turn_psu_on"}
+    plugin = make_plugin(system_actions=[{"action": "c", "name": "C", "run": run, "group": "g", "role": "on"}])
+    with request_context():
+        body = plugin.on_api_get(None).get_json()
+    assert body["entries"]["c"]["run"] == run
 
 
 def test_get_returns_entries_and_core_commands(monkeypatch):
@@ -410,3 +462,204 @@ def test_first_start_marks_readout_placement_with_its_readout(monkeypatch):
 
 def test_settings_version_is_4():
     assert SystemCommandEditorPlugin().get_settings_version() == 4
+
+
+def printer_in(state):
+    return FakePrinter(
+        printing=state == "printing",
+        paused=state == "paused",
+        error=state == "error",
+        operational=state == "ready",
+    )
+
+
+STATES = ("printing", "paused", "error", "ready", "offline")
+
+
+def test_printer_state_names_each_state():
+    for state in STATES:
+        assert printer_state(printer_in(state)) == state
+
+
+def test_printer_state_takes_printing_then_paused_then_error_then_ready():
+    assert printer_state(FakePrinter(printing=True, paused=True, error=True)) == "printing"
+    assert printer_state(FakePrinter(paused=True, error=True)) == "paused"
+    assert printer_state(FakePrinter(error=True, operational=True)) == "error"
+
+
+def test_condition_effect_is_none_without_a_when():
+    assert condition_effect(None, "ready") is None
+    assert condition_effect({}, "ready") is None
+
+
+def test_condition_effect_for_every_state_mode_and_effect():
+    for effect in ("hide", "disable"):
+        for state in STATES:
+            never = {"mode": "never", "states": ["printing"], "effect": effect}
+            only = {"mode": "only", "states": ["printing"], "effect": effect}
+            assert condition_effect(never, state) == (effect if state == "printing" else None)
+            assert condition_effect(only, state) == (effect if state != "printing" else None)
+
+
+def test_condition_effect_defaults_to_hide_and_ignores_an_unknown_mode():
+    assert condition_effect({"mode": "never", "states": ["printing"]}, "printing") == "hide"
+    assert condition_effect({"mode": "sometimes", "states": ["printing"], "effect": "disable"}, "ready") is None
+
+
+def test_condition_effect_lists_several_states():
+    when = {"mode": "only", "states": ["paused", "error"], "effect": "hide"}
+    assert condition_effect(when, "ready") == "hide"
+    assert condition_effect(when, "paused") is None
+
+
+def run_entry(**extra):
+    return {"action": "boot", "name": "Boot", "run": {"plugin": "p", "helper": "boot"}, **extra}
+
+
+def helper_plugin(helper):
+    return types.SimpleNamespace(exported={"boot": helper})
+
+
+def test_run_is_404_for_an_unknown_action(monkeypatch):
+    allow(monkeypatch)
+    plugin = make_plugin(system_actions=[run_entry()])
+    with request_context(), pytest.raises(NotFound):
+        plugin.on_api_command("run", {"action": "missing"})
+
+
+def test_run_is_404_for_a_command_with_no_run(monkeypatch):
+    allow(monkeypatch)
+    plugin = make_plugin(system_actions=[{"action": "ls", "name": "ls", "command": "ls"}])
+    with request_context(), pytest.raises(NotFound):
+        plugin.on_api_command("run", {"action": "ls"})
+
+
+def test_run_is_400_when_run_is_not_a_plugin_call(monkeypatch):
+    allow(monkeypatch)
+    plugin = make_plugin(system_actions=[run_entry(run={"gcode": "G28"})])
+    with request_context(), pytest.raises(BadRequest):
+        plugin.on_api_command("run", {"action": "boot"})
+
+
+def test_run_is_409_and_does_not_run_when_the_when_hides_it(monkeypatch):
+    allow(monkeypatch)
+    calls = []
+
+    def boot():
+        calls.append(1)
+        return "ran"
+
+    when = {"mode": "never", "states": ["printing"], "effect": "hide"}
+    plugin = make_plugin(
+        system_actions=[run_entry(when=when)],
+        plugins={"p": helper_plugin(boot)},
+        printer=FakePrinter(printing=True),
+    )
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 409
+    assert response.get_json() == {"ok": False, "error": "Not available while the printer is printing"}
+    assert calls == []
+
+
+def test_run_is_409_when_the_when_disables_it_offline(monkeypatch):
+    allow(monkeypatch)
+    when = {"mode": "only", "states": ["ready"], "effect": "disable"}
+    plugin = make_plugin(
+        system_actions=[run_entry(when=when)],
+        plugins={"p": helper_plugin(lambda: "ran")},
+        printer=FakePrinter(operational=False),
+    )
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 409
+    assert response.get_json()["error"] == "Not available while the printer is offline"
+
+
+def test_run_goes_ahead_when_the_when_does_not_apply(monkeypatch):
+    allow(monkeypatch)
+    when = {"mode": "never", "states": ["printing"], "effect": "hide"}
+    plugin = make_plugin(system_actions=[run_entry(when=when)], plugins={"p": helper_plugin(lambda: "ran")})
+    with request_context():
+        response = plugin.on_api_command("run", {"action": "boot"})
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": True, "output": "ran", "error": None}
+
+
+def test_run_answers_ok_false_with_the_error_when_the_call_fails(monkeypatch):
+    allow(monkeypatch)
+
+    def boot():
+        raise RuntimeError("boom")
+
+    plugin = make_plugin(system_actions=[run_entry()], plugins={"p": helper_plugin(boot)})
+    with request_context():
+        body = plugin.on_api_command("run", {"action": "boot"}).get_json()
+    assert body == {"ok": False, "output": "", "error": "p: RuntimeError: boom"}
+
+
+def read_devices(read, **extra):
+    return [{"id": "d", "type": "switch", "read": read, "on_pattern": "^on$", "off_pattern": "^off$", **extra}]
+
+
+def test_status_reads_a_control_through_its_read(monkeypatch):
+    allow(monkeypatch)
+    plugin = make_plugin(
+        devices=read_devices({"plugin": "p", "helper": "get"}),
+        plugins={"p": types.SimpleNamespace(exported={"get": lambda: "on"})},
+    )
+    with request_context():
+        body = plugin.on_api_command("status", {"ids": ["d"]}).get_json()
+    assert body["results"]["d"] == {"state": "on", "output": "on", "exit": 0, "error": None}
+
+
+def test_status_runs_a_plain_status_beside_a_read(monkeypatch):
+    allow(monkeypatch)
+    devices = [
+        {"id": "s", "type": "readout", "status": "echo hello"},
+        {"id": "r", "type": "readout", "read": {"plugin": "p", "helper": "get"}},
+    ]
+    plugin = make_plugin(devices=devices, plugins={"p": types.SimpleNamespace(exported={"get": lambda: "x"})})
+    with request_context():
+        results = plugin.on_api_command("status", {"ids": ["s", "r"]}).get_json()["results"]
+    assert results["s"]["state"] == "hello"
+    assert results["r"]["state"] == "x"
+
+
+def test_status_skips_a_live_false_read_only_when_live(monkeypatch):
+    allow(monkeypatch)
+    calls = []
+
+    def get():
+        calls.append(1)
+        return "on"
+
+    devices = read_devices({"plugin": "p", "helper": "get", "live": False})
+    plugin = make_plugin(devices=devices, plugins={"p": types.SimpleNamespace(exported={"get": get})})
+    with request_context():
+        live = plugin.on_api_command("status", {"ids": ["d"], "live": True}).get_json()["results"]
+        assert live["d"] == {"state": None, "output": "", "exit": None, "error": None, "skipped": True}
+        assert calls == []
+        polled = plugin.on_api_command("status", {"ids": ["d"]}).get_json()["results"]
+    assert polled["d"]["state"] == "on"
+    assert calls == [1]
+
+
+def test_status_reads_an_mqtt_topic_and_keeps_its_subscription_on_the_plugin(monkeypatch):
+    allow(monkeypatch)
+    subscriptions = []
+
+    def subscribe(topic, callback):
+        subscriptions.append((topic, callback))
+
+    plugin = make_plugin(
+        devices=read_devices({"mqtt": "printer/power"}),
+        plugins={"mqtt": types.SimpleNamespace(exported={"mqtt_subscribe": subscribe})},
+    )
+    with request_context():
+        before = plugin.on_api_command("status", {"ids": ["d"]}).get_json()["results"]["d"]
+        subscriptions[0][1]("printer/power", b"on", retained=False, qos=0)
+        after = plugin.on_api_command("status", {"ids": ["d"]}).get_json()["results"]["d"]
+    assert before["state"] == "unknown"
+    assert after["state"] == "on"
+    assert [topic for topic, _ in subscriptions] == ["printer/power"]

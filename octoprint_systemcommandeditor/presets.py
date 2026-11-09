@@ -404,3 +404,189 @@ def mark_presets(devices, actions, maintenance_action_keys):
             changed = True
 
     return new_devices, new_actions, changed
+
+
+# Plugin presets: one group per installed, enabled plugin that lists devices. Each reader returns
+# (device key, preset name, control, commands). The control has no id and the commands have no action or group: the
+# editor assigns both. Only label, ip, idx, name and active are read from a plugin's settings; never a credential.
+# Each source line cited is the one the reader relies on.
+
+ICON = "fa-solid fa-plug"
+
+
+def _switch(name, read, on_pattern, off_pattern, on_run, off_run):
+    control = {"type": "switch", "name": name, "icon": ICON, "read": read, "on_pattern": on_pattern,
+               "off_pattern": off_pattern}
+    commands = [{"name": "On", "run": on_run, "role": "on"}, {"name": "Off", "run": off_run, "role": "off"}]
+    return control, commands
+
+
+def _psucontrol(get):
+    # psu.py:878-884 __plugin_helpers__ get_psu_state, turn_psu_on, turn_psu_off; get_psu_state returns the bool
+    # isPSUOn (psu.py:581-582). One PSU, so no inventory.
+    control, commands = _switch(
+        "Printer power",
+        {"plugin": "psucontrol", "helper": "get_psu_state"},
+        "^true$",
+        "^false$",
+        {"plugin": "psucontrol", "helper": "turn_psu_on"},
+        {"plugin": "psucontrol", "helper": "turn_psu_off"},
+    )
+    return [("psu", "PSU Control", control, commands)]
+
+
+def _tplink(get):
+    # tplink.py:1395-1399 __plugin_helpers__ turn_on, turn_off, check_status (plugip); check_status returns
+    # dict(currentState=...) (tplink.py:589-593). Inventory arrSmartplugs with ip and label (tplink.py:1190).
+    devices = []
+    for plug in get("tplinksmartplug", "arrSmartplugs") or []:
+        ip = plug.get("ip")
+        if not ip:
+            continue
+        label = plug.get("label") or ip
+        args = {"plugip": ip}
+        control, commands = _switch(
+            label,
+            {"plugin": "tplinksmartplug", "helper": "check_status", "args": args, "live": False},
+            '"currentState": "on"',
+            '"currentState": "off"',
+            {"plugin": "tplinksmartplug", "helper": "turn_on", "args": args},
+            {"plugin": "tplinksmartplug", "helper": "turn_off", "args": args},
+        )
+        devices.append((ip, label, control, commands))
+    return devices
+
+
+def _tasmota(get):
+    # tasmota.py:467 turn_on(self, plugip, plugidx), :512 turn_off, :557 check_status(plugip, plugidx); the dict
+    # check_status returns carries currentState (tasmota.py:626-639, returned at :644-645). No helpers, so the
+    # "method" kind. Inventory arrSmartplugs with ip, idx, label (tasmota.py:756).
+    devices = []
+    for plug in get("tasmota", "arrSmartplugs") or []:
+        ip = plug.get("ip")
+        if not ip:
+            continue
+        label = plug.get("label") or ip
+        args = {"plugip": ip, "plugidx": plug.get("idx")}
+        control, commands = _switch(
+            label,
+            {"plugin": "tasmota", "method": "check_status", "args": args, "live": False},
+            '"currentState": "on"',
+            '"currentState": "off"',
+            {"plugin": "tasmota", "method": "turn_on", "args": args},
+            {"plugin": "tasmota", "method": "turn_off", "args": args},
+        )
+        devices.append(("{}/{}".format(ip, plug.get("idx")), label, control, commands))
+    return devices
+
+
+def _octorelay(get):
+    # octorelay_const.py:41 settings "r1" (active, label_text), relays r1..r8; octorelay_const.py:329-330 UPDATE_COMMAND
+    # "update", GET_STATUS_COMMAND "getStatus"; on_api_command answers {"status": bool} (octorelay.py:163-184).
+    devices = []
+    for index in range(1, 9):
+        key = "r{}".format(index)
+        relay = get("octorelay", key) or {}
+        if not relay.get("active"):
+            continue
+        label = relay.get("label_text") or key.upper()
+        control, commands = _switch(
+            label,
+            {"plugin": "octorelay", "api": "getStatus", "data": {"subject": key}},
+            '"status": true',
+            '"status": false',
+            {"plugin": "octorelay", "api": "update", "data": {"subject": key, "target": True}},
+            {"plugin": "octorelay", "api": "update", "data": {"subject": key, "target": False}},
+        )
+        devices.append((key, label, control, commands))
+    return devices
+
+
+def _indexed_relays(get, plugin_id, setting, state_api, on_api, off_api, on_pattern, off_pattern):
+    # gpiocontrol.py:53 gpio_configurations and usbrelaycontrol.py:43 usbrelay_configurations: each entry has name;
+    # the id is the list index (gpiocontrol.py:130). Commands answer through on_api_command (gpiocontrol.py:126-139,
+    # usbrelaycontrol.py:132-144); the state is a JSON string, so the Response body parses to "on"/"off".
+    devices = []
+    for index, config in enumerate(get(plugin_id, setting) or []):
+        name = config.get("name") or "{} {}".format(plugin_id, index)
+        data = {"id": index}
+        control, commands = _switch(
+            name,
+            {"plugin": plugin_id, "api": state_api, "data": data},
+            on_pattern,
+            off_pattern,
+            {"plugin": plugin_id, "api": on_api, "data": data},
+            {"plugin": plugin_id, "api": off_api, "data": data},
+        )
+        devices.append((str(index), name, control, commands))
+    return devices
+
+
+def _gpiocontrol(get):
+    return _indexed_relays(
+        get, "gpiocontrol", "gpio_configurations", "getGpioState", "turnGpioOn", "turnGpioOff", "^on$", "^off$"
+    )
+
+
+def _usbrelaycontrol(get):
+    return _indexed_relays(
+        get,
+        "usbrelaycontrol",
+        "usbrelay_configurations",
+        "getUSBRelayState",
+        "turnUSBRelayOn",
+        "turnUSBRelayOff",
+        "^on$",
+        "^off$",
+    )
+
+
+def _bettergrblsupport(get):
+    # __init__.py:1926-1934 __plugin_helpers__ sleep, unlock, reset, home, state; helper_state returns a dict (:1835),
+    # so the state is read from its "state" key. One controller, so no inventory.
+    grbl = "bettergrblsupport"
+    control = {"type": "action", "name": "Grbl", "icon": ICON, "read": {"plugin": grbl, "helper": "state", "field": "state"}}
+    commands = [
+        {"name": "Home", "run": {"plugin": grbl, "helper": "home"}, "role": "run"},
+        {"name": "Unlock", "run": {"plugin": grbl, "helper": "unlock"}, "role": "run"},
+        {"name": "Sleep", "run": {"plugin": grbl, "helper": "sleep"}, "role": "run"},
+        {
+            "name": "Reset",
+            "run": {"plugin": grbl, "helper": "reset"},
+            "role": "run",
+            "confirm": "This sends a reset to the Grbl controller.",
+        },
+    ]
+    return [("grbl", "Better Grbl Support", control, commands)]
+
+
+PLUGINS = (
+    ("psucontrol", "PSU Control", _psucontrol),
+    ("tplinksmartplug", "TP-Link Smartplug", _tplink),
+    ("tasmota", "Tasmota", _tasmota),
+    ("octorelay", "OctoRelay", _octorelay),
+    ("gpiocontrol", "GPIO Control", _gpiocontrol),
+    ("usbrelaycontrol", "USB Relay Control", _usbrelaycontrol),
+    ("bettergrblsupport", "Better Grbl Support", _bettergrblsupport),
+)
+
+
+def harvest(plugin_manager, get_setting):
+    """Plugin presets for every installed, enabled plugin that lists devices.
+
+    ``get_setting(plugin_id, key)`` reads that plugin's own settings.
+    """
+    groups = []
+    for plugin_id, label, devices_of in PLUGINS:
+        info = plugin_manager.get_plugin_info(plugin_id)
+        if info is None or not info.enabled:
+            continue
+        devices = devices_of(get_setting)
+        if not devices:
+            continue
+        presets = [
+            {"preset": "{}:{}".format(plugin_id, key), "name": name, "control": control, "commands": commands}
+            for key, name, control, commands in devices
+        ]
+        groups.append({"plugin": plugin_id, "name": label, "presets": presets})
+    return groups

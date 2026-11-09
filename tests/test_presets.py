@@ -1,6 +1,8 @@
+import json
 import os
 import subprocess
 import time
+import types
 
 import pytest
 
@@ -13,6 +15,7 @@ from octoprint_systemcommandeditor.presets import (  # noqa: E402
     detect_maintenance,
     device_of,
     entry_of,
+    harvest,
     maintenance,
     maintenance_actions,
     mark_presets,
@@ -355,3 +358,224 @@ def test_maintenance_actions_lists_the_seven_keys_without_detection():
     assert maintenance_actions() == [
         "backup_now", "webcam_restart", "purge_timelapses", "purge_logs", "sync_clock", "wifi_powersave_off", "os_update",
     ]
+
+
+# Plugin presets (harvest). Each fake plugin settings dict is shaped like that plugin's real settings.
+
+
+class Plugins:
+    """A fake plugin manager: only the plugins passed in are installed and enabled."""
+
+    def __init__(self, *installed, disabled=()):
+        self.installed = set(installed) | set(disabled)
+        self.disabled = set(disabled)
+
+    def get_plugin_info(self, identifier, require_enabled=True):
+        if identifier not in self.installed:
+            return None
+        return types.SimpleNamespace(enabled=identifier not in self.disabled)
+
+
+def settings_of(**plugins):
+    def get(plugin, key):
+        return plugins.get(plugin, {}).get(key)
+
+    return get
+
+
+def presets_of(groups, plugin_id):
+    return [preset for group in groups if group["plugin"] == plugin_id for preset in group["presets"]]
+
+
+def only_preset(groups, preset_id):
+    matches = [preset for group in groups for preset in group["presets"] if preset["preset"] == preset_id]
+    assert len(matches) == 1, preset_id
+    return matches[0]
+
+
+def assert_unkeyed(preset):
+    # the editor assigns every key: no control id, no command action, no command group
+    assert "id" not in preset["control"]
+    for command in preset["commands"]:
+        assert "action" not in command and "group" not in command
+
+
+def test_harvest_offers_nothing_for_plugins_not_installed():
+    assert harvest(Plugins(), settings_of(psucontrol={})) == []
+
+
+def test_harvest_offers_nothing_for_an_installed_but_disabled_plugin():
+    # OctoPrint returns info for a disabled plugin too; only installed AND enabled plugins are offered
+    settings = settings_of(psucontrol={}, tasmota={"arrSmartplugs": [{"ip": "10.0.0.6", "idx": 1, "label": "B"}]})
+    assert harvest(Plugins("psucontrol", "tasmota", disabled=("psucontrol", "tasmota")), settings) == []
+    groups = harvest(Plugins("psucontrol", "tasmota", disabled=("psucontrol",)), settings)
+    assert [group["plugin"] for group in groups] == ["tasmota"]
+
+
+def test_harvest_offers_nothing_for_a_plugin_with_no_devices():
+    plugins = Plugins("tplinksmartplug")
+    assert harvest(plugins, settings_of(tplinksmartplug={"arrSmartplugs": []})) == []
+
+
+def test_psucontrol_is_one_switch_with_on_and_off_commands():
+    # psu.py:878-884 helpers get_psu_state / turn_psu_on / turn_psu_off; get_psu_state returns the bool (psu.py:581-582)
+    groups = harvest(Plugins("psucontrol"), settings_of())
+    assert groups == [
+        {
+            "plugin": "psucontrol",
+            "name": "PSU Control",
+            "presets": [
+                {
+                    "preset": "psucontrol:psu",
+                    "name": "PSU Control",
+                    "control": {
+                        "type": "switch",
+                        "name": "Printer power",
+                        "icon": "fa-solid fa-plug",
+                        "read": {"plugin": "psucontrol", "helper": "get_psu_state"},
+                        "on_pattern": "^true$",
+                        "off_pattern": "^false$",
+                    },
+                    "commands": [
+                        {"name": "On", "role": "on", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"}},
+                        {"name": "Off", "role": "off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"}},
+                    ],
+                }
+            ],
+        }
+    ]
+    assert_unkeyed(groups[0]["presets"][0])
+
+
+def test_tplink_has_one_preset_per_plug_named_by_label_or_address():
+    # tplink.py:1395-1399 helpers; plug["label"] (tplink.py:1190); check_status returns currentState (tplink.py:589)
+    settings = settings_of(
+        tplinksmartplug={"arrSmartplugs": [{"ip": "10.0.0.5", "label": "Printer"}, {"ip": "10.0.0.7", "label": ""}]}
+    )
+    groups = harvest(Plugins("tplinksmartplug"), settings)
+    assert [p["preset"] for p in presets_of(groups, "tplinksmartplug")] == [
+        "tplinksmartplug:10.0.0.5",
+        "tplinksmartplug:10.0.0.7",
+    ]
+    first = only_preset(groups, "tplinksmartplug:10.0.0.5")
+    args = {"plugip": "10.0.0.5"}
+    assert first["name"] == "Printer"
+    assert first["control"] == {
+        "type": "switch",
+        "name": "Printer",
+        "icon": "fa-solid fa-plug",
+        "read": {"plugin": "tplinksmartplug", "helper": "check_status", "args": args, "live": False},
+        "on_pattern": '"currentState": "on"',
+        "off_pattern": '"currentState": "off"',
+    }
+    assert first["commands"][0]["run"] == {"plugin": "tplinksmartplug", "helper": "turn_on", "args": args}
+    assert first["commands"][1]["run"] == {"plugin": "tplinksmartplug", "helper": "turn_off", "args": args}
+    assert only_preset(groups, "tplinksmartplug:10.0.0.7")["control"]["name"] == "10.0.0.7"
+    assert_unkeyed(first)
+
+
+def test_tplink_and_tasmota_reads_are_live_false_and_the_others_are_not():
+    settings = settings_of(
+        tplinksmartplug={"arrSmartplugs": [{"ip": "10.0.0.5", "label": "A"}]},
+        tasmota={"arrSmartplugs": [{"ip": "10.0.0.6", "idx": 1, "label": "B"}]},
+        octorelay={"r1": {"active": True, "label_text": "C"}},
+        gpiocontrol={"gpio_configurations": [{"name": "D"}]},
+        usbrelaycontrol={"usbrelay_configurations": [{"name": "E"}]},
+    )
+    plugins = Plugins("psucontrol", "tplinksmartplug", "tasmota", "octorelay", "gpiocontrol", "usbrelaycontrol",
+                      "bettergrblsupport")
+    groups = harvest(plugins, settings)
+    live_false = set()
+    for group in groups:
+        for preset in group["presets"]:
+            read = preset["control"].get("read") or {}
+            if read.get("live") is False:
+                live_false.add(group["plugin"])
+    assert live_false == {"tplinksmartplug", "tasmota"}
+
+
+def test_tasmota_uses_the_method_kind_with_ip_and_idx():
+    # tasmota.py:467 turn_on(plugip, plugidx), :512 turn_off, :557 check_status(plugip, plugidx); plug fields ip, idx, label
+    settings = settings_of(tasmota={"arrSmartplugs": [{"ip": "10.0.0.6", "idx": 1, "label": "Chamber"}]})
+    preset = only_preset(harvest(Plugins("tasmota"), settings), "tasmota:10.0.0.6/1")
+    args = {"plugip": "10.0.0.6", "plugidx": 1}
+    assert preset["name"] == "Chamber"
+    assert preset["control"]["read"] == {"plugin": "tasmota", "method": "check_status", "args": args, "live": False}
+    assert preset["commands"][0]["run"] == {"plugin": "tasmota", "method": "turn_on", "args": args}
+    assert preset["commands"][1]["run"] == {"plugin": "tasmota", "method": "turn_off", "args": args}
+
+
+def test_octorelay_offers_only_active_relays_named_by_label_or_key():
+    # octorelay_const.py:41 settings r1..r8 with active and label_text; UPDATE "update", GET_STATUS "getStatus" (:329-330)
+    settings = settings_of(
+        octorelay={
+            "r1": {"active": True, "label_text": "Printer"},
+            "r2": {"active": False, "label_text": "Unused"},
+            "r3": {"active": True, "label_text": ""},
+        }
+    )
+    groups = harvest(Plugins("octorelay"), settings)
+    assert [p["preset"] for p in presets_of(groups, "octorelay")] == ["octorelay:r1", "octorelay:r3"]
+    first = only_preset(groups, "octorelay:r1")
+    assert first["control"]["read"] == {"plugin": "octorelay", "api": "getStatus", "data": {"subject": "r1"}}
+    assert (first["control"]["on_pattern"], first["control"]["off_pattern"]) == ('"status": true', '"status": false')
+    assert first["commands"][0]["run"] == {"plugin": "octorelay", "api": "update", "data": {"subject": "r1", "target": True}}
+    assert first["commands"][1]["run"] == {"plugin": "octorelay", "api": "update", "data": {"subject": "r1", "target": False}}
+    assert only_preset(groups, "octorelay:r3")["name"] == "R3"
+
+
+def test_gpiocontrol_uses_the_list_index_as_id_and_names_unnamed_ones():
+    # gpiocontrol.py:53 gpio_configurations, name; ids are list indexes (gpiocontrol.py:130); getGpioState answers
+    # on/off as a JSON string (gpiocontrol.py:133-139)
+    settings = settings_of(gpiocontrol={"gpio_configurations": [{"name": "Light", "pin": 17}, {"pin": 22}]})
+    groups = harvest(Plugins("gpiocontrol"), settings)
+    first = only_preset(groups, "gpiocontrol:0")
+    assert first["control"]["read"] == {"plugin": "gpiocontrol", "api": "getGpioState", "data": {"id": 0}}
+    assert (first["control"]["on_pattern"], first["control"]["off_pattern"]) == ("^on$", "^off$")
+    assert first["commands"][0]["run"] == {"plugin": "gpiocontrol", "api": "turnGpioOn", "data": {"id": 0}}
+    assert first["commands"][1]["run"] == {"plugin": "gpiocontrol", "api": "turnGpioOff", "data": {"id": 0}}
+    assert only_preset(groups, "gpiocontrol:1")["name"] == "gpiocontrol 1"
+
+
+def test_usbrelaycontrol_uses_the_list_index_as_id():
+    # usbrelaycontrol.py:43 usbrelay_configurations; turnUSBRelayOn/Off and getUSBRelayState take id (:130-152)
+    settings = settings_of(usbrelaycontrol={"usbrelay_configurations": [{"name": "Fan"}, {"name": "Lamp"}]})
+    preset = only_preset(harvest(Plugins("usbrelaycontrol"), settings), "usbrelaycontrol:1")
+    assert preset["control"]["read"] == {"plugin": "usbrelaycontrol", "api": "getUSBRelayState", "data": {"id": 1}}
+    assert preset["commands"][0]["run"] == {"plugin": "usbrelaycontrol", "api": "turnUSBRelayOn", "data": {"id": 1}}
+    assert preset["commands"][1]["run"] == {"plugin": "usbrelaycontrol", "api": "turnUSBRelayOff", "data": {"id": 1}}
+
+
+def test_bettergrbl_is_one_action_control_with_four_run_commands_and_confirm_on_reset():
+    # __init__.py:1926-1934 exported helpers sleep, unlock, reset, home, state; helper_state returns a dict (:1835)
+    groups = harvest(Plugins("bettergrblsupport"), settings_of())
+    preset = only_preset(groups, "bettergrblsupport:grbl")
+    assert groups[0]["name"] == "Better Grbl Support"
+    assert preset["control"] == {
+        "type": "action",
+        "name": "Grbl",
+        "icon": "fa-solid fa-plug",
+        "read": {"plugin": "bettergrblsupport", "helper": "state", "field": "state"},
+    }
+    home, unlock, sleep, reset = preset["commands"]
+    assert [c["name"] for c in preset["commands"]] == ["Home", "Unlock", "Sleep", "Reset"]
+    assert home["run"] == {"plugin": "bettergrblsupport", "helper": "home"}
+    assert unlock["run"] == {"plugin": "bettergrblsupport", "helper": "unlock"}
+    assert sleep["run"] == {"plugin": "bettergrblsupport", "helper": "sleep"}
+    assert reset["run"] == {"plugin": "bettergrblsupport", "helper": "reset"}
+    assert reset["confirm"] == "This sends a reset to the Grbl controller."
+    assert all(c["role"] == "run" for c in preset["commands"])
+    assert "confirm" not in home
+    assert_unkeyed(preset)
+
+
+def test_harvest_never_copies_a_credential_field():
+    settings = settings_of(
+        tplinksmartplug={
+            "arrSmartplugs": [{"ip": "10.0.0.5", "label": "Printer", "username": "hunter", "password": "s3cret",
+                               "token": "tok123", "key": "k456"}]
+        }
+    )
+    text = json.dumps(harvest(Plugins("tplinksmartplug"), settings))
+    for secret in ("hunter", "s3cret", "tok123", "k456"):
+        assert secret not in text

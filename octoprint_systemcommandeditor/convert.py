@@ -112,7 +112,8 @@ def free_key(base, used):
 
 
 def _is_placement(entry):
-    return _valid(entry) and not _is_divider(entry) and "command" not in entry
+    # a placement names its readout; an entry with a run and no command is a plugin control's command, not one
+    return _valid(entry) and not _is_divider(entry) and "command" not in entry and "device" in entry
 
 
 def place_readouts(devices, actions):
