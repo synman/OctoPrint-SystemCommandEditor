@@ -471,6 +471,60 @@ def test_v8_skipped_at_8(tmp_path):
     assert plugin._settings.global_sets == []
 
 
+def mqtt_publish(args):
+    return {"plugin": "mqtt", "helper": "mqtt_publish", "args": args}
+
+
+def test_v9_adds_retained_false_to_an_mqtt_publish_with_no_retained(tmp_path):
+    actions = [{"action": "mqtt_on", "name": "On", "role": "on",
+                "run": mqtt_publish({"topic": "t", "payload": "ON"})}]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(9, 8)
+    assert plugin._settings.config["system"]["actions"] == [
+        {"action": "mqtt_on", "name": "On", "role": "on",
+         "run": mqtt_publish({"topic": "t", "payload": "ON", "retained": False})},
+    ]
+
+
+def test_v9_sets_retained_false_on_an_mqtt_publish_that_was_retained(tmp_path):
+    actions = [{"action": "mqtt_off", "name": "Off", "role": "off",
+                "run": mqtt_publish({"topic": "t", "payload": "OFF", "retained": True})}]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(9, 8)
+    assert plugin._settings.config["system"]["actions"] == [
+        {"action": "mqtt_off", "name": "Off", "role": "off",
+         "run": mqtt_publish({"topic": "t", "payload": "OFF", "retained": False})},
+    ]
+
+
+def test_v9_leaves_a_non_mqtt_run_an_mqtt_publish_with_false_and_an_entry_with_no_run_unchanged(tmp_path):
+    actions = [
+        {"action": "plug", "name": "Plug", "run": {"plugin": "tasmota", "helper": "turn_on", "args": {}}},
+        {"action": "mqtt_on", "name": "On", "run": mqtt_publish({"topic": "t", "payload": "ON", "retained": False})},
+        cmd("x"),
+    ]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(9, 8)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.global_sets == []
+
+
+def test_v9_writes_nothing_when_no_entry_matches(tmp_path):
+    actions = [{"action": "mqtt_on", "name": "On", "run": mqtt_publish({"topic": "t", "payload": "ON", "retained": False})}]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(9, 8)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.global_sets == []
+
+
+def test_v9_skipped_at_9(tmp_path):
+    actions = [{"action": "mqtt_on", "name": "On", "run": mqtt_publish({"topic": "t", "payload": "ON"})}]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(9, 9)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.global_sets == []
+
+
 def test_v6_runs_v7_then_v8_and_ends_on_power_with_the_colors(tmp_path):
     actions = [
         {"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-play"},

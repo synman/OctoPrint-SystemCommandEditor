@@ -1699,7 +1699,8 @@ def run_probe():
         on_entry = next((a for a in (body.get("system") or {}).get("actions") or []
                          if isinstance(a, dict) and a.get("preset") == "mqtt:switch" and a.get("role") == "on"), {})
         check("saving the MQTT On command stores the new payload and keeps its topic",
-              (on_entry.get("run") or {}).get("args") == {"topic": "home/switch/set", "payload": "1"}, json.dumps(on_entry))
+              (on_entry.get("run") or {}).get("args") == {"topic": "home/switch/set", "payload": "1", "retained": False},
+              json.dumps(on_entry))
 
         list_ops_checks()
         format_checks()

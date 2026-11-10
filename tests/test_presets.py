@@ -536,9 +536,11 @@ def test_mqtt_switch_publishes_on_and_off_to_its_command_topic_and_reads_its_sta
         },
         "commands": [
             {"name": "On", "role": "on", "icon": "fa-solid fa-power-off", "icon_color": "#00c800",
-             "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "ON"}}},
+             "run": {"plugin": "mqtt", "helper": "mqtt_publish",
+                     "args": {"topic": "home/switch/set", "payload": "ON", "retained": False}}},
             {"name": "Off", "role": "off", "icon": "fa-solid fa-power-off", "icon_color": "#c80000",
-             "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "OFF"}}},
+             "run": {"plugin": "mqtt", "helper": "mqtt_publish",
+                     "args": {"topic": "home/switch/set", "payload": "OFF", "retained": False}}},
         ],
     }
 

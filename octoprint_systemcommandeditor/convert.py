@@ -191,6 +191,27 @@ def power_icons(actions):
     return (fixed, True) if changed else (actions, False)
 
 
+def retained_publish(actions):
+    """Settings v9: an MQTT publish command is never retained.
+
+    The MQTT plugin retains a publish when its ``retained`` argument is left out, and its broker setting defaults to
+    retained, so a switch's command kept re-applying on reconnect. Every command whose run is ``mqtt_publish`` and
+    whose args do not say ``retained: false`` gets it. Returns ``(actions, changed)``. The inputs are not modified,
+    and a config with no such command is returned untouched.
+    """
+    fixed = []
+    changed = False
+    for entry in actions or []:
+        run = entry.get("run") if isinstance(entry, dict) else None
+        if isinstance(run, dict) and run.get("plugin") == "mqtt" and run.get("helper") == "mqtt_publish":
+            args = run.get("args", {})
+            if isinstance(args, dict) and args.get("retained") is not False:
+                entry = dict(entry, run=dict(run, args=dict(args, retained=False)))
+                changed = True
+        fixed.append(entry)
+    return (fixed, True) if changed else (actions, False)
+
+
 def _is_plug_read(device):
     if not isinstance(device, dict):
         return False

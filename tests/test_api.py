@@ -486,8 +486,8 @@ def test_first_start_marks_readout_placement_with_its_readout(monkeypatch):
     assert [d for d in config["devices"] if d["id"] == "disk"][0]["preset"] == "disk"
 
 
-def test_settings_version_is_8():
-    assert SystemCommandEditorPlugin().get_settings_version() == 8
+def test_settings_version_is_9():
+    assert SystemCommandEditorPlugin().get_settings_version() == 9
 
 
 def printer_in(state):

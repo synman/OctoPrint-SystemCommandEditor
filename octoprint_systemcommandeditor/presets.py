@@ -583,8 +583,10 @@ def _mqtt(get):
         {"mqtt": "home/switch/state"},
         "^ON$",
         "^OFF$",
-        {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "ON"}},
-        {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "OFF"}},
+        {"plugin": "mqtt", "helper": "mqtt_publish",
+         "args": {"topic": "home/switch/set", "payload": "ON", "retained": False}},
+        {"plugin": "mqtt", "helper": "mqtt_publish",
+         "args": {"topic": "home/switch/set", "payload": "OFF", "retained": False}},
         "fa-solid fa-tower-broadcast",
     )
     return [("readout", "MQTT readout", readout, []), ("switch", "MQTT switch", control, commands)]

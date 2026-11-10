@@ -332,7 +332,7 @@ $(function () {
         self.mqttPayload = ko.observable("");
         // the MQTT run as the box shows it now: the saved keys kept, the topic trimmed, the payload as typed
         const mqttRun = () => _.extend({}, self.runCall(), {
-            args: _.extend({}, self.runCall().args, {topic: self.mqttTopic().trim(), payload: self.mqttPayload()})
+            args: _.extend({}, self.runCall().args, {topic: self.mqttTopic().trim(), payload: self.mqttPayload(), retained: false})
         });
 
         self.device = ko.observable("");

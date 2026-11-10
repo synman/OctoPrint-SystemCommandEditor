@@ -35,7 +35,16 @@ from .adapters import (
     run_with_timeout,
     state_word,
 )
-from .convert import command_count, convert, link_devices, live_plug_reads, place_readouts, power_icons, role_icons
+from .convert import (
+    command_count,
+    convert,
+    link_devices,
+    live_plug_reads,
+    place_readouts,
+    power_icons,
+    retained_publish,
+    role_icons,
+)
 from .presets import (
     SYSTEM_SWITCHES,
     action_of,
@@ -139,7 +148,7 @@ class SystemCommandEditorPlugin(
         }
 
     def get_settings_version(self):
-        return 8
+        return 9
 
     def get_api_commands(self):
         return {"status": ["ids"], "presets": [], "run": ["action"], "states": []}
@@ -400,6 +409,8 @@ class SystemCommandEditorPlugin(
             self._role_icons()
         if current is None or current < 8:
             self._power_icons()
+        if current is None or current < 9:
+            self._retained_publish()
 
     def _role_icons(self):
         actions = copy.deepcopy(self._settings.global_get(["system", "actions"]) or [])
@@ -416,6 +427,14 @@ class SystemCommandEditorPlugin(
             return
         self._settings.global_set(["system", "actions"], new_actions)
         self._logger.info("Gave the On and Off switch commands the power icon in green and red")
+
+    def _retained_publish(self):
+        actions = copy.deepcopy(self._settings.global_get(["system", "actions"]) or [])
+        new_actions, changed = retained_publish(actions)
+        if not changed:
+            return
+        self._settings.global_set(["system", "actions"], new_actions)
+        self._logger.info("Made the MQTT publish commands non-retained")
 
     def _live_plug_reads(self):
         devices = copy.deepcopy(self._settings.get(["devices"]) or [])
