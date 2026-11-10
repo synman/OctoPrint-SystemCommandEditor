@@ -758,7 +758,8 @@ def format_checks():
     check("saving the readout stores format on that device",
           load is not None and load.get("format") == "{value:.1f}%", json.dumps(load))
     open_settings()
-    page.evaluate("(d) => ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor')).deviceEditor.show(d)",
+    # show() returns a jQuery Deferred, a thenable that settles only when the dialog closes, so return nothing
+    page.evaluate("(d) => { ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor')).deviceEditor.show(d); }",
                   load or {})
     wait_visible("#sce-device-editor")
     check("reopening the readout shows its saved format",
