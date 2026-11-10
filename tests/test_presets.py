@@ -494,7 +494,7 @@ def test_no_harvested_read_carries_a_live_key():
         usbrelaycontrol={"usbrelay_configurations": [{"name": "E"}]},
     )
     plugins = Plugins("psucontrol", "tplinksmartplug", "tasmota", "octorelay", "gpiocontrol", "usbrelaycontrol",
-                      "bettergrblsupport")
+                      "bettergrblsupport", "mqtt")
     groups = harvest(plugins, settings)
     with_live = set()
     for group in groups:
@@ -503,6 +503,44 @@ def test_no_harvested_read_carries_a_live_key():
             if "live" in read:
                 with_live.add(group["plugin"])
     assert with_live == set()
+
+
+def test_mqtt_group_is_offered_only_when_the_mqtt_plugin_is_installed():
+    assert harvest(Plugins(), settings_of()) == []
+    assert harvest(Plugins("mqtt", disabled=("mqtt",)), settings_of()) == []
+    groups = harvest(Plugins("mqtt"), settings_of())
+    assert [group["plugin"] for group in groups] == ["mqtt"]
+    assert [group["name"] for group in groups] == ["MQTT"]
+    assert [preset["preset"] for preset in groups[0]["presets"]] == ["mqtt:readout", "mqtt:switch"]
+
+
+def test_mqtt_readout_reads_its_state_topic_and_has_no_commands():
+    groups = harvest(Plugins("mqtt"), settings_of())
+    assert only_preset(groups, "mqtt:readout") == {
+        "preset": "mqtt:readout",
+        "name": "MQTT readout",
+        "control": {"type": "readout", "name": "MQTT readout", "icon": "fa-solid fa-tower-broadcast",
+                    "read": {"mqtt": "home/sensor/state"}},
+        "commands": [],
+    }
+
+
+def test_mqtt_switch_publishes_on_and_off_to_its_command_topic_and_reads_its_state_topic():
+    groups = harvest(Plugins("mqtt"), settings_of())
+    assert only_preset(groups, "mqtt:switch") == {
+        "preset": "mqtt:switch",
+        "name": "MQTT switch",
+        "control": {
+            "type": "switch", "name": "MQTT switch", "icon": "fa-solid fa-tower-broadcast",
+            "read": {"mqtt": "home/switch/state"}, "on_pattern": "^ON$", "off_pattern": "^OFF$",
+        },
+        "commands": [
+            {"name": "On", "role": "on", "icon": "fa-solid fa-play",
+             "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "ON"}}},
+            {"name": "Off", "role": "off", "icon": "fa-solid fa-power-off",
+             "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "OFF"}}},
+        ],
+    }
 
 
 def test_tasmota_uses_the_method_kind_with_ip_and_idx():
