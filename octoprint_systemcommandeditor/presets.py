@@ -446,7 +446,7 @@ def _tplink(get):
         args = {"plugip": ip}
         control, commands = _switch(
             label,
-            {"plugin": "tplinksmartplug", "helper": "check_status", "args": args, "live": False},
+            {"plugin": "tplinksmartplug", "helper": "check_status", "args": args},
             '"currentState": "on"',
             '"currentState": "off"',
             {"plugin": "tplinksmartplug", "helper": "turn_on", "args": args},
@@ -470,7 +470,7 @@ def _tasmota(get):
         args = {"plugip": ip, "plugidx": plug.get("idx")}
         control, commands = _switch(
             label,
-            {"plugin": "tasmota", "method": "check_status", "args": args, "live": False},
+            {"plugin": "tasmota", "method": "check_status", "args": args},
             '"currentState": "on"',
             '"currentState": "off"',
             {"plugin": "tasmota", "method": "turn_on", "args": args},

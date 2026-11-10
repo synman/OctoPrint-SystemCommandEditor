@@ -475,7 +475,7 @@ def test_tplink_has_one_preset_per_plug_named_by_label_or_address():
         "type": "switch",
         "name": "Printer",
         "icon": "fa-solid fa-plug",
-        "read": {"plugin": "tplinksmartplug", "helper": "check_status", "args": args, "live": False},
+        "read": {"plugin": "tplinksmartplug", "helper": "check_status", "args": args},
         "on_pattern": '"currentState": "on"',
         "off_pattern": '"currentState": "off"',
     }
@@ -485,7 +485,7 @@ def test_tplink_has_one_preset_per_plug_named_by_label_or_address():
     assert_unkeyed(first)
 
 
-def test_tplink_and_tasmota_reads_are_live_false_and_the_others_are_not():
+def test_no_harvested_read_carries_a_live_key():
     settings = settings_of(
         tplinksmartplug={"arrSmartplugs": [{"ip": "10.0.0.5", "label": "A"}]},
         tasmota={"arrSmartplugs": [{"ip": "10.0.0.6", "idx": 1, "label": "B"}]},
@@ -496,13 +496,13 @@ def test_tplink_and_tasmota_reads_are_live_false_and_the_others_are_not():
     plugins = Plugins("psucontrol", "tplinksmartplug", "tasmota", "octorelay", "gpiocontrol", "usbrelaycontrol",
                       "bettergrblsupport")
     groups = harvest(plugins, settings)
-    live_false = set()
+    with_live = set()
     for group in groups:
         for preset in group["presets"]:
             read = preset["control"].get("read") or {}
-            if read.get("live") is False:
-                live_false.add(group["plugin"])
-    assert live_false == {"tplinksmartplug", "tasmota"}
+            if "live" in read:
+                with_live.add(group["plugin"])
+    assert with_live == set()
 
 
 def test_tasmota_uses_the_method_kind_with_ip_and_idx():
@@ -511,7 +511,7 @@ def test_tasmota_uses_the_method_kind_with_ip_and_idx():
     preset = only_preset(harvest(Plugins("tasmota"), settings), "tasmota:10.0.0.6/1")
     args = {"plugip": "10.0.0.6", "plugidx": 1}
     assert preset["name"] == "Chamber"
-    assert preset["control"]["read"] == {"plugin": "tasmota", "method": "check_status", "args": args, "live": False}
+    assert preset["control"]["read"] == {"plugin": "tasmota", "method": "check_status", "args": args}
     assert preset["commands"][0]["run"] == {"plugin": "tasmota", "method": "turn_on", "args": args}
     assert preset["commands"][1]["run"] == {"plugin": "tasmota", "method": "turn_off", "args": args}
 

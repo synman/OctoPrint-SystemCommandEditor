@@ -128,6 +128,32 @@ def link_devices(devices, actions, key_for):
     return kept, actions, True
 
 
+def live_plug_reads(devices):
+    """Settings v6: the TP-Link and Tasmota plug reads go back into live updates.
+
+    Those presets used to save ``live: false`` on their read, which kept the System menu's live timer from polling
+    them. Every device whose read is from ``tplinksmartplug`` or ``tasmota`` and carries ``live: false`` gets a copy
+    of its read without the ``live`` key. Returns ``(devices, changed)``. Every other device is kept as it is, in
+    order; a config with no such read is returned untouched.
+    """
+    if not any(_is_plug_read(device) for device in devices or []):
+        return devices, False
+    fixed = []
+    for device in devices:
+        if _is_plug_read(device):
+            read = {key: value for key, value in device["read"].items() if key != "live"}
+            device = dict(device, read=read)
+        fixed.append(device)
+    return fixed, True
+
+
+def _is_plug_read(device):
+    if not isinstance(device, dict):
+        return False
+    read = device.get("read")
+    return isinstance(read, dict) and read.get("plugin") in ("tplinksmartplug", "tasmota") and read.get("live") is False
+
+
 def command_count(actions):
     return sum(1 for entry in actions or [] if _valid(entry) and not _is_divider(entry) and "command" in entry)
 

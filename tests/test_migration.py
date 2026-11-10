@@ -333,3 +333,57 @@ def test_v5_skipped_when_already_at_5(tmp_path):
     plugin.on_settings_migrate(5, 5)
     assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == devices
     assert plugin._settings.global_sets == []
+
+
+def read_switch(id_, read):
+    return {"id": id_, "type": "switch", "name": id_.title(), "icon": "", "read": read}
+
+
+TPLINK_READ = {"plugin": "tplinksmartplug", "helper": "check_status", "args": {"plugip": "10.0.0.5"}}
+TASMOTA_READ = {"plugin": "tasmota", "method": "check_status", "args": {"plugip": "10.0.0.6", "plugidx": 1}}
+
+
+def test_v6_drops_live_from_tplink_and_tasmota_reads_and_keeps_order(tmp_path):
+    devices = [
+        read_switch("plug", {**TPLINK_READ, "live": False}),
+        read_switch("psu", {"plugin": "psucontrol", "live": False}),
+        {"id": "disk", "type": "readout", "name": "Disk", "icon": "", "status": "df"},
+        read_switch("tas", {**TASMOTA_READ, "live": False}),
+    ]
+    plugin = make_plugin(tmp_path, [cmd("a")], None, devices=devices)
+    plugin.on_settings_migrate(6, 5)
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == [
+        read_switch("plug", TPLINK_READ),
+        devices[1],
+        devices[2],
+        read_switch("tas", TASMOTA_READ),
+    ]
+
+
+def test_v6_leaves_a_config_with_no_such_read_untouched(tmp_path):
+    devices = [read_switch("psu", {"plugin": "psucontrol", "live": False}),
+               {"id": "disk", "type": "readout", "name": "Disk", "icon": "", "status": "df"}]
+    plugin = make_plugin(tmp_path, [cmd("a")], None, devices=devices)
+    set_paths = []
+    plugin._settings.set = lambda path, value: set_paths.append(path)
+    plugin.on_settings_migrate(6, 5)
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == devices
+    assert set_paths == []
+    assert plugin._settings.global_sets == []
+
+
+def test_v6_skipped_when_already_at_6(tmp_path):
+    devices = [read_switch("plug", {**TPLINK_READ, "live": False})]
+    plugin = make_plugin(tmp_path, [], None, devices=devices)
+    plugin.on_settings_migrate(6, 6)
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == devices
+
+
+def test_v6_keeps_plug_reads_that_are_live_or_have_no_live_key(tmp_path):
+    devices = [read_switch("plug", {**TPLINK_READ, "live": True}), read_switch("tas", dict(TASMOTA_READ))]
+    plugin = make_plugin(tmp_path, [], None, devices=devices)
+    set_paths = []
+    plugin._settings.set = lambda path, value: set_paths.append(path)
+    plugin.on_settings_migrate(6, 5)
+    assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == devices
+    assert set_paths == []

@@ -35,7 +35,7 @@ from .adapters import (
     run_with_timeout,
     state_word,
 )
-from .convert import command_count, convert, link_devices, place_readouts
+from .convert import command_count, convert, link_devices, live_plug_reads, place_readouts
 from .presets import (
     SYSTEM_SWITCHES,
     action_of,
@@ -139,7 +139,7 @@ class SystemCommandEditorPlugin(
         }
 
     def get_settings_version(self):
-        return 5
+        return 6
 
     def get_api_commands(self):
         return {"status": ["ids"], "presets": [], "run": ["action"], "states": []}
@@ -394,6 +394,16 @@ class SystemCommandEditorPlugin(
             self._mark_presets()
         if current is None or current < 5:
             self._link_devices()
+        if current is None or current < 6:
+            self._live_plug_reads()
+
+    def _live_plug_reads(self):
+        devices = copy.deepcopy(self._settings.get(["devices"]) or [])
+        new_devices, changed = live_plug_reads(devices)
+        if not changed:
+            return
+        self._settings.set(["devices"], new_devices)
+        self._logger.info("Put the TP-Link and Tasmota plug reads back in live updates")
 
     def _link_devices(self):
         devices = copy.deepcopy(self._settings.get(["devices"]) or [])
