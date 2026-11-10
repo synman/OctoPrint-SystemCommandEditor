@@ -1537,6 +1537,9 @@ def run_probe():
         topic_editable = page.locator("#sce-device-mqtt-state").is_editable()
         check("the MQTT switch control shows its state topic in an editable input",
               topic_before == "home/switch/state" and topic_editable, "topic=%r editable=%s" % (topic_before, topic_editable))
+        read_line_hidden = not visible("#sce-device-editor .sce-read-line")
+        check("the MQTT switch control hides the read-only Reads line",
+              read_line_hidden, "read line visible=%s" % (not read_line_hidden))
         page.fill("#sce-device-mqtt-state", "home/plug/state")
         modal_done("#sce-device-editor")
         body = save_settings() or {}
@@ -1555,6 +1558,9 @@ def run_probe():
         payload_on = page.locator("#sce-editor-mqtt-payload").input_value()
         check("the MQTT On command shows its topic and payload",
               topic_on == "home/switch/set" and payload_on == "ON", "topic=%r payload=%r" % (topic_on, payload_on))
+        run_line_hidden = not visible("#sce-editor .sce-run-line")
+        check("the MQTT On command dialog hides the read-only Runs line",
+              run_line_hidden, "run line visible=%s" % (not run_line_hidden))
         page.fill("#sce-editor-mqtt-payload", "1")
         modal_done("#sce-editor")
         body = save_settings() or {}
