@@ -844,7 +844,9 @@ def run_probe():
             check("moving the Laser control moves both its commands together, above the Webcam divider",
                   order[:3] == ["laser_on_cmd", "laser_off_cmd", "divider"], json.dumps(order))
 
-        # the On command's own icon and color replace the toggle icon on its button, once saved
+        # the On command's own icon and color replace the toggle icon on its button, once saved. The first save
+        # closed the settings dialog, so reopen it before the list and the save below
+        open_settings()
         edit_command("Laser on")
         page.fill("#sce-editor-icon", "fa-solid fa-bolt")
         page.locator("#sce-editor .sce-icon-color input[type=color]").fill("#ff0000")
