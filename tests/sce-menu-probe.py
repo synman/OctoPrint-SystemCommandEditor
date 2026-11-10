@@ -830,6 +830,9 @@ def run_probe():
         def plug_buttons():
             return [b for b in page.evaluate(BUTTONS, "plug") if "sce-hidden" not in b["cls"]]
 
+        # the disabled button runs plug_on, whose last run flashes a check for FLASH_MS (3000 ms in the menu script);
+        # wait past that window so the icon the check reads is the unknown-state icon, not the run's flash
+        pump(3500)
         STATUS["plug"]["state"] = None
         try:
             page.click(TOGGLE)      # close, then reopen: the open sends a status check that now answers unknown
