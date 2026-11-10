@@ -300,6 +300,7 @@
             <button type="button" class="btn btn-mini" title="{{ _('Move down')|edq }}" data-bind="click: $root.moveDown, enable: $root.canMove($data, 1)"><i class="fa-solid fa-arrow-down"></i></button>
             <!-- ko if: $root.isPlacement($data) -->
             <button type="button" class="btn btn-mini btn-primary" title="{{ _('Edit this readout in Controls')|edq }}" data-bind="click: $root.editPlacement"><i class="fa-solid fa-pencil"></i></button>
+            <button type="button" class="btn btn-mini" title="{{ _('Duplicate')|edq }}" data-bind="click: $root.duplicatePlacement"><i class="fa-solid fa-copy"></i></button>
             <button type="button" class="btn btn-mini btn-danger" title="{{ _('Remove from the System menu; the control stays in Controls')|edq }}" data-bind="click: $root.removePlacement"><i class="fa-solid fa-trash"></i></button>
             <!-- /ko -->
             <!-- ko ifnot: $root.isPlacement($data) -->

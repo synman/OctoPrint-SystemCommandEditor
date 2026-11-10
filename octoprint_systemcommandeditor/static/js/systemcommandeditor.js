@@ -1096,6 +1096,10 @@ $(function () {
             const device = self.deviceOf(entry);
             if (device) self.editDevice(device);
         };
+        self.duplicatePlacement = (entry) => {
+            const device = self.deviceOf(entry);
+            if (device) self.duplicateDevice(device);
+        };
         self.removePlacement = (entry) => {
             self.entries.remove(entry);
             self.changed();

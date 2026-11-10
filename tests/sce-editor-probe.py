@@ -702,6 +702,33 @@ def list_ops_checks():
           len(placements) == 1 and placements[0].get("action") == copy_dev[0]["id"],
           "device=%s placements=%s" % (copy_dev, placements))
 
+    # a placed readout's row in Custom commands has a Duplicate button; clicking it and saving adds one readout device with
+    # the original's status under a new id, and one placement for it right after the original's placement
+    set_list([{"action": "rdo", "name": "Readout one", "device": "rdo"}],
+             [{"id": "rdo", "type": "readout", "name": "Readout one", "icon": "fa-solid fa-hard-drive", "status": "echo r"}])
+    page.wait_for_timeout(200)
+    placed_row = page.locator("#settings_plugin_systemcommandeditor .sce-row").filter(
+        has=page.locator(".sce-name", has_text=re.compile(r"^\s*Readout one\s*$"))).first
+    dup_buttons = placed_row.locator("button[title='Duplicate']")
+    check("a placed readout's row has a Duplicate button", dup_buttons.count() == 1, "count=%d" % dup_buttons.count())
+    dup_buttons.click()
+    body = save_settings() or {}
+    saved_devices = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
+    saved_actions = list((body.get("system") or {}).get("actions") or [])
+    originals = [d for d in saved_devices if d.get("id") == "rdo"]
+    copies = [d for d in saved_devices if d.get("name") == "Copy of Readout one"]
+    copy_id = copies[0].get("id") if len(copies) == 1 else None
+    check("saving after Duplicate on a placed readout adds one readout with the original's status under a new id",
+          len(originals) == 1 and len(copies) == 1 and copy_id != "rdo" and copies[0].get("type") == "readout"
+          and copies[0].get("status") == "echo r" and originals[0].get("status") == "echo r",
+          json.dumps({"originals": originals, "copies": copies}))
+    rdo_at = [i for i, a in enumerate(saved_actions) if a.get("device") == "rdo"]
+    copy_at = [i for i, a in enumerate(saved_actions) if copy_id and a.get("device") == copy_id]
+    check("the copy's placement is one entry named by the copy's id, right after the original's placement",
+          len(rdo_at) == 1 and len(copy_at) == 1 and copy_at[0] == rdo_at[0] + 1
+          and saved_actions[copy_at[0]].get("action") == copy_id,
+          json.dumps({"rdo_at": rdo_at, "copy_at": copy_at, "actions": saved_actions}))
+
 
 
 def run_probe():
