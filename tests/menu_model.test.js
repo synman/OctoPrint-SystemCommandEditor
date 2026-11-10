@@ -140,21 +140,61 @@ test("members: a safe_restart role fills its own slot, first one wins", () => {
 
 test("switchView: a safe restart button follows restart, before off and on", () => {
     const m = {on: "a_on", off: "a_off", restart: "a_restart", safe_restart: "a_safe", choices: []};
-    assert.deepStrictEqual(M.switchView(m, "unknown").buttons.map((b) => b.kind), ["restart", "safe_restart", "off", "on"]);
+    assert.deepStrictEqual(M.switchView(m, "unknown").buttons.map((b) => b.kind), ["restart", "safe_restart", "power"]);
     assert.deepStrictEqual(M.switchView({restart: "r", choices: []}, "on").buttons.map((b) => b.kind), ["restart"]);
 });
 
 // ---- switchView ----
-test("switchView: buttons in order restart, off, on, each only when the member exists", () => {
-    const m = {on: "a_on", off: "a_off", restart: "a_restart", choices: []};
-    const v = M.switchView(m, "unknown");
-    assert.deepStrictEqual(v.buttons.map((b) => b.kind), ["restart", "off", "on"]);
+test("switchView R1: restart and safe_restart come first, in every state", () => {
+    const m = {on: "a_on", off: "a_off", restart: "a_restart", safe_restart: "a_safe", choices: []};
+    ["nostatus", "pending", "unknown", "on", "off", "other"].forEach((state) => {
+        assert.deepStrictEqual(M.switchView(m, state).buttons.slice(0, 2).map((b) => b.kind), ["restart", "safe_restart"], state);
+    });
 });
 
-test("switchView: state on hides the off button, state off hides the on button", () => {
-    const m = {on: "a_on", off: "a_off", restart: "a_restart", choices: []};
-    assert.deepStrictEqual(M.switchView(m, "on").buttons.map((b) => b.kind), ["restart", "off"]);
-    assert.deepStrictEqual(M.switchView(m, "off").buttons.map((b) => b.kind), ["restart", "on"]);
+test("switchView R2: nostatus keeps an off button then an on button, each with no icon field", () => {
+    const m = {on: "a_on", off: "a_off", restart: null, choices: []};
+    const v = M.switchView(m, "nostatus");
+    assert.deepStrictEqual(v.buttons, [{kind: "off", action: "a_off"}, {kind: "on", action: "a_on"}]);
+    assert.ok(v.buttons.every((b) => !("icon" in b) && !("disabled" in b)));
+});
+
+test("switchView R3: state on gives one power off button, and none without an off member", () => {
+    const withOff = M.switchView({on: "a_on", off: "a_off", restart: null, choices: []}, "on");
+    assert.deepStrictEqual(withOff.buttons, [{kind: "off", action: "a_off", icon: "fa-solid fa-power-off"}]);
+    assert.deepStrictEqual(M.switchView({on: "a_on", off: null, restart: null, choices: []}, "on").buttons, []);
+});
+
+test("switchView R4: state off gives one power on button, and none without an on member", () => {
+    const withOn = M.switchView({on: "a_on", off: "a_off", restart: null, choices: []}, "off");
+    assert.deepStrictEqual(withOn.buttons, [{kind: "on", action: "a_on", icon: "fa-solid fa-power-off"}]);
+    assert.deepStrictEqual(M.switchView({on: null, off: "a_off", restart: null, choices: []}, "off").buttons, []);
+});
+
+test("switchView R5: pending, unknown and any other state give one disabled power button for on or off", () => {
+    const both = {on: "a_on", off: "a_off", restart: null, choices: []};
+    ["pending", "unknown", "some_word"].forEach((state) => {
+        assert.deepStrictEqual(M.switchView(both, state).buttons,
+            [{kind: "power", action: "a_on", icon: "fa-solid fa-power-off", disabled: true}], state);
+    });
+    assert.deepStrictEqual(M.switchView({on: null, off: "a_off", restart: null, choices: []}, "unknown").buttons,
+        [{kind: "power", action: "a_off", icon: "fa-solid fa-power-off", disabled: true}]);
+    assert.deepStrictEqual(M.switchView({on: null, off: null, restart: null, choices: []}, "unknown").buttons, []);
+});
+
+test("switchView: a switch with only an on member shows its power button in on, off and unknown", () => {
+    const m = {on: "a_on", off: null, restart: null, choices: []};
+    assert.deepStrictEqual(M.switchView(m, "on").buttons, []);
+    assert.deepStrictEqual(M.switchView(m, "off").buttons.map((b) => b.kind), ["on"]);
+    assert.deepStrictEqual(M.switchView(m, "unknown").buttons.map((b) => b.disabled), [true]);
+});
+
+test("switchView: disabled is true only on the R5 power button", () => {
+    const m = {on: "a_on", off: "a_off", restart: "a_restart", safe_restart: "a_safe", choices: []};
+    ["nostatus", "on", "off"].forEach((state) => {
+        assert.ok(M.switchView(m, state).buttons.every((b) => b.disabled !== true), state);
+    });
+    assert.deepStrictEqual(M.switchView(m, "unknown").buttons.filter((b) => b.disabled).map((b) => b.kind), ["power"]);
 });
 
 test("switchView: the row itself runs nothing, in any state", () => {
@@ -266,10 +306,10 @@ test("statusKind: a check that answered gives its state", () => {
     assert.strictEqual(M.statusKind(true, {state: "1080"}), "1080");
 });
 
-test("switchView: nostatus and unknown give both the on and the off button", () => {
+test("switchView: nostatus gives both the off and the on button, unknown gives one power button", () => {
     const m = {on: "a_on", off: "a_off", restart: null, choices: []};
     assert.deepStrictEqual(M.switchView(m, "nostatus").buttons.map((b) => b.kind), ["off", "on"]);
-    assert.deepStrictEqual(M.switchView(m, "unknown").buttons.map((b) => b.kind), ["off", "on"]);
+    assert.deepStrictEqual(M.switchView(m, "unknown").buttons.map((b) => b.kind), ["power"]);
 });
 
 // ---- seeded fuzz ----
@@ -282,7 +322,8 @@ test("fuzz: switchView never returns a button whose member is null", () => {
         const v = M.switchView(m, state);
         v.buttons.forEach((b) => {
             assert.ok(b.action, "seed " + SEED + " case " + i);
-            assert.strictEqual(m[b.kind], b.action, "seed " + SEED + " case " + i);
+            const member = b.kind === "power" ? (m.on || m.off) : m[b.kind];
+            assert.strictEqual(member, b.action, "seed " + SEED + " case " + i);
         });
     }
 });

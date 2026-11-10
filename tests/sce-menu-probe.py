@@ -490,7 +490,7 @@ def run_probe():
         buttons = page.evaluate(BUTTONS, "laser")
         titles = sorted(b["title"] for b in buttons)
         icon_ok = any("fa-rotate-right" in b["icon"] for b in buttons if b["title"] == "Restart laser") and \
-            any("fa-play" in b["icon"] for b in buttons if b["title"] == "Laser on")
+            any("fa-power-off" in b["icon"] for b in buttons if b["title"] == "Laser on")
         dot_ok = page.locator('li.sce-device[data-device-id="laser"] .sce-dot.sce-off').count() == 1
         check("buttons and titles per switchView", titles == ["Laser on", "Restart laser"] and icon_ok and dot_ok,
               json.dumps({"titles": titles, "dot_off": dot_ok}))
@@ -817,6 +817,38 @@ def run_probe():
         check("a plugin run answering 409 ends in the cross and an error toast with its error",
               blocked and blocked_toasts >= 1 and "plug_blocked" in plugin_runs and "plug_blocked" not in calls,
               "toasts=%s runs=%s" % (blocked_toasts, plugin_runs))
+
+        # R2. a switch in state on draws one power button, its off member, with the power icon
+        open_menu()
+        tp_buttons = [b for b in page.evaluate(BUTTONS, "tplink") if "sce-hidden" not in b["cls"]]
+        check("a switch in state on draws one power off button named by its off member",
+              len(tp_buttons) == 1 and tp_buttons[0]["title"] == "Smart plug off"
+              and "fa-power-off" in tp_buttons[0]["icon"],
+              json.dumps(tp_buttons))
+
+        # R3. an unknown state draws one disabled power button titled State unknown; its click runs nothing
+        def plug_buttons():
+            return [b for b in page.evaluate(BUTTONS, "plug") if "sce-hidden" not in b["cls"]]
+
+        STATUS["plug"]["state"] = None
+        try:
+            page.click(TOGGLE)      # close, then reopen: the open sends a status check that now answers unknown
+            pump(300)
+            open_menu()
+            wait_until(lambda: len(plug_buttons()) == 1 and plug_buttons()[0]["title"] == "State unknown", 6)
+            unknown_btns = plug_buttons()
+            check("an unknown switch draws one disabled power button titled State unknown",
+                  len(unknown_btns) == 1 and unknown_btns[0]["title"] == "State unknown"
+                  and "disabled" in unknown_btns[0]["cls"] and "fa-power-off" in unknown_btns[0]["icon"],
+                  json.dumps(unknown_btns))
+            calls_before, runs_before = len(calls), len(plugin_runs)
+            page.locator('li.sce-device[data-device-id="plug"] button[title="State unknown"]').click()
+            pump(400)
+            check("clicking the disabled unknown power button runs nothing",
+                  len(calls) == calls_before and len(plugin_runs) == runs_before,
+                  "calls=%s runs=%s" % (calls, plugin_runs))
+        finally:
+            STATUS["plug"]["state"] = "off"
 
         # P. live updates are off by default: an open menu sends no further status checks
         open_menu()

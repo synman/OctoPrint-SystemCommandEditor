@@ -124,12 +124,24 @@
         return m;
     }
 
+    const POWER = "fa-solid fa-power-off";
+
+    // a binary switch shows one power button: turn it off while on, on while off, and a disabled one while the
+    // state is not known. A control with no status check keeps the separate off and on buttons.
     function switchView(m, state) {
         const buttons = [];
         if (m.restart) buttons.push({kind: "restart", action: m.restart});
         if (m.safe_restart) buttons.push({kind: "safe_restart", action: m.safe_restart});
-        if (state !== "off" && m.off) buttons.push({kind: "off", action: m.off});
-        if (state !== "on" && m.on) buttons.push({kind: "on", action: m.on});
+        if (state === "nostatus") {
+            if (m.off) buttons.push({kind: "off", action: m.off});
+            if (m.on) buttons.push({kind: "on", action: m.on});
+        } else if (state === "on") {
+            if (m.off) buttons.push({kind: "off", action: m.off, icon: POWER});
+        } else if (state === "off") {
+            if (m.on) buttons.push({kind: "on", action: m.on, icon: POWER});
+        } else if (m.on || m.off) {
+            buttons.push({kind: "power", action: m.on || m.off, icon: POWER, disabled: true});
+        }
         // the row itself runs nothing; only its buttons do
         return {buttons: buttons};
     }
@@ -915,7 +927,7 @@ $(function () {
                 ev.stopPropagation();
             });
 
-            li.append(row, self._runButtons(view.buttons, (b) => BUTTON_ICON[b.kind]));
+            li.append(row, self._runButtons(view.buttons, (b) => b.icon || BUTTON_ICON[b.kind]));
             return li;
         };
 
@@ -933,6 +945,10 @@ $(function () {
                 if (cond.effect === "disable") {
                     btn.addClass("disabled");
                     btn.attr("title", cond.reason);
+                }
+                if (b.disabled) {
+                    btn.addClass("disabled");
+                    btn.attr("title", gettext("State unknown"));
                 }
                 // a running sync button shows the busy icon in place of its own; the check or cross then replaces it
                 const spinning = self._runs.spinning(b.action);
