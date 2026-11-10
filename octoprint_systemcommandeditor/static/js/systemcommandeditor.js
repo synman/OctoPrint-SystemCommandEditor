@@ -648,7 +648,8 @@ $(function () {
                 icon_invert: self.iconInvert() || undefined
             };
             if (self.isMqttRead()) {
-                device.read = {mqtt: self.mqttStateTopic().trim()};
+                // keep the read's other keys, such as a JSON "field" set in config.yaml
+                device.read = _.extend({}, self.readCall(), {mqtt: self.mqttStateTopic().trim()});
             } else if (self.readCall()) {
                 device.read = self.readCall();
             } else {

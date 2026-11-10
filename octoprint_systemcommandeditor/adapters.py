@@ -8,7 +8,8 @@ Three kinds are run here, each naming its plugin:
 - ``{"plugin", "method", "args"}``: a method on the plugin's implementation.
 
 A call may carry ``"field"``: when its answer is a dict, the answer becomes that key's value. A ``read`` may also be
-``{"mqtt": "<topic>"}``, the last payload seen on the topic (see MqttCache).
+``{"mqtt": "<topic>"}``, the last payload seen on the topic (see MqttCache); with ``"field"``, a JSON object payload
+becomes that key's value.
 
 Every call returns ``(output_text, error)`` and never raises. Kept free of OctoPrint imports, so the plugin manager
 is passed in.
@@ -160,6 +161,17 @@ class MqttCache:
         return store
 
 
+def mqtt_field(payload, field):
+    # one key of a JSON object payload; a payload that is not a JSON object is kept as it came
+    try:
+        value = json.loads(payload)
+    except ValueError:
+        return payload
+    if not isinstance(value, dict):
+        return payload
+    return answer_text({"field": field}, value)
+
+
 def read_outcome(spec, plugin_manager, timeout=10, call=run_call, mqtt=None):
     """A ``read`` as the ``(exit, output, error)`` triple a shell status command produces. Exit 0 means no error.
 
@@ -169,6 +181,8 @@ def read_outcome(spec, plugin_manager, timeout=10, call=run_call, mqtt=None):
         if mqtt is None:
             return None, "", "mqtt read has no cache"
         output, error = mqtt.read(spec["mqtt"], plugin_manager)
+        if not error and spec.get("field") is not None:
+            output = mqtt_field(output, spec["field"])
         return (None if error else 0), output, error
     output, error = run_with_timeout(spec, plugin_manager, timeout, call)
     return (None if error else 0), output, error

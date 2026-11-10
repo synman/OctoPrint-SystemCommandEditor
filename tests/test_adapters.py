@@ -271,6 +271,29 @@ def test_read_outcome_for_an_mqtt_read_uses_the_cache():
     assert read_outcome({"mqtt": "t"}, plugins, mqtt=cache) == (0, "on", None)
 
 
+def test_read_outcome_takes_a_field_out_of_a_json_mqtt_payload():
+    callbacks = []
+    plugins = Plugins(mqtt=Impl(exported={"mqtt_subscribe": lambda topic, callback: callbacks.append(callback)}))
+    cache = MqttCache()
+    spec = {"mqtt": "t", "field": "target_c"}
+    assert read_outcome(spec, plugins, mqtt=cache) == (0, "", None)
+    callbacks[0]("t", b'{"temp_c": 26.7, "target_c": 55}', retained=True, qos=0)
+    assert read_outcome(spec, plugins, mqtt=cache) == (0, "55", None)
+    assert read_outcome({"mqtt": "t", "field": "temp_c"}, plugins, mqtt=cache) == (0, "26.7", None)
+    assert read_outcome({"mqtt": "t", "field": "missing"}, plugins, mqtt=cache) == (0, "", None)
+
+
+def test_read_outcome_keeps_an_mqtt_payload_that_is_not_a_json_object():
+    callbacks = []
+    plugins = Plugins(mqtt=Impl(exported={"mqtt_subscribe": lambda topic, callback: callbacks.append(callback)}))
+    cache = MqttCache()
+    spec = {"mqtt": "t", "field": "x"}
+    read_outcome(spec, plugins, mqtt=cache)
+    for payload in (b"on", b"[1, 2]", b"79.7", b"5.50"):
+        callbacks[0]("t", payload, retained=False, qos=0)
+        assert read_outcome(spec, plugins, mqtt=cache) == (0, payload.decode(), None)
+
+
 def test_read_outcome_reports_a_missing_mqtt_plugin_as_an_error():
     assert read_outcome({"mqtt": "t"}, Plugins(), mqtt=MqttCache()) == (None, "", "mqtt is not installed")
 
