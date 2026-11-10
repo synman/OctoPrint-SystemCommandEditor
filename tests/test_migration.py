@@ -509,6 +509,16 @@ def test_v9_leaves_a_non_mqtt_run_an_mqtt_publish_with_false_and_an_entry_with_n
     assert plugin._settings.global_sets == []
 
 
+def test_v9_leaves_another_mqtt_helper_unchanged(tmp_path):
+    # only mqtt_publish takes retained; another helper of the mqtt plugin keeps its args as saved
+    actions = [{"action": "sub", "name": "Sub", "run": {"plugin": "mqtt", "helper": "mqtt_subscribe",
+                                                        "args": {"topic": "t"}}}]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(9, 8)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.global_sets == []
+
+
 def test_v9_writes_nothing_when_no_entry_matches(tmp_path):
     actions = [{"action": "mqtt_on", "name": "On", "run": mqtt_publish({"topic": "t", "payload": "ON", "retained": False})}]
     plugin = make_plugin(tmp_path, actions, None)
