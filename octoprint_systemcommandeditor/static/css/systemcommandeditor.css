@@ -131,6 +131,15 @@
   font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
+/* Bootstrap 2's code sets nowrap; let long read and run lines wrap inside the editor dialogs */
+#sce-device-editor .sce-read-line,
+#sce-editor .sce-run-line {
+  display: inline-block;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 #sce-editor .sce-icon-input input {
   width: 220px;
 }
