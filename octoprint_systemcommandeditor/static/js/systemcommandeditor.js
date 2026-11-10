@@ -890,6 +890,7 @@ $(function () {
                 if (command.when) entry.when = command.when;
                 if (command.when_control) entry.when_control = command.when_control;
                 if (command.icon) entry.icon = command.icon;
+                if (command.icon_color) entry.icon_color = command.icon_color;
                 if (command.async) entry.async = true;
                 if (command.confirm) entry.confirm = command.confirm;
                 return entry;

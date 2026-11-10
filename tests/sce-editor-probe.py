@@ -1701,6 +1701,11 @@ def run_probe():
         check("saving the MQTT On command stores the new payload and keeps its topic",
               (on_entry.get("run") or {}).get("args") == {"topic": "home/switch/set", "payload": "1", "retained": False},
               json.dumps(on_entry))
+        check("a switch added from the picker keeps its preset's green On and red Off icon colors",
+              on_entry.get("icon_color") == "#00c800" and next(
+                  (a for a in (body.get("system") or {}).get("actions") or []
+                   if isinstance(a, dict) and a.get("preset") == "mqtt:switch" and a.get("role") == "off"),
+                  {}).get("icon_color") == "#c80000", json.dumps(on_entry))
 
         list_ops_checks()
         format_checks()

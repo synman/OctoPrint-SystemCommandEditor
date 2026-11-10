@@ -147,7 +147,8 @@ __plugin_helpers__ = {
 }
 ```
 
-When a plugin has no `state_values` helper, the editor uses a built-in list for Better Grbl Support. That list
+Better Grbl Support adds this helper in a version that is not released yet. Until a plugin exports it, the editor
+uses a built-in list for Better Grbl Support. That list
 holds its Grbl states: Idle, Run, Hold, Jog, Alarm, Door, Check, Home, Sleep, Reset and N/A. For any other plugin,
 the picker is a text box.
 
@@ -213,7 +214,8 @@ line to `octoprint.log` when it changes something:
 
 ## Requirements
 
-OctoPrint 1.9 or newer, including 2.0, on Python 3.7 or newer. Tested on 1.9.3, 1.10.3, 1.11.8 and 2.0.0rc5.
+OctoPrint 1.9 or newer, including 2.0, on Python 3.7 or newer. 2.0 was tested on 1.9.3, 1.10.3, 1.11.8 and
+2.0.0rc5. 2.1 was tested on 1.11.8 and 2.0.0rc5.
 
 ## Setup
 
