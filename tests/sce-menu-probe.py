@@ -926,6 +926,9 @@ def run_probe():
         page.evaluate(TAG_HELD_BUTTON)
         n0, p0 = len(calls), len(plugin_runs)
         box = restart.bounding_box()
+        # a real tap has the menu toggle focused when the press lands; the press blurs it, which must not end the press
+        page.focus(TOGGLE)
+        pump(100)
         page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
         page.mouse.down()
         pump(2500)     # at least two live intervals answer while the press is held
@@ -947,6 +950,34 @@ def run_probe():
         tap_runs = calls[n1:] + plugin_runs[p1:]
         check("a second tap while a sync run spins runs nothing", tap_runs == ["laser_restart"],
               "runs=%s" % tap_runs)
+
+        # T3. a press that ends with no click still draws the held redraw once it ends (live updates off, so the
+        #     only status check is the one the open sends, and its held answer is the one that changes the row)
+        options["live_updates"] = False
+        page.reload(wait_until="domcontentloaded")
+        wait_until(lambda: page.evaluate(
+            "() => document.querySelector('li.sce-device[data-device-id=\"laser\"] .sce-dot.sce-off') !== null"), 15)
+        if page.evaluate(MENU_OPEN):
+            page.click(TOGGLE)
+            pump(600)
+        released.clear()
+        status_plan.append(("hold", STATUS_HOLD, {"laser": "on"}))
+        page.click(TOGGLE)         # the open's status check is held back and answers On
+        pump(300)
+        state_row = page.locator('li.sce-device[data-device-id="laser"] .sce-state')
+        shown_before = state_row.inner_text().strip()
+        state_box = state_row.bounding_box()
+        page.mouse.move(state_box["x"] + state_box["width"] / 2, state_box["y"] + state_box["height"] / 2)
+        page.mouse.down()
+        pump(STATUS_HOLD * 1000 + 600)     # the held answer arrives during the press
+        shown_held = state_row.inner_text().strip()
+        page.mouse.up()                    # released on the same row: no button, so no click runs anything
+        pump(300)
+        shown_after = state_row.inner_text().strip()
+        check("a press with no click still draws once it ends",
+              shown_before == "Off" and shown_held == "Off" and released == ["on"] and shown_after == "On",
+              "before=%r held=%r released=%s after=%r runs=%s" % (
+                  shown_before, shown_held, released, shown_after, calls[n1:] + plugin_runs[p1:]))
         options["live_updates"] = prev_live
 
         browser.close()
