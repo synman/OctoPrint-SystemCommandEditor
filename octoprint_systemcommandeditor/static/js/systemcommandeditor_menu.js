@@ -192,6 +192,33 @@
         return this._last[action];
     };
 
+    // holds a redraw while a press is down, so a button is never replaced between its pointerdown and pointerup.
+    // request() asks to draw now; release() reports whether a draw was owed during the press.
+    function PressGate() {
+        this.down = false;
+        this.owed = false;
+    }
+
+    PressGate.prototype.press = function () {
+        this.down = true;
+    };
+
+    PressGate.prototype.request = function () {
+        if (this.down) {
+            this.owed = true;
+            return false;
+        }
+        return true;
+    };
+
+    PressGate.prototype.release = function () {
+        if (!this.down) return false;
+        this.down = false;
+        const owed = this.owed;
+        this.owed = false;
+        return owed;
+    };
+
     // what a device row shows. nostatus: the device has no status command, so no dot and no word. pending: its
     // status command has not answered yet. unknown: a check ran and failed or matched nothing. Otherwise the state.
     function statusKind(hasStatus, result) {
@@ -441,6 +468,7 @@
         actionView: actionView,
         StatusTracker: StatusTracker,
         RunTracker: RunTracker,
+        PressGate: PressGate,
         escapeHtml: escapeHtml,
         consentHtml: consentHtml,
         copyName: copyName,
@@ -563,6 +591,7 @@ $(function () {
         self._checking = {};
         self._status = new SceModel.StatusTracker();
         self._runs = new SceModel.RunTracker();
+        self._press = new SceModel.PressGate();
 
         self._devices = () => (self._data && self._data.devices) || [];
 
@@ -649,6 +678,8 @@ $(function () {
                 });
                 return;
             }
+            // a sync run still spinning is not run again by a second tap
+            if (self._runs.spinning(action)) return;
             const spec = self._spec(source, action);
             if (!spec) return;
             const isRun = !!entry.run;
@@ -847,7 +878,8 @@ $(function () {
             if (self._timer !== undefined) return;
             self._timer = window.setTimeout(() => {
                 self._timer = undefined;
-                self.render();
+                // a press in progress holds the draw; release() schedules it again
+                if (self._press.request()) self.render();
             }, 0);
         };
 
@@ -1097,6 +1129,15 @@ $(function () {
             const menu = $(MENU);
             if (!menu.length || menu[0].dataset.sceBound) return;
             menu[0].dataset.sceBound = "1";
+            // a press holds redraws until it ends; a press ended outside the page (blur) ends too
+            const press = self._press;
+            const endPress = () => {
+                if (press.release()) self.schedule();
+            };
+            menu[0].addEventListener("pointerdown", () => press.press(), true);
+            window.addEventListener("pointerup", endPress, true);
+            window.addEventListener("pointercancel", endPress, true);
+            window.addEventListener("blur", endPress, true);
             // capture phase: runs before core's own handler on standalone items, so only this path runs them
             menu[0].addEventListener("click", (event) => {
                 const target = $(event.target);

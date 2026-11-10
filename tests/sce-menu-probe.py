@@ -427,6 +427,15 @@ LASER_OFF = """() => {
     return dot !== null;
 }"""
 
+# the Restart laser button is tagged with a page reference; a redraw replaces the node and this turns false
+TAG_HELD_BUTTON = """() => {
+    const b = document.querySelector('li.sce-device[data-device-id="laser"] button[title="Restart laser"]');
+    window.__sceHeldButton = b;
+    return b !== null;
+}"""
+
+HELD_BUTTON_CONNECTED = """() => window.__sceHeldButton !== undefined && window.__sceHeldButton.isConnected"""
+
 
 def open_menu():
     if not page.evaluate(MENU_OPEN):
@@ -904,6 +913,41 @@ def run_probe():
         if page.evaluate(MENU_OPEN):
             page.click(TOGGLE)
             pump(300)
+
+        # T. a press held across live redraws still clicks; a second tap on a spinning sync run posts nothing
+        prev_live = options["live_updates"]
+        options["live_updates"] = True
+        page.reload(wait_until="domcontentloaded")
+        wait_until(lambda: page.evaluate(
+            "() => document.querySelector('li.sce-device[data-device-id=\"laser\"] .sce-dot.sce-off') !== null"), 15)
+        open_menu()
+        pump(500)
+        restart = page.locator('li.sce-device[data-device-id="laser"] button[title="Restart laser"]')
+        page.evaluate(TAG_HELD_BUTTON)
+        n0, p0 = len(calls), len(plugin_runs)
+        box = restart.bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.mouse.down()
+        pump(2500)     # at least two live intervals answer while the press is held
+        intact = page.evaluate(HELD_BUTTON_CONNECTED)
+        page.mouse.up()
+        pump(int((SYNC_DELAY + 1.0) * 1000))
+        held_runs = calls[n0:] + plugin_runs[p0:]
+        check("a press held across a live redraw still clicks", held_runs == ["laser_restart"],
+              "runs=%s" % held_runs)
+        check("no device button was replaced while the press was held", intact,
+              "connected_while_held=%s" % intact)
+
+        open_menu()
+        n1, p1 = len(calls), len(plugin_runs)
+        page.locator('li.sce-device[data-device-id="laser"] button[title="Restart laser"]').click()
+        pump(150)
+        page.locator('li.sce-device[data-device-id="laser"] button[title="Restart laser"]').click()
+        pump(int((SYNC_DELAY + 1.2) * 1000))
+        tap_runs = calls[n1:] + plugin_runs[p1:]
+        check("a second tap while a sync run spins runs nothing", tap_runs == ["laser_restart"],
+              "runs=%s" % tap_runs)
+        options["live_updates"] = prev_live
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)
