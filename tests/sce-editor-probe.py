@@ -893,12 +893,15 @@ def run_probe():
             check("no device of type link is written",
                   not [d for d in plugin.get("devices") or [] if d.get("type") == "link"])
 
-        # Phase C: delete the switch device; its group and role leave both commands
+        # Phase C: delete the switch device; its two custom commands leave the list, the ungrouped twin stays
         open_settings()
         page.locator("#settings_plugin_systemcommandeditor .sce-device-row", has_text="Laser").locator(
             'button[title="Delete"]').click()
         proceed = page.locator("a:visible, button:visible").filter(has_text="Proceed").first
         proceed.wait_for(state="visible", timeout=8000)
+        dialog_text = page.evaluate("() => document.body.innerText")
+        check("the delete confirmation names the control and its 2 custom commands",
+              'removes the control "Laser" and its 2 custom commands' in dialog_text, dialog_text[:200])
         proceed.click()
         page.wait_for_timeout(300)
         body = save_settings()
@@ -906,13 +909,35 @@ def run_probe():
             check("save after delete posts the settings", False, "no POST captured")
         else:
             actions = first_actions(body)
-            # a custom entry must not carry the keys at all: clean() leaves empty group, role and value out
-            gone = all(not {"group", "role", "value"} & set(actions.get(k, {}))
-                       for k in ("laser_on_cmd", "laser_off_cmd"))
+            twin = [a for a in actions.values() if a.get("name") == "Spare twin"]
             devices = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
-            check("delete removes group and role from both commands and the device",
-                  gone and "laser" not in [d.get("id") for d in devices],
+            check("delete removes both custom commands of the control and keeps the ungrouped command",
+                  "laser_on_cmd" not in actions and "laser_off_cmd" not in actions and len(twin) == 1
+                  and "group" not in twin[0] and "laser" not in [d.get("id") for d in devices],
                   json.dumps({"devices": [d.get("id") for d in devices], "actions": actions}))
+
+        # Phase C2: delete the Power control, which groups the built-in reboot and shutdown and has no custom commands;
+        # the built-in commands are kept and detached, and the confirmation keeps today's wording
+        open_settings()
+        page.locator("#settings_plugin_systemcommandeditor .sce-device-row", has_text="Power").locator(
+            'button[title="Delete"]').click()
+        proceed = page.locator("a:visible, button:visible").filter(has_text="Proceed").first
+        proceed.wait_for(state="visible", timeout=8000)
+        power_text = page.evaluate("() => document.body.innerText")
+        check("deleting a control with no custom commands keeps today's confirmation wording",
+              'removes the control "Power" and its role on each command.' in power_text,
+              power_text[:200])
+        proceed.click()
+        page.wait_for_timeout(300)
+        save_settings()
+        after = ((state["current"].get("plugins") or {}).get("systemcommandeditor") or {})
+        after_core = after.get("core") or {}
+        check("deleting the Power control keeps reboot and shutdown and clears their group and role",
+              "reboot" in after_core and "shutdown" in after_core
+              and not (after_core.get("reboot") or {}).get("group") and not (after_core.get("reboot") or {}).get("role")
+              and not (after_core.get("shutdown") or {}).get("group") and not (after_core.get("shutdown") or {}).get("role")
+              and "power" not in [d.get("id") for d in after.get("devices") or []],
+              json.dumps({"devices": [d.get("id") for d in after.get("devices") or []], "core": after_core}))
 
         # Phase D: add from presets; cpu is ticked, throttle is unavailable, disk is already a device
         open_settings()

@@ -1243,14 +1243,24 @@ $(function () {
         };
         self.detachControl = (deviceId) => reassign(deviceId, "", false);
 
+        // deleting a control deletes its custom commands; built-in commands cannot be deleted, so they are detached
         self.removeDevice = (device) => {
+            const isMember = (entry) => !isSection(entry) && entry.group === device.id;
+            const customCount = self.entries().filter(isMember).length;
+            const params = {name: _.escape(device.name), count: customCount};
+            let template = gettext('This removes the control "%(name)s" and its role on each command.');
+            if (customCount === 1) {
+                template = gettext('This removes the control "%(name)s" and its %(count)s custom command. Built-in commands are kept and detached.');
+            } else if (customCount > 1) {
+                template = gettext('This removes the control "%(name)s" and its %(count)s custom commands. Built-in commands are kept and detached.');
+            }
+            const message = _.sprintf(template, params);
             showConfirmationDialog({
-                message: _.sprintf(gettext('This removes the control "%(name)s" and its role on each command.'), {
-                    name: _.escape(device.name)
-                }),
+                message: message,
                 onproceed: () => {
                     self.devices.remove(device);
                     if (device.type === "readout") self.entries.remove((entry) => entry.device === device.id);
+                    self.entries.remove(isMember);
                     reassign(device.id, "", false);
                 }
             });
