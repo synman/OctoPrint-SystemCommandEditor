@@ -147,6 +147,28 @@ def live_plug_reads(devices):
     return fixed, True
 
 
+def role_icons(actions):
+    """Settings v7: a switch's On and Off commands with the old default icons get the toggle icons.
+
+    The On command had the play icon and the Off command the power icon; both now read as the switch they drive.
+    Only those two pairs change; any other icon, and any other role, is kept as it is. Returns ``(actions, changed)``.
+    The inputs are not modified, and a config with no such entry is returned untouched.
+    """
+    fixed = []
+    changed = False
+    for entry in actions or []:
+        if isinstance(entry, dict):
+            role, icon = entry.get("role"), entry.get("icon")
+            if role == "on" and icon == "fa-solid fa-play":
+                entry = dict(entry, icon="fa-solid fa-toggle-on")
+                changed = True
+            elif role == "off" and icon == "fa-solid fa-power-off":
+                entry = dict(entry, icon="fa-solid fa-toggle-off")
+                changed = True
+        fixed.append(entry)
+    return (fixed, True) if changed else (actions, False)
+
+
 def _is_plug_read(device):
     if not isinstance(device, dict):
         return False

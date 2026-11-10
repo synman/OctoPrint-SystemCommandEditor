@@ -308,11 +308,14 @@
 
     const BUTTON_ICON = {restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved", off: "fa-solid fa-power-off", on: "fa-solid fa-play"};
 
+    // the icon a switch's role button draws when its command has none of its own
+    const ROLE_ICON = {on: "fa-solid fa-toggle-on", off: "fa-solid fa-toggle-off", restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved"};
+
     // every button a control's row can show, in the menu's order, whatever its state: the settings list draws them all
     function rowButtons(m) {
         const buttons = [];
         ["restart", "safe_restart", "off", "on"].forEach((kind) => {
-            if (m[kind]) buttons.push({kind: kind, action: m[kind], icon: BUTTON_ICON[kind]});
+            if (m[kind]) buttons.push({kind: kind, action: m[kind], icon: ROLE_ICON[kind]});
         });
         (m.runs || []).forEach((r) => buttons.push({kind: "run", action: r.action, icon: r.icon || "fa-solid fa-play"}));
         (m.choices || []).forEach((c) => buttons.push({kind: "choice", action: c.action, icon: c.icon || "fa-solid fa-circle"}));
@@ -454,6 +457,7 @@
 
     const SceModel = {
         BUTTON_ICON: BUTTON_ICON,
+        ROLE_ICON: ROLE_ICON,
         BUSY_ICONS: BUSY_ICONS,
         busyClass: busyClass,
         rowButtons: rowButtons,

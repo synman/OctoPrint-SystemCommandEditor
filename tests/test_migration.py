@@ -387,3 +387,39 @@ def test_v6_keeps_plug_reads_that_are_live_or_have_no_live_key(tmp_path):
     plugin.on_settings_migrate(6, 5)
     assert plugin._settings.config["plugins"]["systemcommandeditor"]["devices"] == devices
     assert set_paths == []
+
+
+def test_v7_gives_the_old_on_and_off_defaults_the_toggle_icons_and_leaves_the_rest(tmp_path):
+    actions = [
+        {"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-play"},
+        {"action": "off_a", "name": "Off", "command": "true", "role": "off", "icon": "fa-solid fa-power-off"},
+        {"action": "on_b", "name": "On B", "command": "true", "role": "on", "icon": "fa-solid fa-bolt"},
+        {"action": "off_b", "name": "Off B", "command": "true", "role": "off", "icon": "fa-solid fa-moon"},
+        {"action": "run_c", "name": "Run", "command": "true", "icon": "fa-solid fa-play"},
+        {"action": "on_d", "name": "On D", "command": "true", "role": "on"},
+    ]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(7, 6)
+    got = plugin._settings.config["system"]["actions"]
+    assert [entry.get("icon") for entry in got] == [
+        "fa-solid fa-toggle-on", "fa-solid fa-toggle-off", "fa-solid fa-bolt", "fa-solid fa-moon",
+        "fa-solid fa-play", None,
+    ]
+    assert got[5] == actions[5]
+
+
+def test_v7_writes_nothing_when_no_entry_matches(tmp_path):
+    actions = [{"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-toggle-on"},
+               cmd("x")]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(7, 6)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.global_sets == []
+
+
+def test_v7_skipped_when_already_at_7(tmp_path):
+    actions = [{"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-play"}]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(7, 7)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.global_sets == []

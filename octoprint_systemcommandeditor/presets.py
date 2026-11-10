@@ -404,8 +404,8 @@ def mark_presets(devices, actions, maintenance_action_keys):
 # Each source line cited is the one the reader relies on.
 
 # Role icons: a switch's on, off and restart commands carry these in the saved entries
-ON_ICON = "fa-solid fa-play"
-OFF_ICON = "fa-solid fa-power-off"
+ON_ICON = "fa-solid fa-toggle-on"
+OFF_ICON = "fa-solid fa-toggle-off"
 RESTART_ICON = "fa-solid fa-rotate-right"
 
 

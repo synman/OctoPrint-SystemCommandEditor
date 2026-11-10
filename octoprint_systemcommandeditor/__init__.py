@@ -35,7 +35,7 @@ from .adapters import (
     run_with_timeout,
     state_word,
 )
-from .convert import command_count, convert, link_devices, live_plug_reads, place_readouts
+from .convert import command_count, convert, link_devices, live_plug_reads, place_readouts, role_icons
 from .presets import (
     SYSTEM_SWITCHES,
     action_of,
@@ -139,7 +139,7 @@ class SystemCommandEditorPlugin(
         }
 
     def get_settings_version(self):
-        return 6
+        return 7
 
     def get_api_commands(self):
         return {"status": ["ids"], "presets": [], "run": ["action"], "states": []}
@@ -396,6 +396,16 @@ class SystemCommandEditorPlugin(
             self._link_devices()
         if current is None or current < 6:
             self._live_plug_reads()
+        if current is None or current < 7:
+            self._role_icons()
+
+    def _role_icons(self):
+        actions = copy.deepcopy(self._settings.global_get(["system", "actions"]) or [])
+        new_actions, changed = role_icons(actions)
+        if not changed:
+            return
+        self._settings.global_set(["system", "actions"], new_actions)
+        self._logger.info("Gave the On and Off switch commands the toggle icons")
 
     def _live_plug_reads(self):
         devices = copy.deepcopy(self._settings.get(["devices"]) or [])

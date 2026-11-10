@@ -94,9 +94,9 @@ PLUGINS = [
                      "on_pattern": "^active$", "off_pattern": "^(inactive|failed)$"},
          "commands": [
              {"name": "Start", "command": "sudo systemctl start ustreamer", "role": "on",
-              "icon": "fa-solid fa-play"},
+              "icon": "fa-solid fa-toggle-on"},
              {"name": "Stop", "command": "sudo systemctl stop ustreamer", "role": "off",
-              "icon": "fa-solid fa-power-off"},
+              "icon": "fa-solid fa-toggle-off"},
              {"name": "Restart", "command": "sudo systemctl restart ustreamer", "role": "restart",
               "icon": "fa-solid fa-rotate-right"}]}]},
     # the OctoPrint group, as octoprint_presets() builds it with a snapshot URL: a command-only webcam link, and the
@@ -151,9 +151,9 @@ MQTT_GROUP = {"plugin": "mqtt", "name": "MQTT", "presets": [
      "control": {"type": "switch", "name": "MQTT switch", "icon": "fa-solid fa-tower-broadcast",
                  "read": {"mqtt": "home/switch/state"}, "on_pattern": "^ON$", "off_pattern": "^OFF$"},
      "commands": [
-         {"name": "On", "role": "on", "icon": "fa-solid fa-play",
+         {"name": "On", "role": "on", "icon": "fa-solid fa-toggle-on",
           "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "ON"}}},
-         {"name": "Off", "role": "off", "icon": "fa-solid fa-power-off",
+         {"name": "Off", "role": "off", "icon": "fa-solid fa-toggle-off",
           "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "OFF"}}}]}]}
 
 
@@ -760,9 +760,26 @@ def run_probe():
         laser_control = page.locator("#settings_plugin_systemcommandeditor .sce-control", has_text="Laser")
         check("the Laser control draws one row with a button per command, and the commands have no rows of their own",
               laser_control.count() == 1 and
-              laser_control.locator("button[data-action='laser_on_cmd'][title='Laser on']").count() == 1 and
-              laser_control.locator("button[data-action='laser_off_cmd'][title='Laser off']").count() == 1 and
+              laser_control.locator("button[data-action='laser_on_cmd'][title='Edit Laser on']").count() == 1 and
+              laser_control.locator("button[data-action='laser_off_cmd'][title='Edit Laser off']").count() == 1 and
               command_row("Laser on").count() == 0 and command_row("Laser off").count() == 0)
+        check("with no icon of its own, a switch's On button draws the toggle-on icon and Off the toggle-off icon",
+              laser_control.locator("button[data-action='laser_on_cmd'] i.fa-toggle-on").count() == 1 and
+              laser_control.locator("button[data-action='laser_off_cmd'] i.fa-toggle-off").count() == 1)
+
+        # the On command's own icon and color replace the toggle icon on its button, once saved
+        edit_command("Laser on")
+        page.fill("#sce-editor-icon", "fa-solid fa-bolt")
+        page.locator("#sce-editor .sce-icon-color input[type=color]").fill("#ff0000")
+        modal_done("#sce-editor")
+        save_settings()
+        open_settings()
+        laser_on_button = page.locator("#settings_plugin_systemcommandeditor button[data-action='laser_on_cmd']").first
+        on_drawn = laser_on_button.locator("i.fa-bolt").evaluate("el => getComputedStyle(el).color") \
+            if laser_on_button.locator("i.fa-bolt").count() == 1 else None
+        check("a switch's On button draws its command's own icon and color once saved",
+              on_drawn == "rgb(255, 0, 0)" and laser_on_button.get_attribute("title") == "Edit Laser on",
+              "color=%r" % on_drawn)
 
         # a second On on the same switch is blocked, and Done re-enables once it is Off
         edit_command("Laser off", role="on")
@@ -850,6 +867,14 @@ def run_probe():
                            has_text="Reboot system").count() == 0 and
               page.locator("#settings_plugin_systemcommandeditor .sce-core-list .sce-command",
                            has_text="Shutdown system").count() == 0)
+        check("a built-in restart button with no icon of its own draws the restart icon",
+              power.locator("button[data-core-action='reboot'] i.fa-rotate-right").count() == 1)
+        core_row("shutdown").click()
+        wait_visible("#sce-editor")
+        page.fill("#sce-editor-icon", "fa-solid fa-bolt")
+        modal_done("#sce-editor")
+        check("a built-in command on a control draws its core icon when set",
+              power.locator("button[data-core-action='shutdown'] i.fa-bolt").count() == 1)
 
         # 2. kind conflict: a device holding built-in commands cannot take a custom command
         edit_command("Laser off", device="Power")

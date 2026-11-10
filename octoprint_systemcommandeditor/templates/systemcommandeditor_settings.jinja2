@@ -216,7 +216,7 @@
         </span>
         <span class="sce-buttons sce-member-buttons">
             <!-- ko foreach: $data.buttons -->
-            <button type="button" class="btn btn-mini sce-btn" data-bind="attr: { title: $data.name, 'data-core-action': $data.action }, click: $root.editCoreAction"><i data-bind="css: $data.icon"></i></button>
+            <button type="button" class="btn btn-mini sce-btn" data-bind="attr: { title: $data.title, 'data-core-action': $data.action }, click: $root.editCoreAction"><i data-bind="css: $data.icon + ($data.icon_invert ? ' sce-icon-inverted' : ''), style: $data.icon_invert ? { backgroundColor: $data.icon_color || '' } : { color: $data.icon_color || '' }"></i></button>
             <!-- /ko -->
         </span>
     </div>
@@ -275,7 +275,7 @@
         </span>
         <span class="sce-buttons sce-member-buttons">
             <!-- ko foreach: $root.buttonsOf($data) -->
-            <button type="button" class="btn btn-mini sce-btn" data-bind="attr: { title: $data.name, 'data-action': $data.action }, click: $root.editMemberAction"><i data-bind="css: $data.icon"></i></button>
+            <button type="button" class="btn btn-mini sce-btn" data-bind="attr: { title: $data.title, 'data-action': $data.action }, click: $root.editMemberAction"><i data-bind="css: $data.icon + ($data.icon_invert ? ' sce-icon-inverted' : ''), style: $data.icon_invert ? { backgroundColor: $data.icon_color || '' } : { color: $data.icon_color || '' }"></i></button>
             <!-- /ko -->
         </span>
         <!-- /ko -->

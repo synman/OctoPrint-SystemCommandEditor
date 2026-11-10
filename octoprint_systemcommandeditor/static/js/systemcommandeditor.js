@@ -1145,6 +1145,8 @@ $(function () {
 
         // the buttons of one control's row: every member, in menu order, titled with its name. A member the menu
         // does not draw (no role, or a second On or Off) still gets a button, so every command stays reachable.
+        // A role button draws its command's own icon, color and invert, else the role's default icon; its title is
+        // "Edit <name>". Run, choice and plain buttons keep their icon and title.
         const controlButtons = (deviceId, table, isCore) => {
             const m = isCore ? window.SceModel.members(deviceId, {}, table) : window.SceModel.members(deviceId, table, {});
             const buttons = window.SceModel.rowButtons(m);
@@ -1154,7 +1156,14 @@ $(function () {
                     buttons.push({kind: "plain", action: action, icon: entry.icon || "fa-solid fa-ellipsis"});
                 }
             });
-            return buttons.map((b) => _.extend({}, b, {name: (table[b.action] || {}).name || b.action}));
+            const roleKinds = Object.keys(window.SceModel.ROLE_ICON);
+            return buttons.map((b) => {
+                const entry = table[b.action] || {};
+                const name = entry.name || b.action;
+                if (roleKinds.indexOf(b.kind) < 0) return _.extend({}, b, {name: name, title: name});
+                return _.extend({}, b, {name: name, title: gettext("Edit") + " " + name,
+                    icon: entry.icon || b.icon, icon_color: entry.icon_color || "", icon_invert: !!entry.icon_invert});
+            });
         };
 
         // the custom list: one row per move unit (see SceModel.units); a control's row is its first member
