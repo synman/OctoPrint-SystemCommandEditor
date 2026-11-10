@@ -1137,7 +1137,10 @@ $(function () {
             menu[0].addEventListener("pointerdown", () => press.press(), true);
             window.addEventListener("pointerup", endPress, true);
             window.addEventListener("pointercancel", endPress, true);
-            window.addEventListener("blur", endPress, true);
+            // blur fires on each element losing focus too; only the window itself losing focus ends the press
+            window.addEventListener("blur", (event) => {
+                if (event.target === window) endPress();
+            }, true);
             // capture phase: runs before core's own handler on standalone items, so only this path runs them
             menu[0].addEventListener("click", (event) => {
                 const target = $(event.target);
