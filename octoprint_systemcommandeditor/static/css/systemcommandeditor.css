@@ -206,6 +206,11 @@
   display: none !important;
 }
 
+/* a selector redrawn under a resting pointer keeps its choices open, as :hover would */
+#navbar_systemmenu li.dropdown-submenu.sce-open > .dropdown-menu {
+  display: block;
+}
+
 #navbar_systemmenu li.disabled > a,
 #navbar_systemmenu li.sce-device.disabled,
 #navbar_systemmenu a.sce-choice.disabled {

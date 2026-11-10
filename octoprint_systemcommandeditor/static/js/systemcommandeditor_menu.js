@@ -511,6 +511,7 @@ $(function () {
     const HIDDEN = "sce-hidden";
     const COND = "sce-cond";
     const DEVICE = "sce-device";
+    const OPEN = "sce-open";
     const MENU = "#navbar_systemmenu > ul.dropdown-menu";
     const BLANK = "sce-menu-icon-blank";
     const FLASH_MS = 3000;
@@ -1012,6 +1013,14 @@ $(function () {
             const current = members.choices.find((c) => shown && String(c.value) === String(kind));
 
             li.addClass("dropdown-submenu");
+            // the choices open on :hover, and a redraw replaces this row under a resting pointer, which would close
+            // them. The selector the pointer is in is remembered, and its new row is drawn open
+            if (self._openSelector === d.id) li.addClass(OPEN);
+            li.on("mouseenter", () => { self._openSelector = d.id; });
+            li.on("mouseleave", () => {
+                if (self._openSelector === d.id) self._openSelector = undefined;
+                li.removeClass(OPEN);
+            });
             const row = node("a", ["sce-device-row"]).attr("href", "javascript:void(0)");
             row.append(
                 icon(d.icon, d.icon_color, d.icon_invert),
@@ -1053,6 +1062,8 @@ $(function () {
             menu.find("." + DOUBLED).removeClass(DOUBLED);
             menu.find("." + COND).removeClass([HIDDEN, "disabled", COND].join(" ")).removeAttr("title");
             menu.addClass("sce-menu");
+            // a closed menu has no pointer in it: the next open starts with every selector closed
+            if (!$("#navbar_systemmenu").hasClass("open")) self._openSelector = undefined;
             if (!self._data) return;
 
             const entries = self._data.entries || {};

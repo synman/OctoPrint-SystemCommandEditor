@@ -436,6 +436,11 @@ TAG_HELD_BUTTON = """() => {
 
 HELD_BUTTON_CONNECTED = """() => window.__sceHeldButton !== undefined && window.__sceHeldButton.isConnected"""
 
+SELECTOR_OPEN = """() => {
+    const list = document.querySelector('#navbar_systemmenu li.sce-device[data-device-id="res"] > ul.dropdown-menu');
+    return !!list && getComputedStyle(list).display !== 'none';
+}"""
+
 
 def open_menu():
     if not page.evaluate(MENU_OPEN):
@@ -985,6 +990,21 @@ def run_probe():
         tap_runs = calls[n1:] + plugin_runs[p1:]
         check("a second tap while a sync run spins runs nothing", tap_runs == ["laser_restart"],
               "runs=%s" % tap_runs)
+
+        # T2. a selector's choices stay open across live redraws while the pointer rests on them, and close when it leaves
+        open_menu()
+        page.locator('li.sce-device[data-device-id="res"] > a.sce-device-row').hover()
+        pump(200)
+        page.locator('li.sce-device[data-device-id="res"] ul.dropdown-menu a.sce-choice').first.hover()
+        opened = page.evaluate(SELECTOR_OPEN)
+        pump(2500)     # at least two live intervals redraw the menu under the resting pointer
+        stayed = page.evaluate(SELECTOR_OPEN)
+        check("a selector's choices stay open across live redraws", opened and stayed,
+              "opened=%s stayed=%s" % (opened, stayed))
+        page.locator('li.sce-device[data-device-id="laser"] .sce-device-name').hover()
+        pump(1500)
+        left = page.evaluate(SELECTOR_OPEN)
+        check("a selector's choices close once the pointer leaves", not left, "open_after_leave=%s" % left)
 
         # T3. a press that ends with no click still draws the held redraw once it ends (live updates off, so the
         #     only status check is the one the open sends, and its held answer is the one that changes the row)
