@@ -763,23 +763,14 @@ def run_probe():
               laser_control.locator("button[data-action='laser_on_cmd'][title='Edit On']").count() == 1 and
               laser_control.locator("button[data-action='laser_off_cmd'][title='Edit Off']").count() == 1 and
               command_row("Laser on").count() == 0 and command_row("Laser off").count() == 0)
+        # clear the fixture icons so both commands have none of their own
+        for name in ("Laser on", "Laser off"):
+            edit_command(name)
+            page.fill("#sce-editor-icon", "")
+            modal_done("#sce-editor")
         check("with no icon of its own, a switch's On button draws the toggle-on icon and Off the toggle-off icon",
               laser_control.locator("button[data-action='laser_on_cmd'] i.fa-toggle-on").count() == 1 and
               laser_control.locator("button[data-action='laser_off_cmd'] i.fa-toggle-off").count() == 1)
-
-        # the On command's own icon and color replace the toggle icon on its button, once saved
-        edit_command("Laser on")
-        page.fill("#sce-editor-icon", "fa-solid fa-bolt")
-        page.locator("#sce-editor .sce-icon-color input[type=color]").fill("#ff0000")
-        modal_done("#sce-editor")
-        save_settings()
-        open_settings()
-        laser_on_button = page.locator("#settings_plugin_systemcommandeditor button[data-action='laser_on_cmd']").first
-        on_drawn = laser_on_button.locator("i.fa-bolt").evaluate("el => getComputedStyle(el).color") \
-            if laser_on_button.locator("i.fa-bolt").count() == 1 else None
-        check("a switch's On button draws its command's own icon and color once saved",
-              on_drawn == "rgb(255, 0, 0)" and laser_on_button.get_attribute("title") == "Edit On",
-              "color=%r" % on_drawn)
 
         # a second On on the same switch is blocked, and Done re-enables once it is Off
         edit_command("Laser off", role="on")
@@ -852,6 +843,20 @@ def run_probe():
             order = [a.get("action") for a in (body.get("system") or {}).get("actions") or []]
             check("moving the Laser control moves both its commands together, above the Webcam divider",
                   order[:3] == ["laser_on_cmd", "laser_off_cmd", "divider"], json.dumps(order))
+
+        # the On command's own icon and color replace the toggle icon on its button, once saved
+        edit_command("Laser on")
+        page.fill("#sce-editor-icon", "fa-solid fa-bolt")
+        page.locator("#sce-editor .sce-icon-color input[type=color]").fill("#ff0000")
+        modal_done("#sce-editor")
+        save_settings()
+        open_settings()
+        laser_on_button = page.locator("#settings_plugin_systemcommandeditor button[data-action='laser_on_cmd']").first
+        on_drawn = laser_on_button.locator("i.fa-bolt").evaluate("el => getComputedStyle(el).color") \
+            if laser_on_button.locator("i.fa-bolt").count() == 1 else None
+        check("a switch's On button draws its command's own icon and color once saved",
+              on_drawn == "rgb(255, 0, 0)" and laser_on_button.get_attribute("title") == "Edit On",
+              "color=%r" % on_drawn)
 
         # Phase B: a device holding built-in commands; core editor for reboot and shutdown; a link and a readout
         open_settings()
