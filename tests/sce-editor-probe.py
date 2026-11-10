@@ -707,7 +707,11 @@ def list_ops_checks():
     set_list([{"action": "rdo", "name": "Readout one", "device": "rdo"}],
              [{"id": "rdo", "type": "readout", "name": "Readout one", "icon": "fa-solid fa-hard-drive", "status": "echo r"}])
     page.wait_for_timeout(200)
-    placed_row = page.locator("#settings_plugin_systemcommandeditor .sce-row").filter(
+    # the Custom commands list: the sce-list that follows its heading; the Controls and Built-in lists are other containers
+    custom_list = page.locator("#settings_plugin_systemcommandeditor").locator(
+        "xpath=.//h4[contains(@class,'sce-group-title')][normalize-space()='Custom commands']"
+        "/following-sibling::div[contains(@class,'sce-list')][1]")
+    placed_row = custom_list.locator(".sce-row").filter(
         has=page.locator(".sce-name", has_text=re.compile(r"^\s*Readout one\s*$"))).first
     dup_buttons = placed_row.locator("button[title='Duplicate']")
     check("a placed readout's row has a Duplicate button", dup_buttons.count() == 1, "count=%d" % dup_buttons.count())
