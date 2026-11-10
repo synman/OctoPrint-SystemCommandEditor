@@ -378,6 +378,22 @@
                 </div>
             </div>
             <!-- /ko -->
+            <!-- ko if: isMqttPublish -->
+            <div class="control-group" data-bind="css: { error: commandError() }">
+                <label class="control-label" for="sce-editor-mqtt-topic">{{ _('Topic') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-editor-mqtt-topic" class="input-block-level sce-mono" data-bind="textInput: mqttTopic" placeholder="{{ _('e.g. home/switch/set')|edq }}">
+                    <span class="help-block" data-bind="text: commandError, visible: commandError"></span>
+                </div>
+            </div>
+            <div class="control-group">
+                <label class="control-label" for="sce-editor-mqtt-payload">{{ _('Payload') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-editor-mqtt-payload" class="input-block-level sce-mono" data-bind="textInput: mqttPayload">
+                    <span class="help-block">{{ _('Published to the topic exactly as typed.') }}</span>
+                </div>
+            </div>
+            <!-- /ko -->
             <!-- ko if: isRunOnly -->
             <div class="control-group">
                 <label class="control-label">{{ _('Runs') }}</label>
@@ -583,7 +599,16 @@
             </div>
             <!-- /ko -->
 
-            <!-- ko if: hasRead -->
+            <!-- ko if: isMqttRead -->
+            <div class="control-group" data-bind="css: { error: mqttError() }">
+                <label class="control-label" for="sce-device-mqtt-state">{{ _('State topic') }}</label>
+                <div class="controls">
+                    <input type="text" id="sce-device-mqtt-state" class="input-block-level sce-mono" data-bind="textInput: mqttStateTopic" placeholder="{{ _('e.g. home/switch/state')|edq }}">
+                    <span class="help-block" data-bind="text: mqttError, visible: mqttError"></span>
+                </div>
+            </div>
+            <!-- /ko -->
+            <!-- ko if: hasRead() && !isMqttRead() -->
             <div class="control-group">
                 <label class="control-label">{{ _('Reads') }}</label>
                 <div class="controls">

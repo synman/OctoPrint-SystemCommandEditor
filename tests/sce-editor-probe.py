@@ -139,6 +139,24 @@ state = {"base": None, "current": None}
 page = None
 
 
+# the MQTT plugin's group, offered only while MQTT_INSTALLED is on, so the plugin rows of the earlier phases keep their
+# counts; the MQTT phase turns it on for one picker and off again
+MQTT_INSTALLED = {"on": False}
+MQTT_GROUP = {"plugin": "mqtt", "name": "MQTT", "presets": [
+    {"preset": "mqtt:readout", "name": "MQTT readout",
+     "control": {"type": "readout", "name": "MQTT readout", "icon": "fa-solid fa-tower-broadcast",
+                 "read": {"mqtt": "home/sensor/state"}},
+     "commands": []},
+    {"preset": "mqtt:switch", "name": "MQTT switch",
+     "control": {"type": "switch", "name": "MQTT switch", "icon": "fa-solid fa-tower-broadcast",
+                 "read": {"mqtt": "home/switch/state"}, "on_pattern": "^ON$", "off_pattern": "^OFF$"},
+     "commands": [
+         {"name": "On", "role": "on", "icon": "fa-solid fa-play",
+          "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "ON"}}},
+         {"name": "Off", "role": "off", "icon": "fa-solid fa-power-off",
+          "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "OFF"}}}]}]}
+
+
 def check(name, ok, detail=""):
     results.append(bool(ok))
     suffix = "" if ok or not detail else " -- " + detail
@@ -192,7 +210,7 @@ def handle_presets(route, request):
         return
     route.fulfill(status=200, content_type="application/json",
                   body=json.dumps({"presets": PRESETS, "maintenance": MAINTENANCE, "switches": SWITCHES,
-                                   "plugins": PLUGINS}))
+                                   "plugins": PLUGINS + ([MQTT_GROUP] if MQTT_INSTALLED["on"] else [])}))
 
 
 def handle_commands(route, request):
@@ -1489,6 +1507,61 @@ def run_probe():
             offered = page.locator("#sce-editor label:has-text('Limit to Spindle states')").count()
             check("a built-in command offers no control condition block", offered == 0, "offered=%s" % offered)
             modal_done("#sce-editor")
+
+        # Phase E: the MQTT presets. The picker offers the readout and the switch while the mqtt plugin is installed; the
+        # switch's state topic is editable on its control, and its On command edits its topic and payload
+        MQTT_INSTALLED["on"] = True
+        open_settings()
+        page.get_by_role("button", name="Add from presets").click()
+        wait_visible("#sce-presets .sce-plugin-row")
+        mqtt_readout_row = page.locator("#sce-presets .sce-plugin-row", has_text="MQTT readout")
+        mqtt_switch_row = page.locator("#sce-presets .sce-plugin-row", has_text="MQTT switch")
+        check("the presets picker offers an MQTT group with MQTT readout and MQTT switch",
+              mqtt_readout_row.count() == 1 and mqtt_switch_row.count() == 1,
+              "readout=%d switch=%d" % (mqtt_readout_row.count(), mqtt_switch_row.count()))
+        mqtt_switch_row.locator("input").check()
+        page.locator("#sce-presets .modal-footer .btn-primary").click()
+        wait_hidden("#sce-presets")
+        MQTT_INSTALLED["on"] = False
+        body = save_settings() or {}
+        mqtt_device = next((d for d in ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
+                            if d.get("preset") == "mqtt:switch"), None)
+        check("adding the MQTT switch saves it with its state topic", mqtt_device is not None
+              and mqtt_device.get("read") == {"mqtt": "home/switch/state"}, json.dumps(mqtt_device))
+
+        open_settings()
+        page.locator("#settings_plugin_systemcommandeditor .sce-device-row", has_text="MQTT switch").locator(
+            'button[title="Edit"]').click()
+        wait_visible("#sce-device-editor")
+        topic_before = page.locator("#sce-device-mqtt-state").input_value()
+        topic_editable = page.locator("#sce-device-mqtt-state").is_editable()
+        check("the MQTT switch control shows its state topic in an editable input",
+              topic_before == "home/switch/state" and topic_editable, "topic=%r editable=%s" % (topic_before, topic_editable))
+        page.fill("#sce-device-mqtt-state", "home/plug/state")
+        modal_done("#sce-device-editor")
+        body = save_settings() or {}
+        mqtt_device = next((d for d in ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
+                            if d.get("preset") == "mqtt:switch"), None)
+        check("saving the MQTT control stores read mqtt with the new state topic",
+              mqtt_device is not None and mqtt_device.get("read") == {"mqtt": "home/plug/state"}, json.dumps(mqtt_device))
+
+        open_settings()
+        on_action = page.evaluate("""() => { const vm = ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor'));
+            const e = vm.entries().find(x => x.preset === 'mqtt:switch' && x.role === 'on'); return e ? e.action : null; }""")
+        on_button = page.locator("#settings_plugin_systemcommandeditor button[data-action='%s']" % on_action).first
+        on_button.click()
+        wait_visible("#sce-editor")
+        topic_on = page.locator("#sce-editor-mqtt-topic").input_value()
+        payload_on = page.locator("#sce-editor-mqtt-payload").input_value()
+        check("the MQTT On command shows its topic and payload",
+              topic_on == "home/switch/set" and payload_on == "ON", "topic=%r payload=%r" % (topic_on, payload_on))
+        page.fill("#sce-editor-mqtt-payload", "1")
+        modal_done("#sce-editor")
+        body = save_settings() or {}
+        on_entry = next((a for a in (body.get("system") or {}).get("actions") or []
+                         if isinstance(a, dict) and a.get("preset") == "mqtt:switch" and a.get("role") == "on"), {})
+        check("saving the MQTT On command stores the new payload and keeps its topic",
+              (on_entry.get("run") or {}).get("args") == {"topic": "home/switch/set", "payload": "1"}, json.dumps(on_entry))
 
         list_ops_checks()
 

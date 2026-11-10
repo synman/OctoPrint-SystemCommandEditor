@@ -570,6 +570,23 @@ def _bettergrblsupport(get):
     return [("grbl", "Better Grbl Support", control, commands)]
 
 
+def _mqtt(get):
+    # MqttCache (adapters.py) serves {"mqtt": topic} reads through the MQTT plugin's mqtt_subscribe helper. The
+    # switch's commands publish ON/OFF to its command topic through the mqtt_publish helper. Both are one
+    # starting point: the operator edits the topics and payloads in the editor. No inventory, so no ``get``.
+    readout = {"type": "readout", "name": "MQTT readout", "icon": "fa-solid fa-tower-broadcast",
+               "read": {"mqtt": "home/sensor/state"}}
+    control, commands = _switch(
+        "MQTT switch",
+        {"mqtt": "home/switch/state"},
+        "^ON$",
+        "^OFF$",
+        {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "ON"}},
+        {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "OFF"}},
+        "fa-solid fa-tower-broadcast",
+    )
+    return [("readout", "MQTT readout", readout, []), ("switch", "MQTT switch", control, commands)]
+
 PLUGINS = (
     ("psucontrol", "PSU Control", _psucontrol),
     ("tplinksmartplug", "TP-Link Smartplug", _tplink),
@@ -578,6 +595,7 @@ PLUGINS = (
     ("gpiocontrol", "GPIO Control", _gpiocontrol),
     ("usbrelaycontrol", "USB Relay Control", _usbrelaycontrol),
     ("bettergrblsupport", "Better Grbl Support", _bettergrblsupport),
+    ("mqtt", "MQTT", _mqtt),
 )
 
 

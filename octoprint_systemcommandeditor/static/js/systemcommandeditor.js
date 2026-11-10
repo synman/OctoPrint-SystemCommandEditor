@@ -313,15 +313,27 @@ $(function () {
             const run = self.runCall();
             return !!run && Array.isArray(run.gcode);
         });
-        self.isRunOnly = ko.pureComputed(() => !!self.runCall() && !self.isGcode());
+        // an MQTT publish run is editable: its topic and payload; any other run kind stays read-only
+        self.isMqttPublish = ko.pureComputed(() => {
+            const run = self.runCall();
+            return !!run && run.plugin === "mqtt" && run.helper === "mqtt_publish";
+        });
+        self.isRunOnly = ko.pureComputed(() => !!self.runCall() && !self.isGcode() && !self.isMqttPublish());
         // the confirmation preview shows what the menu will show: a run's text, a G-code run from the box as typed now
         self.previewText = ko.pureComputed(() => {
             if (self.isLinkKind()) return window.SceModel.linkText({url: self.url().trim()});
             if (self.isGcode()) return textOf("", _.extend({}, self.runCall(), {gcode: gcodeLines()}));
+            if (self.isMqttPublish()) return textOf("", mqttRun());
             return textOf(self.runCall() ? "" : self.command(), self.runCall());
         });
         self.gcodeText = ko.observable("");
         const gcodeLines = () => self.gcodeText().split("\n").map((line) => line.trim()).filter((line) => line);
+        self.mqttTopic = ko.observable("");
+        self.mqttPayload = ko.observable("");
+        // the MQTT run as the box shows it now: the saved keys kept, the topic trimmed, the payload as typed
+        const mqttRun = () => _.extend({}, self.runCall(), {
+            args: _.extend({}, self.runCall().args, {topic: self.mqttTopic().trim(), payload: self.mqttPayload()})
+        });
 
         self.device = ko.observable("");
         self.role = ko.observable("");
@@ -354,6 +366,7 @@ $(function () {
             if (self.isSection() || self.isCore()) return "";
             if (self.isLinkKind()) return "";
             if (self.isGcode()) return gcodeLines().length ? "" : gettext("Enter at least one G-code line.");
+            if (self.isMqttPublish()) return self.mqttTopic().trim() ? "" : gettext("Enter a topic.");
             if (self.runCall()) return "";
             return self.command().trim() ? "" : gettext("A command is required.");
         });
@@ -465,6 +478,8 @@ $(function () {
             if (self.isGcode()) {
                 // the other keys of the run are kept; the lines are trimmed and blank ones dropped
                 entry.run = _.extend({}, self.runCall(), {gcode: gcodeLines()});
+            } else if (self.isMqttPublish()) {
+                entry.run = mqttRun();
             } else if (self.runCall()) {
                 entry.run = self.runCall();
             } else {
@@ -505,6 +520,10 @@ $(function () {
             self.url(entry.url || "");
             self.runCall(entry.run);
             self.gcodeText(entry.run && Array.isArray(entry.run.gcode) ? entry.run.gcode.join("\n") : "");
+            const mqttArgs = entry.run && entry.run.plugin === "mqtt" && entry.run.helper === "mqtt_publish"
+                ? entry.run.args || {} : {};
+            self.mqttTopic(mqttArgs.topic !== undefined ? String(mqttArgs.topic) : "");
+            self.mqttPayload(mqttArgs.payload !== undefined ? String(mqttArgs.payload) : "");
             self.icon(entry.icon || "");
             self.iconColor(entry.icon_color || "");
             self.iconInvert(!!entry.icon_invert);
@@ -590,6 +609,9 @@ $(function () {
             return read.mqtt ? "MQTT: " + read.mqtt : window.SceModel.describeRun(read);
         });
         self.hasRead = ko.pureComputed(() => !!self.readCall());
+        // an MQTT read's state topic is editable; saved back as read.mqtt
+        self.isMqttRead = ko.pureComputed(() => !!self.readCall() && self.readCall().mqtt !== undefined);
+        self.mqttStateTopic = ko.observable("");
 
         self.title = ko.pureComputed(() => (self.editing() ? gettext("Edit control") : gettext("Add control")));
 
@@ -607,7 +629,11 @@ $(function () {
             if (self.type() !== "readout" || self.readCall()) return "";
             return self.status().trim() ? "" : gettext("A status command is required for a readout.");
         });
-        self.valid = ko.pureComputed(() => !self.nameError() && !self.statusError());
+        self.mqttError = ko.pureComputed(() => {
+            if (!self.isMqttRead()) return "";
+            return self.mqttStateTopic().trim() ? "" : gettext("Enter a state topic.");
+        });
+        self.valid = ko.pureComputed(() => !self.nameError() && !self.statusError() && !self.mqttError());
 
         self.toDevice = () => {
             const type = self.type();
@@ -619,7 +645,9 @@ $(function () {
                 icon_color: self.iconColor(),
                 icon_invert: self.iconInvert() || undefined
             };
-            if (self.readCall()) {
+            if (self.isMqttRead()) {
+                device.read = {mqtt: self.mqttStateTopic().trim()};
+            } else if (self.readCall()) {
                 device.read = self.readCall();
             } else {
                 device.status = self.status().trim();
@@ -650,6 +678,7 @@ $(function () {
             self.iconInvert(!!device.icon_invert);
             self.status(device.status || "");
             self.readCall(device.read);
+            self.mqttStateTopic(device.read && device.read.mqtt !== undefined ? String(device.read.mqtt) : "");
             self.onPattern(device.on_pattern || "");
             self.offPattern(device.off_pattern || "");
 
