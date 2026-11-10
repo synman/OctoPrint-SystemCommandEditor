@@ -704,6 +704,45 @@ def list_ops_checks():
 
 
 
+def format_checks():
+    """A readout's Format field: shown for readouts, saved as format, reloaded on reopen, hidden for a switch."""
+    open_settings()
+    page.get_by_role("button", name="Add control").click()
+    wait_visible("#sce-device-editor")
+    page.select_option("#sce-device-type", value="readout")
+    page.fill("#sce-device-name", "Load")
+    page.fill("#sce-device-status", "echo 38")
+    page.wait_for_timeout(200)
+    link = page.locator("#sce-device-editor a:has-text('Format reference')")
+    check("a readout's dialog shows a Format input", page.locator("#sce-device-format").count() == 1)
+    check("the Format link opens the Python docs in a new tab with a noopener rel",
+          link.count() == 1 and link.get_attribute("href") == "https://docs.python.org/3/library/string.html#formatspec"
+          and link.get_attribute("target") == "_blank" and "noopener" in (link.get_attribute("rel") or ""),
+          "href=%r" % link.get_attribute("href"))
+    page.fill("#sce-device-format", "{value:.1f}%")
+    modal_done("#sce-device-editor")
+    body = save_settings() or {}
+    load = next((d for d in ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
+                 if d.get("name") == "Load"), None)
+    check("saving the readout stores format on that device",
+          load is not None and load.get("format") == "{value:.1f}%", json.dumps(load))
+    open_settings()
+    page.evaluate("(d) => ko.dataFor(document.querySelector('#settings_plugin_systemcommandeditor')).deviceEditor.show(d)",
+                  load or {})
+    wait_visible("#sce-device-editor")
+    check("reopening the readout shows its saved format",
+          page.input_value("#sce-device-format") == "{value:.1f}%", "value=%r" % page.input_value("#sce-device-format"))
+    page.locator("#sce-device-editor .modal-footer .btn:has-text('Cancel')").click()
+    wait_hidden("#sce-device-editor")
+
+    page.get_by_role("button", name="Add control").click()
+    wait_visible("#sce-device-editor")
+    check("a switch's dialog shows no Format input (default type)", page.locator("#sce-device-format").count() == 0)
+    page.locator("#sce-device-editor .modal-footer .btn:has-text('Cancel')").click()
+    wait_hidden("#sce-device-editor")
+    open_settings()
+
+
 def run_probe():
     global page
     started = time.time()
@@ -1627,6 +1666,7 @@ def run_probe():
               (on_entry.get("run") or {}).get("args") == {"topic": "home/switch/set", "payload": "1"}, json.dumps(on_entry))
 
         list_ops_checks()
+        format_checks()
 
         browser.close()
     print("elapsed: %.1f s" % (time.time() - started), flush=True)

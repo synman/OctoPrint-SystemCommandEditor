@@ -3,7 +3,9 @@ import shlex
 import sys
 import time
 
-from octoprint_systemcommandeditor.status import check_devices, evaluate, run_status
+import pytest
+
+from octoprint_systemcommandeditor.status import check_devices, evaluate, format_value, run_status
 
 
 def switch(**extra):
@@ -218,3 +220,53 @@ def test_action_returns_first_line_of_output_as_readout_does():
 
 def test_action_error_is_unknown():
     assert evaluate({"type": "action"}, [], None, "", "timeout") == "unknown"
+
+
+@pytest.mark.parametrize("pattern, text, expected", [
+    ("{value:.1f}%", "38", "38.0%"),
+    ("${value:,.2f}", "1234.5", "$1,234.50"),
+    ("{value:.0f}°F", "82.5", "82°F"),
+    ("{value:d} items", "3", "3 items"),
+    ("{value:.1f}%", "n/a", "n/a"),
+    ("{value.__class__}", "1", "1"),
+    ("{}", "1", "1"),
+    ("Up {value}", "3 days", "Up 3 days"),
+    ("{value}%", "38", "38%"),
+    ("{value} = {value:.1f}", "38", "38.0 = 38.0"),
+    ("{value:.1f", "1", "1"),
+    ("{0}", "1", "1"),
+    ("{value!r}", "1", "1"),
+    ("{other}", "1", "1"),
+    ("{value[0]}", "1", "1"),
+    ("{value:{x}}", "1", "1"),
+    ("no field", "1", "1"),
+    ("{value:d}", "3.5", "3.5"),
+])
+def test_format_value_pattern_contract(pattern, text, expected):
+    assert format_value(pattern, text) == expected
+
+
+def readout(**extra):
+    return dict({"id": "dev", "type": "readout", "status": "x"}, **extra)
+
+
+def test_readout_uses_format_on_first_line():
+    assert evaluate(readout(format="{value:.1f}%"), [], 0, "38\nignored", None) == "38.0%"
+
+
+def test_action_uses_format_on_first_line():
+    device = {"id": "dev", "type": "action", "status": "x", "format": "{value:,.2f} kW"}
+    assert evaluate(device, [], 0, "1234.5", None) == "1,234.50 kW"
+
+
+def test_readout_without_format_is_unchanged():
+    assert evaluate(readout(), [], 0, "38\nignored", None) == "38"
+
+
+def test_switch_ignores_format():
+    assert evaluate(switch(on_pattern="ON", format="{value}!"), [], 0, "ON", None) == "on"
+
+
+def test_selector_ignores_format():
+    device = {"id": "dev", "type": "selector", "status": "x", "format": "[{value}]"}
+    assert evaluate(device, ["a"], 0, "a", None) == "a"
