@@ -760,8 +760,8 @@ def run_probe():
         laser_control = page.locator("#settings_plugin_systemcommandeditor .sce-control", has_text="Laser")
         check("the Laser control draws one row with a button per command, and the commands have no rows of their own",
               laser_control.count() == 1 and
-              laser_control.locator("button[data-action='laser_on_cmd'][title='Edit Laser on']").count() == 1 and
-              laser_control.locator("button[data-action='laser_off_cmd'][title='Edit Laser off']").count() == 1 and
+              laser_control.locator("button[data-action='laser_on_cmd'][title='Edit On']").count() == 1 and
+              laser_control.locator("button[data-action='laser_off_cmd'][title='Edit Off']").count() == 1 and
               command_row("Laser on").count() == 0 and command_row("Laser off").count() == 0)
         check("with no icon of its own, a switch's On button draws the toggle-on icon and Off the toggle-off icon",
               laser_control.locator("button[data-action='laser_on_cmd'] i.fa-toggle-on").count() == 1 and
@@ -778,7 +778,7 @@ def run_probe():
         on_drawn = laser_on_button.locator("i.fa-bolt").evaluate("el => getComputedStyle(el).color") \
             if laser_on_button.locator("i.fa-bolt").count() == 1 else None
         check("a switch's On button draws its command's own icon and color once saved",
-              on_drawn == "rgb(255, 0, 0)" and laser_on_button.get_attribute("title") == "Edit Laser on",
+              on_drawn == "rgb(255, 0, 0)" and laser_on_button.get_attribute("title") == "Edit On",
               "color=%r" % on_drawn)
 
         # a second On on the same switch is blocked, and Done re-enables once it is Off

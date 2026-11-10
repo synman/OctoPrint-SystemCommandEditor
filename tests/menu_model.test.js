@@ -554,6 +554,19 @@ test("placementOf: a run entry that names a device is never a readout placement"
     assert.strictEqual(M.isPlacement({device: "disk"}), true);
 });
 
+test("ROLE_ICON holds exactly the four role icons", () => {
+    assert.deepStrictEqual(M.ROLE_ICON, {
+        on: "fa-solid fa-toggle-on", off: "fa-solid fa-toggle-off",
+        restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved",
+    });
+});
+
+test("ROLE_TITLE holds exactly the four role tooltips, fixed by role", () => {
+    assert.deepStrictEqual(M.ROLE_TITLE, {
+        on: "Edit On", off: "Edit Off", restart: "Edit Restart", safe_restart: "Edit Safe restart",
+    });
+});
+
 const elapsed = Date.now() - STARTED;
 if (failures.length) {
     console.log("FAIL: " + failures.length + " of " + count + " tests");

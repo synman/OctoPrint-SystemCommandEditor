@@ -1146,7 +1146,7 @@ $(function () {
         // the buttons of one control's row: every member, in menu order, titled with its name. A member the menu
         // does not draw (no role, or a second On or Off) still gets a button, so every command stays reachable.
         // A role button draws its command's own icon, color and invert, else the role's default icon; its title is
-        // "Edit <name>". Run, choice and plain buttons keep their icon and title.
+        // fixed by role ("Edit On"), never the command's name. Run, choice and plain buttons keep their icon and name.
         const controlButtons = (deviceId, table, isCore) => {
             const m = isCore ? window.SceModel.members(deviceId, {}, table) : window.SceModel.members(deviceId, table, {});
             const buttons = window.SceModel.rowButtons(m);
@@ -1161,7 +1161,7 @@ $(function () {
                 const entry = table[b.action] || {};
                 const name = entry.name || b.action;
                 if (roleKinds.indexOf(b.kind) < 0) return _.extend({}, b, {name: name, title: name});
-                return _.extend({}, b, {name: name, title: gettext("Edit") + " " + name,
+                return _.extend({}, b, {name: name, title: gettext(window.SceModel.ROLE_TITLE[b.kind]),
                     icon: entry.icon || b.icon, icon_color: entry.icon_color || "", icon_invert: !!entry.icon_invert});
             });
         };

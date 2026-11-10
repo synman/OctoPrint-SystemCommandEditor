@@ -311,6 +311,9 @@
     // the icon a switch's role button draws when its command has none of its own
     const ROLE_ICON = {on: "fa-solid fa-toggle-on", off: "fa-solid fa-toggle-off", restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved"};
 
+    // the tooltip of a role button: fixed by role, never the command's name, passed through gettext as one string
+    const ROLE_TITLE = {on: "Edit On", off: "Edit Off", restart: "Edit Restart", safe_restart: "Edit Safe restart"};
+
     // every button a control's row can show, in the menu's order, whatever its state: the settings list draws them all
     function rowButtons(m) {
         const buttons = [];
@@ -458,6 +461,7 @@
     const SceModel = {
         BUTTON_ICON: BUTTON_ICON,
         ROLE_ICON: ROLE_ICON,
+        ROLE_TITLE: ROLE_TITLE,
         BUSY_ICONS: BUSY_ICONS,
         busyClass: busyClass,
         rowButtons: rowButtons,
