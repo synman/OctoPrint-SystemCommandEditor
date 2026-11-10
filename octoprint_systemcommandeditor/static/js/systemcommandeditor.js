@@ -590,6 +590,7 @@ $(function () {
         self.status = ko.observable("");
         self.onPattern = ko.observable("");
         self.offPattern = ko.observable("");
+        self.format = ko.observable("");
 
         self.typeChoices = [
             {value: "switch", label: TYPE_LABELS.switch()},
@@ -600,6 +601,7 @@ $(function () {
         self.typeLabel = (type) => (TYPE_LABELS[type] ? TYPE_LABELS[type]() : "");
 
         self.isSwitch = ko.pureComputed(() => self.type() === "switch");
+        self.showFormat = ko.pureComputed(() => self.type() === "readout" || self.type() === "action");
 
         // a control that reads through another plugin or MQTT keeps its read as saved; its status is not edited
         self.readCall = ko.observable(undefined);
@@ -656,6 +658,7 @@ $(function () {
                 device.on_pattern = self.onPattern().trim();
                 device.off_pattern = self.offPattern().trim();
             }
+            if (self.showFormat() && self.format().trim()) device.format = self.format().trim();
             const original = self._original();
             if (original && original.preset) device.preset = original.preset;
             if (original && original.live !== undefined) device.live = original.live;
@@ -681,6 +684,7 @@ $(function () {
             self.mqttStateTopic(device.read && device.read.mqtt !== undefined ? String(device.read.mqtt) : "");
             self.onPattern(device.on_pattern || "");
             self.offPattern(device.off_pattern || "");
+            self.format(device.format || "");
 
             owner.deviceDialog.modal("show");
             window.setTimeout(() => {

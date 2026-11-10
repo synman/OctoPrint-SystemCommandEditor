@@ -2,6 +2,7 @@ import concurrent.futures
 import os
 import re
 import signal
+import string
 import subprocess
 
 OUTPUT_LIMIT = 200
@@ -46,8 +47,40 @@ def evaluate(device, choice_values, exit_code, output, error):
         value = output.strip()
         return value if value in choice_values else "unknown"
     if kind in ("readout", "action"):
-        return (output.splitlines() or [""])[0]
+        first = (output.splitlines() or [""])[0]
+        fmt = device.get("format")
+        if isinstance(fmt, str) and fmt:
+            return format_value(fmt, first)
+        return first
     return None
+
+
+FORMAT_INT_TYPES = set("dboxXcn")
+
+
+def format_value(pattern, text):
+    # A readout's optional format: one {value} field in Python's format syntax. Anything else is left as text.
+    try:
+        fields = [field for field in string.Formatter().parse(pattern) if field[1] is not None]
+        if not fields:
+            return text
+        for _literal, name, spec, conversion in fields:
+            if name != "value" or conversion is not None or "{" in spec or "}" in spec:
+                return text
+        # a number is used only when some field has a format spec; a bare {value} keeps the text. With mixed fields the
+        # number is used for all of them.
+        value = text
+        specs = [spec for _l, _n, spec, _c in fields if spec]
+        if specs:
+            try:
+                value = float(text.strip())
+            except ValueError:
+                value = text
+        if isinstance(value, float) and value.is_integer() and any(spec[-1] in FORMAT_INT_TYPES for spec in specs):
+            value = int(value)
+        return pattern.format(value=value)
+    except (ValueError, TypeError, KeyError, IndexError, OverflowError):
+        return text
 
 
 def _switch(device, exit_code, output):
