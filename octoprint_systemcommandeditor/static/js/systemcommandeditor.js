@@ -1169,8 +1169,13 @@ $(function () {
                 const entry = table[b.action] || {};
                 const name = entry.name || b.action;
                 if (roleKinds.indexOf(b.kind) < 0) return _.extend({}, b, {name: name, title: name});
+                // a command with its own icon keeps its own icon and color; otherwise the role's icon and color
+                if (entry.icon) {
+                    return _.extend({}, b, {name: name, title: gettext(window.SceModel.ROLE_TITLE[b.kind]),
+                        icon: entry.icon, icon_color: entry.icon_color || "", icon_invert: !!entry.icon_invert});
+                }
                 return _.extend({}, b, {name: name, title: gettext(window.SceModel.ROLE_TITLE[b.kind]),
-                    icon: entry.icon || b.icon, icon_color: entry.icon_color || "", icon_invert: !!entry.icon_invert});
+                    icon: b.icon, icon_color: window.SceModel.ROLE_COLOR[b.kind] || "", icon_invert: !!entry.icon_invert});
             });
         };
 

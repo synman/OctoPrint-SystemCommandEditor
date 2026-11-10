@@ -447,9 +447,9 @@ def test_psucontrol_is_one_switch_with_on_and_off_commands():
                     },
                     "commands": [
                         {"name": "On", "role": "on", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"},
-                         "icon": "fa-solid fa-toggle-on"},
+                         "icon": "fa-solid fa-power-off", "icon_color": "#00c800"},
                         {"name": "Off", "role": "off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"},
-                         "icon": "fa-solid fa-toggle-off"},
+                         "icon": "fa-solid fa-power-off", "icon_color": "#c80000"},
                     ],
                 }
             ],
@@ -535,9 +535,9 @@ def test_mqtt_switch_publishes_on_and_off_to_its_command_topic_and_reads_its_sta
             "read": {"mqtt": "home/switch/state"}, "on_pattern": "^ON$", "off_pattern": "^OFF$",
         },
         "commands": [
-            {"name": "On", "role": "on", "icon": "fa-solid fa-toggle-on",
+            {"name": "On", "role": "on", "icon": "fa-solid fa-power-off", "icon_color": "#00c800",
              "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "ON"}}},
-            {"name": "Off", "role": "off", "icon": "fa-solid fa-toggle-off",
+            {"name": "Off", "role": "off", "icon": "fa-solid fa-power-off", "icon_color": "#c80000",
              "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "OFF"}}},
         ],
     }
@@ -654,8 +654,8 @@ def test_octoprint_connection_is_a_state_switch_with_connect_and_disconnect():
         "off_pattern": "^(Offline|Closed|Error)",
     }
     assert preset["commands"] == [
-        {"name": "Connect", "run": {"printer": "connect"}, "role": "on", "icon": "fa-solid fa-toggle-on"},
-        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off", "icon": "fa-solid fa-toggle-off"},
+        {"name": "Connect", "run": {"printer": "connect"}, "role": "on", "icon": "fa-solid fa-power-off", "icon_color": "#00c800"},
+        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off", "icon": "fa-solid fa-power-off", "icon_color": "#c80000"},
     ]
 
 
@@ -898,9 +898,9 @@ def test_webcam_systemd_entry_has_status_patterns_three_commands_and_detect():
         assert control["on_pattern"] == "^active$" and control["off_pattern"] == "^(inactive|failed)$"
         start, stop, restart = preset["commands"]
         assert start == {"name": "Start", "command": "sudo systemctl start {}".format(unit), "role": "on",
-                         "icon": "fa-solid fa-toggle-on"}
+                         "icon": "fa-solid fa-power-off", "icon_color": "#00c800"}
         assert stop == {"name": "Stop", "command": "sudo systemctl stop {}".format(unit), "role": "off",
-                        "icon": "fa-solid fa-toggle-off"}
+                        "icon": "fa-solid fa-power-off", "icon_color": "#c80000"}
         assert restart == {"name": "Restart", "command": "sudo systemctl restart {}".format(unit),
                            "role": "restart", "icon": "fa-solid fa-rotate-right"}
         assert "run" not in start and "run" not in stop and "run" not in restart
@@ -976,10 +976,12 @@ def test_webcam_docker_preset_is_last_s6_with_no_sudo():
 
 def test_webcam_every_command_carries_its_role_icon_and_no_run():
     group = webcam_presets(runner=webcam_runner(), cameras_file=NO_CAMERAS)
-    icons = {"on": "fa-solid fa-toggle-on", "off": "fa-solid fa-toggle-off", "restart": "fa-solid fa-rotate-right"}
+    icons = {"on": "fa-solid fa-power-off", "off": "fa-solid fa-power-off", "restart": "fa-solid fa-rotate-right"}
+    colors = {"on": "#00c800", "off": "#c80000"}
     for preset in group["presets"]:
         for command in preset["commands"]:
             assert command["icon"] == icons[command["role"]]
+            assert command.get("icon_color") == colors.get(command["role"])
             assert "run" not in command
 
 
@@ -1033,15 +1035,15 @@ def test_every_plugin_and_octoprint_control_and_command_has_its_table_icon():
                              "usbrelaycontrol", "bettergrblsupport"), settings)
     groups.append(octoprint_presets("http://printer.local/snap"))
     expected = {
-        "psucontrol:psu": ("fa-solid fa-power-off", ["fa-solid fa-toggle-on", "fa-solid fa-toggle-off"]),
-        "tplinksmartplug:10.0.0.5": ("fa-solid fa-plug", ["fa-solid fa-toggle-on", "fa-solid fa-toggle-off"]),
-        "tasmota:10.0.0.6/1": ("fa-solid fa-plug", ["fa-solid fa-toggle-on", "fa-solid fa-toggle-off"]),
-        "octorelay:r1": ("fa-solid fa-toggle-on", ["fa-solid fa-toggle-on", "fa-solid fa-toggle-off"]),
-        "gpiocontrol:0": ("fa-solid fa-microchip", ["fa-solid fa-toggle-on", "fa-solid fa-toggle-off"]),
-        "usbrelaycontrol:0": ("fa-brands fa-usb", ["fa-solid fa-toggle-on", "fa-solid fa-toggle-off"]),
+        "psucontrol:psu": ("fa-solid fa-power-off", ["fa-solid fa-power-off", "fa-solid fa-power-off"]),
+        "tplinksmartplug:10.0.0.5": ("fa-solid fa-plug", ["fa-solid fa-power-off", "fa-solid fa-power-off"]),
+        "tasmota:10.0.0.6/1": ("fa-solid fa-plug", ["fa-solid fa-power-off", "fa-solid fa-power-off"]),
+        "octorelay:r1": ("fa-solid fa-toggle-on", ["fa-solid fa-power-off", "fa-solid fa-power-off"]),
+        "gpiocontrol:0": ("fa-solid fa-microchip", ["fa-solid fa-power-off", "fa-solid fa-power-off"]),
+        "usbrelaycontrol:0": ("fa-brands fa-usb", ["fa-solid fa-power-off", "fa-solid fa-power-off"]),
         "bettergrblsupport:grbl": ("fa-solid fa-crosshairs", [
             "fa-solid fa-house", "fa-solid fa-lock-open", "fa-solid fa-moon", "fa-solid fa-rotate-left"]),
-        "octoprint:connection": ("fa-solid fa-link", ["fa-solid fa-toggle-on", "fa-solid fa-toggle-off"]),
+        "octoprint:connection": ("fa-solid fa-link", ["fa-solid fa-power-off", "fa-solid fa-power-off"]),
         "octoprint:job": ("fa-solid fa-hourglass-half", [
             "fa-solid fa-pause", "fa-solid fa-play", "fa-solid fa-stop"]),
         "octoprint:printer": ("fa-solid fa-temperature-half", [

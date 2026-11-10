@@ -556,9 +556,13 @@ test("placementOf: a run entry that names a device is never a readout placement"
 
 test("ROLE_ICON holds exactly the four role icons", () => {
     assert.deepStrictEqual(M.ROLE_ICON, {
-        on: "fa-solid fa-toggle-on", off: "fa-solid fa-toggle-off",
+        on: "fa-solid fa-power-off", off: "fa-solid fa-power-off",
         restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved",
     });
+});
+
+test("ROLE_COLOR holds exactly the On green and the Off red", () => {
+    assert.deepStrictEqual(M.ROLE_COLOR, {on: "#00c800", off: "#c80000"});
 });
 
 test("ROLE_TITLE holds exactly the four role tooltips, fixed by role", () => {

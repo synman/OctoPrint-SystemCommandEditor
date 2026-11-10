@@ -169,6 +169,28 @@ def role_icons(actions):
     return (fixed, True) if changed else (actions, False)
 
 
+def power_icons(actions):
+    """Settings v8: a switch's On and Off commands with the old toggle defaults get the power icon and its color.
+
+    The On command is green and the Off command red, the colors the operator chose. Only an entry with the matching
+    role and toggle icon and no color of its own changes; anything else is kept as it is. Returns ``(actions, changed)``.
+    The inputs are not modified, and a config with no such entry is returned untouched.
+    """
+    fixed = []
+    changed = False
+    for entry in actions or []:
+        if isinstance(entry, dict) and not entry.get("icon_color"):
+            role, icon = entry.get("role"), entry.get("icon")
+            if role == "on" and icon == "fa-solid fa-toggle-on":
+                entry = dict(entry, icon="fa-solid fa-power-off", icon_color="#00c800")
+                changed = True
+            elif role == "off" and icon == "fa-solid fa-toggle-off":
+                entry = dict(entry, icon="fa-solid fa-power-off", icon_color="#c80000")
+                changed = True
+        fixed.append(entry)
+    return (fixed, True) if changed else (actions, False)
+
+
 def _is_plug_read(device):
     if not isinstance(device, dict):
         return False

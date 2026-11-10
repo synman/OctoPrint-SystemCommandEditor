@@ -309,7 +309,10 @@
     const BUTTON_ICON = {restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved", off: "fa-solid fa-power-off", on: "fa-solid fa-play"};
 
     // the icon a switch's role button draws when its command has none of its own
-    const ROLE_ICON = {on: "fa-solid fa-toggle-on", off: "fa-solid fa-toggle-off", restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved"};
+    const ROLE_ICON = {on: "fa-solid fa-power-off", off: "fa-solid fa-power-off", restart: "fa-solid fa-rotate-right", safe_restart: "fa-solid fa-shield-halved"};
+
+    // the color a role button draws when its command has no icon of its own: green On, red Off, none otherwise
+    const ROLE_COLOR = {on: "#00c800", off: "#c80000"};
 
     // the tooltip of a role button: fixed by role, never the command's name, passed through gettext as one string
     const ROLE_TITLE = {on: "Edit On", off: "Edit Off", restart: "Edit Restart", safe_restart: "Edit Safe restart"};
@@ -461,6 +464,7 @@
     const SceModel = {
         BUTTON_ICON: BUTTON_ICON,
         ROLE_ICON: ROLE_ICON,
+        ROLE_COLOR: ROLE_COLOR,
         ROLE_TITLE: ROLE_TITLE,
         BUSY_ICONS: BUSY_ICONS,
         busyClass: busyClass,

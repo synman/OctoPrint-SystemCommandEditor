@@ -404,8 +404,10 @@ def mark_presets(devices, actions, maintenance_action_keys):
 # Each source line cited is the one the reader relies on.
 
 # Role icons: a switch's on, off and restart commands carry these in the saved entries
-ON_ICON = "fa-solid fa-toggle-on"
-OFF_ICON = "fa-solid fa-toggle-off"
+ON_ICON = "fa-solid fa-power-off"
+ON_COLOR = "#00c800"
+OFF_ICON = "fa-solid fa-power-off"
+OFF_COLOR = "#c80000"
 RESTART_ICON = "fa-solid fa-rotate-right"
 
 
@@ -413,8 +415,8 @@ def _switch(name, read, on_pattern, off_pattern, on_run, off_run, icon):
     control = {"type": "switch", "name": name, "icon": icon, "read": read, "on_pattern": on_pattern,
                "off_pattern": off_pattern}
     commands = [
-        {"name": "On", "run": on_run, "role": "on", "icon": ON_ICON},
-        {"name": "Off", "run": off_run, "role": "off", "icon": OFF_ICON},
+        {"name": "On", "run": on_run, "role": "on", "icon": ON_ICON, "icon_color": ON_COLOR},
+        {"name": "Off", "run": off_run, "role": "off", "icon": OFF_ICON, "icon_color": OFF_COLOR},
     ]
     return control, commands
 
@@ -630,8 +632,8 @@ def octoprint_presets(snapshot_url=None):
         "off_pattern": "^(Offline|Closed|Error)",
     }
     connection_commands = [
-        {"name": "Connect", "run": {"printer": "connect"}, "role": "on", "icon": ON_ICON},
-        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off", "icon": OFF_ICON},
+        {"name": "Connect", "run": {"printer": "connect"}, "role": "on", "icon": ON_ICON, "icon_color": ON_COLOR},
+        {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off", "icon": OFF_ICON, "icon_color": OFF_COLOR},
     ]
 
     def action(name, icon, commands, read=None):
@@ -759,8 +761,8 @@ def _unit_preset(unit, name):
         "control": {"type": "switch", "name": name, "icon": "fa-solid fa-video", "status": status,
                     "on_pattern": "^active$", "off_pattern": "^(inactive|failed)$"},
         "commands": [
-            {"name": "Start", "command": "sudo systemctl start {}".format(quoted), "role": "on", "icon": ON_ICON},
-            {"name": "Stop", "command": "sudo systemctl stop {}".format(quoted), "role": "off", "icon": OFF_ICON},
+            {"name": "Start", "command": "sudo systemctl start {}".format(quoted), "role": "on", "icon": ON_ICON, "icon_color": ON_COLOR},
+            {"name": "Stop", "command": "sudo systemctl stop {}".format(quoted), "role": "off", "icon": OFF_ICON, "icon_color": OFF_COLOR},
             {"name": "Restart", "command": "sudo systemctl restart {}".format(quoted), "role": "restart",
              "icon": RESTART_ICON},
         ],
@@ -774,8 +776,8 @@ def _docker_preset():
         "control": {"type": "switch", "name": "Webcam (OctoPrint Docker)", "icon": "fa-solid fa-video",
                     "status": "s6-svstat {}".format(DOCKER_WEBCAM), "on_pattern": "^up", "off_pattern": "^down"},
         "commands": [
-            {"name": "Start", "command": "s6-svc -u {}".format(DOCKER_WEBCAM), "role": "on", "icon": ON_ICON},
-            {"name": "Stop", "command": "s6-svc -d {}".format(DOCKER_WEBCAM), "role": "off", "icon": OFF_ICON},
+            {"name": "Start", "command": "s6-svc -u {}".format(DOCKER_WEBCAM), "role": "on", "icon": ON_ICON, "icon_color": ON_COLOR},
+            {"name": "Stop", "command": "s6-svc -d {}".format(DOCKER_WEBCAM), "role": "off", "icon": OFF_ICON, "icon_color": OFF_COLOR},
             {"name": "Restart", "command": "s6-svc -r {}".format(DOCKER_WEBCAM), "role": "restart",
              "icon": RESTART_ICON},
         ],
@@ -870,6 +872,8 @@ def _command_entry(preset, command, key, group):
         entry["run"] = command["run"]
     if command.get("icon"):
         entry["icon"] = command["icon"]
+    if command.get("icon_color"):
+        entry["icon_color"] = command["icon_color"]
     if command.get("async"):
         entry["async"] = True
     if command.get("confirm"):

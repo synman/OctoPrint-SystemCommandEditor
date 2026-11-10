@@ -94,9 +94,9 @@ PLUGINS = [
                      "on_pattern": "^active$", "off_pattern": "^(inactive|failed)$"},
          "commands": [
              {"name": "Start", "command": "sudo systemctl start ustreamer", "role": "on",
-              "icon": "fa-solid fa-toggle-on"},
+              "icon": "fa-solid fa-power-off", "icon_color": "#00c800"},
              {"name": "Stop", "command": "sudo systemctl stop ustreamer", "role": "off",
-              "icon": "fa-solid fa-toggle-off"},
+              "icon": "fa-solid fa-power-off", "icon_color": "#c80000"},
              {"name": "Restart", "command": "sudo systemctl restart ustreamer", "role": "restart",
               "icon": "fa-solid fa-rotate-right"}]}]},
     # the OctoPrint group, as octoprint_presets() builds it with a snapshot URL: a command-only webcam link, and the
@@ -151,9 +151,9 @@ MQTT_GROUP = {"plugin": "mqtt", "name": "MQTT", "presets": [
      "control": {"type": "switch", "name": "MQTT switch", "icon": "fa-solid fa-tower-broadcast",
                  "read": {"mqtt": "home/switch/state"}, "on_pattern": "^ON$", "off_pattern": "^OFF$"},
      "commands": [
-         {"name": "On", "role": "on", "icon": "fa-solid fa-toggle-on",
+         {"name": "On", "role": "on", "icon": "fa-solid fa-power-off", "icon_color": "#00c800",
           "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "ON"}}},
-         {"name": "Off", "role": "off", "icon": "fa-solid fa-toggle-off",
+         {"name": "Off", "role": "off", "icon": "fa-solid fa-power-off", "icon_color": "#c80000",
           "run": {"plugin": "mqtt", "helper": "mqtt_publish", "args": {"topic": "home/switch/set", "payload": "OFF"}}}]}]}
 
 
@@ -839,9 +839,13 @@ def run_probe():
             edit_command(name)
             page.fill("#sce-editor-icon", "")
             modal_done("#sce-editor")
-        check("with no icon of its own, a switch's On button draws the toggle-on icon and Off the toggle-off icon",
-              laser_control.locator("button[data-action='laser_on_cmd'] i.fa-toggle-on").count() == 1 and
-              laser_control.locator("button[data-action='laser_off_cmd'] i.fa-toggle-off").count() == 1)
+        check("with no icon of its own, a switch's On button draws the power icon in green and Off in red",
+              laser_control.locator("button[data-action='laser_on_cmd'] i.fa-power-off").count() == 1 and
+              laser_control.locator("button[data-action='laser_off_cmd'] i.fa-power-off").count() == 1 and
+              laser_control.locator("button[data-action='laser_on_cmd'] i.fa-power-off").evaluate(
+                  "e => getComputedStyle(e).color") == "rgb(0, 200, 0)" and
+              laser_control.locator("button[data-action='laser_off_cmd'] i.fa-power-off").evaluate(
+                  "e => getComputedStyle(e).color") == "rgb(200, 0, 0)")
 
         # a second On on the same switch is blocked, and Done re-enables once it is Off
         edit_command("Laser off", role="on")

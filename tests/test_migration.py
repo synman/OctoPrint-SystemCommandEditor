@@ -399,7 +399,7 @@ def test_v7_gives_the_old_on_and_off_defaults_the_toggle_icons_and_leaves_the_re
         {"action": "on_d", "name": "On D", "command": "true", "role": "on"},
     ]
     plugin = make_plugin(tmp_path, actions, None)
-    plugin.on_settings_migrate(7, 6)
+    plugin._role_icons()
     got = plugin._settings.config["system"]["actions"]
     assert [entry.get("icon") for entry in got] == [
         "fa-solid fa-toggle-on", "fa-solid fa-toggle-off", "fa-solid fa-bolt", "fa-solid fa-moon",
@@ -412,7 +412,7 @@ def test_v7_writes_nothing_when_no_entry_matches(tmp_path):
     actions = [{"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-toggle-on"},
                cmd("x")]
     plugin = make_plugin(tmp_path, actions, None)
-    plugin.on_settings_migrate(7, 6)
+    plugin._role_icons()
     assert plugin._settings.config["system"]["actions"] == actions
     assert plugin._settings.global_sets == []
 
@@ -423,3 +423,64 @@ def test_v7_skipped_when_already_at_7(tmp_path):
     plugin.on_settings_migrate(7, 7)
     assert plugin._settings.config["system"]["actions"] == actions
     assert plugin._settings.global_sets == []
+
+
+def test_v8_gives_the_toggle_defaults_the_power_icon_in_green_and_red(tmp_path):
+    actions = [
+        {"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-toggle-on"},
+        {"action": "off_a", "name": "Off", "command": "true", "role": "off", "icon": "fa-solid fa-toggle-off"},
+    ]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(8, 7)
+    assert plugin._settings.config["system"]["actions"] == [
+        {"action": "on_a", "name": "On", "command": "true", "role": "on",
+         "icon": "fa-solid fa-power-off", "icon_color": "#00c800"},
+        {"action": "off_a", "name": "Off", "command": "true", "role": "off",
+         "icon": "fa-solid fa-power-off", "icon_color": "#c80000"},
+    ]
+
+
+def test_v8_leaves_a_colored_toggle_a_wrong_role_a_power_icon_and_no_icon_unchanged(tmp_path):
+    actions = [
+        {"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-toggle-on",
+         "icon_color": "#ff0000"},
+        {"action": "off_b", "name": "Off B", "command": "true", "role": "on", "icon": "fa-solid fa-toggle-off"},
+        {"action": "on_c", "name": "On C", "command": "true", "role": "on", "icon": "fa-solid fa-power-off"},
+        {"action": "on_d", "name": "On D", "command": "true", "role": "on"},
+    ]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(8, 7)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.global_sets == []
+
+
+def test_v8_writes_nothing_when_no_entry_matches(tmp_path):
+    actions = [{"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-play"},
+               cmd("x")]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(8, 7)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.global_sets == []
+
+
+def test_v8_skipped_at_8(tmp_path):
+    actions = [{"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-toggle-on"}]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(8, 8)
+    assert plugin._settings.config["system"]["actions"] == actions
+    assert plugin._settings.global_sets == []
+
+
+def test_v6_runs_v7_then_v8_and_ends_on_power_with_the_colors(tmp_path):
+    actions = [
+        {"action": "on_a", "name": "On", "command": "true", "role": "on", "icon": "fa-solid fa-play"},
+        {"action": "off_a", "name": "Off", "command": "true", "role": "off", "icon": "fa-solid fa-power-off"},
+    ]
+    plugin = make_plugin(tmp_path, actions, None)
+    plugin.on_settings_migrate(8, 6)
+    assert plugin._settings.config["system"]["actions"] == [
+        {"action": "on_a", "name": "On", "command": "true", "role": "on",
+         "icon": "fa-solid fa-power-off", "icon_color": "#00c800"},
+        {"action": "off_a", "name": "Off", "command": "true", "role": "off",
+         "icon": "fa-solid fa-power-off", "icon_color": "#c80000"},
+    ]

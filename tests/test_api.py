@@ -486,8 +486,8 @@ def test_first_start_marks_readout_placement_with_its_readout(monkeypatch):
     assert [d for d in config["devices"] if d["id"] == "disk"][0]["preset"] == "disk"
 
 
-def test_settings_version_is_7():
-    assert SystemCommandEditorPlugin().get_settings_version() == 7
+def test_settings_version_is_8():
+    assert SystemCommandEditorPlugin().get_settings_version() == 8
 
 
 def printer_in(state):
@@ -886,9 +886,9 @@ def test_first_start_adds_ready_made_switches_and_commands_after_maintenance(mon
     assert actions[4:] == [
         {"action": "divider", "name": "Plugin devices"},
         {"action": "connection_connect", "name": "Connect", "run": {"printer": "connect"}, "role": "on",
-         "icon": "fa-solid fa-toggle-on", "group": "connection", "preset": "octoprint:connection"},
+         "icon": "fa-solid fa-power-off", "icon_color": "#00c800", "group": "connection", "preset": "octoprint:connection"},
         {"action": "connection_disconnect", "name": "Disconnect", "run": {"printer": "disconnect"},
-         "role": "off", "icon": "fa-solid fa-toggle-off", "group": "connection", "preset": "octoprint:connection"},
+         "role": "off", "icon": "fa-solid fa-power-off", "icon_color": "#c80000", "group": "connection", "preset": "octoprint:connection"},
         {"action": "psu_control_on", "name": "On", "run": {"plugin": "psucontrol", "helper": "turn_psu_on"},
          "role": "on", "group": "printer_power", "preset": "psucontrol:psu"},
         {"action": "psu_control_off", "name": "Off", "run": {"plugin": "psucontrol", "helper": "turn_psu_off"},
@@ -965,9 +965,9 @@ def test_first_start_adds_only_the_available_webcam_switch_with_shell_commands(m
     assert actions == [
         {"action": "divider", "name": "Plugin devices"},
         {"action": "webcam_webcamd_start", "name": "Start", "command": "sudo systemctl start webcamd", "role": "on",
-         "icon": "fa-solid fa-toggle-on", "group": "webcam_webcamd", "preset": "webcam:webcamd"},
+         "icon": "fa-solid fa-power-off", "icon_color": "#00c800", "group": "webcam_webcamd", "preset": "webcam:webcamd"},
         {"action": "webcam_webcamd_stop", "name": "Stop", "command": "sudo systemctl stop webcamd", "role": "off",
-         "icon": "fa-solid fa-toggle-off", "group": "webcam_webcamd", "preset": "webcam:webcamd"},
+         "icon": "fa-solid fa-power-off", "icon_color": "#c80000", "group": "webcam_webcamd", "preset": "webcam:webcamd"},
         {"action": "webcam_webcamd_restart", "name": "Restart", "command": "sudo systemctl restart webcamd",
          "role": "restart", "icon": "fa-solid fa-rotate-right", "group": "webcam_webcamd", "preset": "webcam:webcamd"},
     ]
