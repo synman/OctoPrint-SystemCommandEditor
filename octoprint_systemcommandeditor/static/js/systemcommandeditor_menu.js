@@ -462,7 +462,47 @@
         });
     }
 
+    // --- Add from presets: one list, grouped by the kind of control a preset makes -------------------------------
+    // The server answers four lists: "switches" (OctoPrint's own commands), "readouts" and "maintenance" (shell
+    // commands on this system) and "plugins" (one group per plugin). The popup shows them by kind, in the device
+    // editor's type order, then the presets that add commands with no control.
+    const PRESET_KINDS = ["switch", "selector", "action", "readout", "command"];
+
+    // the kind of control a preset makes: "command" when it makes none
+    function presetKind(list, item) {
+        if (list === "switches") return "switch";
+        if (list === "readouts") return "readout";
+        if (list === "maintenance") return "action";
+        const type = item && item.control && item.control.type;
+        return PRESET_KINDS.indexOf(type) !== -1 && type !== "command" ? type : "command";
+    }
+
+    // whether this system has what a preset needs. A switch of OctoPrint's own commands always does. A sample
+    // readout or maintenance command says so with available: true, and a missing key reads as not detected. A plugin
+    // preset is harvested from an installed plugin, so only available: false is not detected.
+    function presetAvailable(list, item) {
+        if (list === "switches") return true;
+        if (list === "plugins") return !(item && item.available === false);
+        return !!(item && item.available);
+    }
+
+    // rows: [{kind, available, added, checked}] in list order. Returns {sections: [{kind, rows}], hidden}: the
+    // sections that have a row to show, in PRESET_KINDS order, and how many rows the filter left out. With
+    // onlyAvailable, a row shows when it is available, already added, or ticked, so a present control whose
+    // preset is no longer detected can still be unticked and removed.
+    function presetSections(rows, onlyAvailable) {
+        const shown = (rows || []).filter((row) => !onlyAvailable || row.available || row.added || row.checked);
+        const sections = PRESET_KINDS
+            .map((kind) => ({kind: kind, rows: shown.filter((row) => row.kind === kind)}))
+            .filter((section) => section.rows.length > 0);
+        return {sections: sections, hidden: (rows || []).length - shown.length};
+    }
+
     const SceModel = {
+        PRESET_KINDS: PRESET_KINDS,
+        presetKind: presetKind,
+        presetAvailable: presetAvailable,
+        presetSections: presetSections,
         BUTTON_ICON: BUTTON_ICON,
         ROLE_ICON: ROLE_ICON,
         ROLE_COLOR: ROLE_COLOR,

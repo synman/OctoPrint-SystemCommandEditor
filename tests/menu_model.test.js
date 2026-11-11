@@ -572,6 +572,57 @@ test("ROLE_TITLE holds exactly the four role tooltips, fixed by role", () => {
     });
 });
 
+test("presetKind names the control a preset makes, and command when it makes none", () => {
+    assert.strictEqual(M.presetKind("switches", {id: "host"}), "switch");
+    assert.strictEqual(M.presetKind("readouts", {id: "disk"}), "readout");
+    assert.strictEqual(M.presetKind("maintenance", {action: "backup"}), "action");
+    assert.strictEqual(M.presetKind("plugins", {control: {type: "switch"}}), "switch");
+    assert.strictEqual(M.presetKind("plugins", {control: {type: "selector"}}), "selector");
+    assert.strictEqual(M.presetKind("plugins", {control: {type: "action"}}), "action");
+    assert.strictEqual(M.presetKind("plugins", {control: {type: "readout"}}), "readout");
+    assert.strictEqual(M.presetKind("plugins", {control: null, commands: [{url: "http://x"}]}), "command");
+    assert.strictEqual(M.presetKind("plugins", {control: {type: "mystery"}}), "command");
+});
+
+test("presetAvailable reads each list's own rule", () => {
+    // OctoPrint's own commands are always there
+    assert.strictEqual(M.presetAvailable("switches", {id: "host"}), true);
+    // a sample readout or maintenance command must say so; a missing key is not detected
+    assert.strictEqual(M.presetAvailable("readouts", {available: true}), true);
+    assert.strictEqual(M.presetAvailable("readouts", {available: false}), false);
+    assert.strictEqual(M.presetAvailable("readouts", {}), false);
+    assert.strictEqual(M.presetAvailable("maintenance", {}), false);
+    assert.strictEqual(M.presetAvailable("maintenance", {available: true}), true);
+    // a plugin preset is harvested from an installed plugin; only available: false is not detected
+    assert.strictEqual(M.presetAvailable("plugins", {}), true);
+    assert.strictEqual(M.presetAvailable("plugins", {available: true}), true);
+    assert.strictEqual(M.presetAvailable("plugins", {available: false}), false);
+});
+
+test("presetSections groups by kind in the editor's type order and drops empty sections", () => {
+    const row = (name, kind, extra) => Object.assign({name: name, kind: kind, available: true, added: false, checked: false}, extra);
+    const rows = [row("r1", "readout"), row("c1", "command"), row("s1", "switch"), row("a1", "action"), row("s2", "switch")];
+    const view = M.presetSections(rows, true);
+    assert.deepStrictEqual(view.sections.map((s) => [s.kind, s.rows.map((r) => r.name)]),
+        [["switch", ["s1", "s2"]], ["action", ["a1"]], ["readout", ["r1"]], ["command", ["c1"]]]);
+    assert.strictEqual(view.hidden, 0);
+    assert.deepStrictEqual(M.presetSections([], true), {sections: [], hidden: 0});
+    assert.deepStrictEqual(M.presetSections(undefined, false), {sections: [], hidden: 0});
+});
+
+test("presetSections with the filter on hides what is not available, but never a row that is added or ticked", () => {
+    const row = (name, extra) => Object.assign({name: name, kind: "readout", available: false, added: false, checked: false}, extra);
+    const rows = [row("has", {available: true}), row("gone"), row("gone-but-added", {added: true}),
+        row("gone-but-ticked", {checked: true}), row("other", {kind: "switch"})];
+    const on = M.presetSections(rows, true);
+    assert.deepStrictEqual(on.sections.map((s) => [s.kind, s.rows.map((r) => r.name)]),
+        [["readout", ["has", "gone-but-added", "gone-but-ticked"]]]);
+    assert.strictEqual(on.hidden, 2);
+    const off = M.presetSections(rows, false);
+    assert.deepStrictEqual(off.sections.map((s) => [s.kind, s.rows.length]), [["switch", 1], ["readout", 4]]);
+    assert.strictEqual(off.hidden, 0);
+});
+
 const elapsed = Date.now() - STARTED;
 if (failures.length) {
     console.log("FAIL: " + failures.length + " of " + count + " tests");

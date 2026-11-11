@@ -489,70 +489,25 @@
             <i class="fa-solid fa-spinner fa-spin"></i> {{ _('Checking this system…') }}
         </div>
         <div data-bind="visible: failed" class="muted">{{ _('Could not check this system.') }}</div>
-        <h4 data-bind="visible: !loading() && !failed()">{{ _('Switches') }}</h4>
-        <div class="sce-list" data-group="switches" data-bind="visible: !loading() && !failed()">
-            <!-- ko foreach: switches -->
-            <div class="sce-row sce-preset-row">
-                <label>
-                    <input type="checkbox" data-bind="checked: checked">
-                </label>
-                <span class="sce-icon"><i data-bind="css: $data.item.icon || ''"></i></span>
-                <span class="sce-text">
-                    <span class="sce-name" data-bind="text: $data.item.name"></span>
-                    <span class="muted">{{ _('Switch for OctoPrint\'s own commands') }}</span>
-                </span>
-            </div>
-            <!-- /ko -->
+        <!-- ko if: !loading() && !failed() -->
+        <div class="sce-filter">
+            <label class="checkbox"><input type="checkbox" data-bind="checked: onlyAvailable"> {{ _('Only show what this system has') }}</label>
+            <span class="muted sce-hidden-count" data-bind="text: hiddenText, visible: view().hidden > 0"></span>
         </div>
-        <h4 data-bind="visible: !loading() && !failed()">{{ _('Readouts') }}</h4>
-        <div class="sce-list" data-group="readouts" data-bind="visible: !loading() && !failed()">
-            <!-- ko foreach: readouts -->
-            <div class="sce-row sce-preset-row">
-                <label>
-                    <input type="checkbox" data-bind="checked: checked">
-                </label>
-                <span class="sce-icon"><i data-bind="css: $data.item.icon || ''"></i></span>
-                <span class="sce-text">
-                    <span class="sce-name" data-bind="text: $data.item.name"></span>
-                    <span class="muted" data-bind="text: $data.item.value || '', visible: $data.item.value"></span>
-                </span>
-                <span class="muted" data-bind="text: $parent.label($data), visible: $parent.label($data)"></span>
-            </div>
-            <!-- /ko -->
-        </div>
-        <h4 data-bind="visible: !loading() && !failed()">{{ _('Maintenance commands') }}</h4>
-        <div class="sce-list" data-group="maintenance" data-bind="visible: !loading() && !failed()">
-            <!-- ko foreach: maintenance -->
-            <div class="sce-row sce-preset-row">
-                <label>
-                    <input type="checkbox" data-bind="checked: checked">
-                </label>
-                <span class="sce-icon"><i data-bind="css: $data.item.icon || ''"></i></span>
-                <span class="sce-text">
-                    <span class="sce-name" data-bind="text: $data.item.name"></span>
-                    <span class="muted" data-bind="text: $data.note, visible: $data.note && $data.item.available"></span>
-                </span>
-                <span class="muted" data-bind="text: $parent.label($data), visible: $parent.label($data)"></span>
-            </div>
-            <!-- /ko -->
-        </div>
-        <!-- ko if: plugins().length -->
-        <h4 data-bind="visible: !loading() && !failed()">{{ _('Plugin devices') }}</h4>
-        <!-- ko foreach: plugins -->
-        <h5 class="sce-plugin-group" data-bind="text: $data.name, visible: !$parent.loading() && !$parent.failed()"></h5>
-        <div class="sce-list" data-group="plugins" data-bind="visible: !$parent.loading() && !$parent.failed()">
+        <div class="muted sce-empty" data-bind="visible: !view().sections.length">{{ _('No presets to show.') }}</div>
+        <!-- ko foreach: view().sections -->
+        <h4 class="sce-preset-heading"><span data-bind="text: title"></span> <span class="muted" data-bind="text: rows.length"></span></h4>
+        <div class="sce-list" data-bind="attr: {'data-kind': kind}">
             <!-- ko foreach: rows -->
-            <div class="sce-row sce-preset-row sce-plugin-row">
-                <label>
-                    <input type="checkbox" data-bind="checked: checked">
-                </label>
-                <span class="sce-icon"><i data-bind="css: $data.icon || ''"></i></span>
-                <span class="sce-text">
-                    <span class="sce-name" data-bind="text: $data.item.name"></span>
-                    <span class="muted" data-bind="text: $data.type"></span>
+            <label class="sce-row sce-preset-row" data-bind="attr: {'data-group': list}, css: {'sce-plugin-row': list === 'plugins', 'sce-unavailable': !available}">
+                <input type="checkbox" data-bind="checked: checked">
+                <span class="sce-icon"><i data-bind="css: icon"></i></span>
+                <span class="sce-text" data-bind="attr: {title: item.name + ' \u2014 ' + desc}">
+                    <span class="sce-name" data-bind="text: item.name"></span>
+                    <span class="muted sce-desc" data-bind="text: desc"></span>
                 </span>
-                <span class="muted" data-bind="text: $data.label, visible: $data.label"></span>
-            </div>
+                <span class="muted sce-status" data-bind="text: $data.label || '', visible: $data.label"></span>
+            </label>
             <!-- /ko -->
         </div>
         <!-- /ko -->

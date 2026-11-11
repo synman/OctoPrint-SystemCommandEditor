@@ -246,6 +246,13 @@ def wait_hidden(selector, timeout=8000):
     page.locator(selector).first.wait_for(state="hidden", timeout=timeout)
 
 
+def show_all_presets():
+    # the popup opens listing only what this system has; this turns that filter off
+    box = page.locator("#sce-presets .sce-filter input")
+    if box.is_checked():
+        box.uncheck()
+
+
 def command_row(name):
     return page.locator("#settings_plugin_systemcommandeditor .sce-command", has_text=name).first
 
@@ -1058,7 +1065,26 @@ def run_probe():
         }""")
         page.get_by_role("button", name="Add from presets").click()
         wait_visible("#sce-presets .sce-preset-row")
-        rows = page.locator("#sce-presets [data-group=readouts] .sce-preset-row")
+        rows = page.locator("#sce-presets .sce-preset-row[data-group=readouts]")
+        # the popup opens with the filter on: what this system lacks is left out, and counted beside the filter
+        all_rows = page.locator("#sce-presets .sce-preset-row")
+        hidden_note = page.locator("#sce-presets .sce-hidden-count")
+        check("the presets popup opens showing only what this system has",
+              page.locator("#sce-presets .sce-filter input").is_checked() and rows.count() == 2
+              and all_rows.filter(has_text="Not detected on this system").count() == 0
+              and all_rows.filter(has_text="Throttling").count() == 0 and all_rows.filter(has_text="Sync the clock").count() == 0,
+              "readouts=%d" % rows.count())
+        check("the popup says how many presets the filter left out",
+              hidden_note.is_visible() and "not available here" in hidden_note.inner_text(),
+              "text=%r" % hidden_note.inner_text())
+        headings = [h.strip().split("\n")[0].split(" ")[0].lower() for h in page.locator("#sce-presets h4").all_inner_texts()]
+        check("the popup groups presets by kind in the editor's type order, with no plugin headings",
+              headings == ["switches", "actions", "readouts", "commands"] and page.locator("#sce-presets h5").count() == 0,
+              "headings=%s" % headings)
+        desc = all_rows.filter(has_text="Disk free").locator(".sce-desc").inner_text()
+        check("a preset's description names where it comes from", desc.startswith("This system"), "desc=%r" % desc)
+        show_all_presets()
+        check("with the filter off the popup counts nothing as left out", not hidden_note.is_visible())
         check("presets modal lists three readout rows", rows.count() == 3, "rows=%d" % rows.count())
         cpu = rows.filter(has_text="CPU temperature")
         throttle = rows.filter(has_text="Throttling")
@@ -1070,13 +1096,13 @@ def run_probe():
               disk_row.locator("input").is_enabled() and disk_row.locator("input").is_checked())
         check("cpu readout starts unticked", cpu.locator("input").is_enabled() and not cpu.locator("input").is_checked())
         cpu.locator("input").check()
-        srows = page.locator("#sce-presets [data-group=switches] .sce-preset-row")
+        srows = page.locator("#sce-presets .sce-preset-row[data-group=switches]")
         check("presets modal lists the host and OctoPrint switches, unticked while absent",
               srows.count() == 2 and srows.nth(0).filter(has_text="probe-host").count() == 1
               and not srows.nth(0).locator("input").is_checked() and not srows.nth(1).locator("input").is_checked(),
               "rows=%d" % srows.count())
         srows.filter(has_text="probe-host").locator("input").check()
-        mrows = page.locator("#sce-presets [data-group=maintenance] .sce-preset-row")
+        mrows = page.locator("#sce-presets .sce-preset-row[data-group=maintenance]")
         check("presets modal lists three maintenance rows", mrows.count() == 3, "rows=%d" % mrows.count())
         backup = mrows.filter(has_text="Back up OctoPrint now")
         wifi = mrows.filter(has_text="Turn Wi-Fi power saving off")
@@ -1133,8 +1159,8 @@ def run_probe():
         # Phase D2: the host switch is now present, so it starts ticked; unticking it removes it and frees its members
         open_settings()
         page.get_by_role("button", name="Add from presets").click()
-        wait_visible("#sce-presets [data-group=switches] .sce-preset-row")
-        host_row = page.locator("#sce-presets [data-group=switches] .sce-preset-row").filter(has_text="probe-host")
+        wait_visible("#sce-presets .sce-preset-row[data-group=switches]")
+        host_row = page.locator("#sce-presets .sce-preset-row[data-group=switches]").filter(has_text="probe-host")
         check("a present switch starts ticked", host_row.locator("input").is_checked())
         host_row.locator("input").uncheck()
         page.locator("#sce-presets .modal-footer .btn-primary").click()
@@ -1154,10 +1180,17 @@ def run_probe():
         plugin_rows = page.locator("#sce-presets .sce-plugin-row")
         psu_row = plugin_rows.filter(has_text="PSU Control")
         grbl_row = plugin_rows.filter(has_text="Grbl")
-        check("the presets picker shows a Plugin devices section with all five plugin presets unticked",
-              page.locator("#sce-presets h4", has_text="Plugin devices").count() == 1 and plugin_rows.count() == 5
+        check("with the filter on the popup leaves out the plugin preset this system lacks",
+              plugin_rows.count() == 4 and plugin_rows.filter(has_text="Webcam (ustreamer)").count() == 0,
+              "rows=%d" % plugin_rows.count())
+        show_all_presets()
+        grbl_desc = grbl_row.locator(".sce-desc").inner_text()
+        check("the presets picker lists all five plugin presets unticked, under kinds, with no plugin heading",
+              page.locator("#sce-presets h4", has_text="Plugin devices").count() == 0
+              and page.locator("#sce-presets h5").count() == 0 and plugin_rows.count() == 5
               and not psu_row.locator("input").is_checked() and not grbl_row.locator("input").is_checked(),
               "rows=%d" % plugin_rows.count())
+        check("a plugin preset's description names its plugin", grbl_desc == "Better Grbl Support", "desc=%r" % grbl_desc)
         psu_row.locator("input").check()
         page.locator("#sce-presets .modal-footer .btn-primary").click()
         wait_hidden("#sce-presets")
@@ -1409,6 +1442,7 @@ def run_probe():
         open_settings()
         page.get_by_role("button", name="Add from presets").click()
         wait_visible("#sce-presets .sce-plugin-row")
+        show_all_presets()
         webcam_row = page.locator("#sce-presets .sce-plugin-row", has_text="Webcam (ustreamer)")
         psu_row = page.locator("#sce-presets .sce-plugin-row", has_text="PSU Control")
         grbl_row = page.locator("#sce-presets .sce-plugin-row", has_text="Grbl")
@@ -1452,6 +1486,10 @@ def run_probe():
         open_settings()
         page.get_by_role("button", name="Add from presets").click()
         wait_visible("#sce-presets .sce-plugin-row")
+        added_webcam = page.locator("#sce-presets .sce-plugin-row", has_text="Webcam (ustreamer)")
+        check("an added preset this system lacks stays listed with the filter on, so it can be removed",
+              page.locator("#sce-presets .sce-filter input").is_checked() and added_webcam.count() == 1
+              and added_webcam.locator("input").is_checked(), "rows=%d" % added_webcam.count())
         page.locator("#sce-presets .sce-plugin-row", has_text="Grbl").locator("input").uncheck()
         page.locator("#sce-presets .sce-plugin-row", has_text="Webcam (ustreamer)").locator("input").uncheck()
         page.locator("#sce-presets .modal-footer .btn-primary").click()

@@ -774,12 +774,56 @@ $(function () {
             self.switches().some(differs) || self.readouts().some(differs) || self.maintenance().some(differs) ||
             self.plugins().some((group) => group.rows.some(differs)));
 
-        // the picker is a checklist of what is present: present rows start ticked, every other row starts unticked
-        const rowOf = (item, added) => ({
-            item: item,
-            added: added,
-            checked: ko.observable(added),
-            note: item.note || ""
+        // the picker is a checklist of what is present: present rows start ticked, every other row starts unticked.
+        // list is the server list the preset came in; source names where it comes from, shown in its description
+        const rowOf = (item, added, list, source, detail, icon) => {
+            const row = {
+                item: item,
+                added: added,
+                checked: ko.observable(added),
+                note: item.note || "",
+                list: list,
+                kind: window.SceModel.presetKind(list, item),
+                available: window.SceModel.presetAvailable(list, item),
+                icon: icon || "",
+                desc: detail ? source + " \u00b7 " + detail : source
+            };
+            return row;
+        };
+
+        // one flat list of every row, in the order the server lists them
+        self.allRows = ko.pureComputed(() => self.switches().concat(
+            self.readouts(), self.maintenance(), self.plugins().reduce((all, group) => all.concat(group.rows), [])));
+        // on by default: the popup lists what this system has
+        self.onlyAvailable = ko.observable(true);
+        const KIND_TITLES = {
+            switch: () => gettext("Switches"),
+            selector: () => gettext("Selectors"),
+            action: () => gettext("Actions"),
+            readout: () => gettext("Readouts"),
+            command: () => gettext("Commands")
+        };
+        // the rows by kind. A row's tick is read only where it decides whether the row shows
+        self.view = ko.pureComputed(() => {
+            const only = self.onlyAvailable();
+            const rows = self.allRows();
+            const facts = rows.map((row) => ({
+                kind: row.kind, available: row.available, added: row.added,
+                checked: only && !row.available && !row.added ? row.checked() : false, row: row
+            }));
+            const view = window.SceModel.presetSections(facts, only);
+            return {
+                hidden: view.hidden,
+                sections: view.sections.map((section) => ({
+                    kind: section.kind,
+                    title: KIND_TITLES[section.kind](),
+                    rows: section.rows.map((fact) => fact.row)
+                }))
+            };
+        });
+        self.hiddenText = ko.pureComputed(() => {
+            const hidden = self.view().hidden;
+            return hidden === 1 ? gettext("1 not available here") : hidden + " " + gettext("not available here");
         });
 
         self.open = () => {
@@ -788,23 +832,31 @@ $(function () {
             self.maintenance([]);
             self.failed(false);
             self.plugins([]);
+            self.onlyAvailable(true);
             self.loading(true);
             owner.presetDialog.modal("show");
             OctoPrint.simpleApiCommand("systemcommandeditor", "presets", {})
                 .done((response) => {
+                    const system = gettext("This system");
                     self.switches(((response && response.switches) || []).map((preset) =>
-                        rowOf(preset, presentBy(preset.id))
+                        rowOf(preset, presentBy(preset.id), "switches", "OctoPrint", gettext("groups its own commands"),
+                            preset.icon)
                     ));
-                    self.readouts(((response && response.presets) || []).map((preset) =>
-                        rowOf(preset, presentBy(preset.id))
-                    ));
-                    self.maintenance(((response && response.maintenance) || []).map((preset) =>
-                        rowOf(preset, presentBy(preset.action))
-                    ));
-                    self.plugins(((response && response.plugins) || []).map((group) => ({
-                        name: group.name || group.plugin || "",
-                        rows: (group.presets || []).map(pluginRow)
-                    })));
+                    self.readouts(((response && response.presets) || []).map((preset) => {
+                        const row = rowOf(preset, presentBy(preset.id), "readouts", system, preset.value || "", preset.icon);
+                        row.label = self.label(row);
+                        return row;
+                    }));
+                    self.maintenance(((response && response.maintenance) || []).map((preset) => {
+                        const row = rowOf(preset, presentBy(preset.action), "maintenance", system,
+                            preset.available ? preset.note || "" : "", preset.icon);
+                        row.label = self.label(row);
+                        return row;
+                    }));
+                    self.plugins(((response && response.plugins) || []).map((group) => {
+                        const name = group.name || group.plugin || "";
+                        return {name: name, rows: (group.presets || []).map((preset) => pluginRow(preset, name))};
+                    }));
                 })
                 .fail(() => self.failed(true))
                 .always(() => self.loading(false));
@@ -832,13 +884,12 @@ $(function () {
             if (preset.available === false) return preset.note || gettext("Not detected on this system");
             return preset.note || "";
         };
-        // a plugin preset's row, labelled with its control's type
+        // a plugin preset's row: its description names the plugin it comes from
         // a command-only preset has no control: its row takes the icon of its first command
-        const pluginRow = (preset) => _.extend(rowOf(preset, presentBy(preset.preset)), {
-            type: preset.control && TYPE_LABELS[preset.control.type] ? TYPE_LABELS[preset.control.type]() : "",
-            icon: preset.control ? preset.control.icon || "" : ((preset.commands || [])[0] || {}).icon || "",
-            label: pluginLabel(preset)
-        });
+        const pluginRow = (preset, source) => _.extend(
+            rowOf(preset, presentBy(preset.preset), "plugins", source, "",
+                preset.control ? preset.control.icon || "" : ((preset.commands || [])[0] || {}).icon || ""),
+            {label: pluginLabel(preset)});
 
         // the picked entries go right after the last item of the named section; the divider is made at the end of the
         // list only when the section is missing

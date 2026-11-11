@@ -99,7 +99,18 @@ every control again on a timer. The interval is in seconds, at least 1, and 5 by
 
 ## Add from presets
 
-**Add from presets** lists what this system and its plugins offer. Tick a row to add it. The groups are:
+**Add from presets** lists what this system and its plugins offer. Tick a row to add it.
+
+The popup groups presets by the kind of control they make: Switches, Selectors, Actions, Readouts, and Commands
+for a preset that adds a command with no control. Each row says where it comes from: OctoPrint, this system, or
+the plugin's name.
+
+**Only show what this system has** is on when the popup opens. It leaves out a preset this system cannot use,
+such as a webcam service that is not installed, and says how many it left out. Turn it off to see every preset;
+one that is not available says why at the end of its row. A preset that is already added always stays listed, so
+it can be removed.
+
+The presets come from these sources:
 
 - **Switches**: a Host switch, named after this machine, with reboot and shutdown; and an OctoPrint switch, with
   restart and restart in safe mode. These join OctoPrint's own commands.

@@ -388,9 +388,84 @@
   padding-top: 8px;
 }
 
-/* Add from presets: the checkbox sits before the icon, the muted label after the value */
-#sce-presets .sce-preset-row label {
-  margin: 0 8px 0 0;
+/* Add from presets. The popup sits outside the settings pane, so its rows carry their own layout: checkbox, icon,
+   name and where it comes from on one line, and what is missing at the right edge */
+#sce-presets .sce-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+#sce-presets .sce-filter label {
+  margin: 0;
+}
+
+#sce-presets .sce-preset-heading {
+  margin: 14px 0 4px;
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+#sce-presets .sce-list {
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 4px;
+  padding: 2px;
+}
+
+#sce-presets .sce-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+#sce-presets .sce-preset-row:hover {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+#sce-presets .sce-preset-row input[type="checkbox"] {
+  margin: 0;
+  flex: none;
+}
+
+#sce-presets .sce-preset-row .sce-icon {
+  flex: none;
+  width: 20px;
+  text-align: center;
+}
+
+#sce-presets .sce-preset-row .sce-text {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#sce-presets .sce-preset-row .sce-desc {
+  margin-left: 6px;
+}
+
+/* a long note wraps under itself and never squeezes the name out */
+#sce-presets .sce-preset-row .sce-status {
+  flex: 0 1 auto;
+  max-width: 60%;
+  text-align: right;
+  font-style: italic;
+}
+
+#sce-presets .sce-preset-row.sce-unavailable .sce-name,
+#sce-presets .sce-preset-row.sce-unavailable .sce-icon {
+  opacity: 0.6;
 }
 
 /* icon suggestions under the icon inputs */
