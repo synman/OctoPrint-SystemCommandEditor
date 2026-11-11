@@ -302,6 +302,8 @@ def test_temperature_pair_without_a_format_shows_the_actual_not_json():
 def test_temperature_pair_with_no_target_leaves_a_target_format_unapplied():
     assert evaluate(temperature("{actual:.0f}/{target:.0f} °C"), [], 0, NO_TARGET, None) == "41.5"
     assert evaluate(temperature("{actual:.0f} °C"), [], 0, NO_TARGET, None) == "42 °C"
+    # a bare {target} has no spec to fail on, so it must not print the word None
+    assert evaluate(temperature("{actual}/{target}"), [], 0, NO_TARGET, None) == "41.5"
 
 
 def test_temperature_blank_stays_blank_under_a_format():

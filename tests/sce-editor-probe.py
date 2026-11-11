@@ -145,7 +145,7 @@ MQTT_INSTALLED = {"on": False}
 MQTT_GROUP = {"plugin": "mqtt", "name": "MQTT", "presets": [
     {"preset": "mqtt:readout", "name": "MQTT readout",
      "control": {"type": "readout", "name": "MQTT readout", "icon": "fa-solid fa-tower-broadcast",
-                 "read": {"mqtt": "home/sensor/state"}},
+                 "read": {"mqtt": "home/sensor/state"}, "format": "{value:.1f} units"},
      "commands": []},
     {"preset": "mqtt:switch", "name": "MQTT switch",
      "control": {"type": "switch", "name": "MQTT switch", "icon": "fa-solid fa-tower-broadcast",
@@ -1652,10 +1652,25 @@ def run_probe():
               mqtt_readout_row.count() == 1 and mqtt_switch_row.count() == 1,
               "readout=%d switch=%d" % (mqtt_readout_row.count(), mqtt_switch_row.count()))
         mqtt_switch_row.locator("input").check()
+        mqtt_readout_row.locator("input").check()
         page.locator("#sce-presets .modal-footer .btn-primary").click()
         wait_hidden("#sce-presets")
         MQTT_INSTALLED["on"] = False
         body = save_settings() or {}
+        # a readout added from a plugin preset keeps the preset's format and gets one place under Plugin devices
+        saved_devices = ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
+        saved_actions = (body.get("system") or {}).get("actions") or []
+        readout_device = next((d for d in saved_devices if d.get("preset") == "mqtt:readout"), None)
+        check("a readout added from a plugin preset keeps the preset's format",
+              readout_device is not None and readout_device.get("format") == "{value:.1f} units",
+              json.dumps(readout_device))
+        readout_places = [i for i, a in enumerate(saved_actions)
+                          if readout_device and a.get("device") == readout_device["id"]]
+        heading = next((a.get("name") for a in reversed(saved_actions[:readout_places[0]])
+                        if a.get("action") == "divider"), None) if readout_places else None
+        check("a readout added from a plugin preset gets one place under Plugin devices",
+              len(readout_places) == 1 and heading == "Plugin devices",
+              "places=%s heading=%r" % (readout_places, heading))
         mqtt_device = next((d for d in ((body.get("plugins") or {}).get("systemcommandeditor") or {}).get("devices") or []
                             if d.get("preset") == "mqtt:switch"), None)
         check("adding the MQTT switch saves it with its state topic", mqtt_device is not None
