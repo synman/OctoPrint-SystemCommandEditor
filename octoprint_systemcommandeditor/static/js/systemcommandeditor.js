@@ -821,6 +821,19 @@ $(function () {
                 }))
             };
         });
+        // OctoPrint centres a dialog by its height when it opens. This one opens while it is still checking the
+        // system, so it was centred as a short box and then grew off the bottom of the window. Centre it again
+        // whenever its list changes.
+        const recenter = () => window.setTimeout(() => {
+            const dialog = owner.presetDialog;
+            if (!dialog || !dialog.is(":visible")) return;
+            // the list scrolls inside whatever height the header and footer leave in the window
+            const body = dialog.find(".modal-body");
+            const room = window.innerHeight - 20;
+            body.css("max-height", Math.max(120, room - (dialog.outerHeight() - body.height())));
+            dialog.css("margin-top", -Math.min(dialog.outerHeight(), room) / 2);
+        }, 0);
+        self.view.subscribe(recenter);
         self.hiddenText = ko.pureComputed(() => {
             const hidden = self.view().hidden;
             return hidden === 1 ? gettext("1 not available here") : hidden + " " + gettext("not available here");
@@ -859,7 +872,10 @@ $(function () {
                     }));
                 })
                 .fail(() => self.failed(true))
-                .always(() => self.loading(false));
+                .always(() => {
+                    self.loading(false);
+                    recenter();
+                });
         };
 
         // an undetected row stays pickable; it shows its note, or the generic line when it has none

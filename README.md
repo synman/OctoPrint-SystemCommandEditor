@@ -101,8 +101,8 @@ every control again on a timer. The interval is in seconds, at least 1, and 5 by
 
 **Add from presets** lists what this system and its plugins offer. Tick a row to add it.
 
-The popup groups presets by the kind of control they make: Switches, Selectors, Actions, Readouts, and Commands
-for a preset that adds a command with no control. Each row says where it comes from: OctoPrint, this system, or
+The popup groups presets by the kind of control they make: Switches, Actions, Readouts, and Commands for a preset
+that adds a command with no control. A kind with nothing to show has no heading. Each row says where it comes from: OctoPrint, this system, or
 the plugin's name.
 
 **Only show what this system has** is on when the popup opens. It leaves out a preset this system cannot use,
@@ -110,11 +110,11 @@ such as a webcam service that is not installed, and says how many it left out. T
 one that is not available says why at the end of its row. A preset that is already added always stays listed, so
 it can be removed.
 
-The presets come from these sources:
+The presets come from these sources. These are sources, not the popup's headings:
 
-- **Switches**: a Host switch, named after this machine, with reboot and shutdown; and an OctoPrint switch, with
-  restart and restart in safe mode. These join OctoPrint's own commands.
-- **Readouts**: system readouts for free disk, free memory, load, uptime, CPU temperature, power and throttling,
+- **OctoPrint's own commands**: a Host switch, named after this machine, with reboot and shutdown; and an
+  OctoPrint switch, with restart and restart in safe mode. These join OctoPrint's own commands.
+- **System readouts**: free disk, free memory, load, uptime, CPU temperature, power and throttling,
   IP address and Wi-Fi signal.
 - **Maintenance**: back up OctoPrint, delete timelapses older than 30 days, delete logs older than 7 days, sync
   the clock, turn Wi-Fi power saving off, and update the system's packages. A row that the system does not
@@ -123,7 +123,7 @@ The presets come from these sources:
   is marked as not detected. A service that needs passwordless sudo says so in its note.
 - **OctoPrint**: a Connection switch, current job commands (pause, resume, cancel), printer commands (home, cool
   down, emergency stop), a G-code macro, a custom event, and a webcam snapshot link when a snapshot URL is set.
-- **Plugins**: one group for each of these plugins that is installed and enabled: PSU Control, TP-Link Smartplug,
+- **Plugins**: presets from each of these plugins that is installed and enabled: PSU Control, TP-Link Smartplug,
   Tasmota, OctoRelay, GPIO Control, USB Relay Control, Better Grbl Support, and MQTT.
 
 When there are no controls yet, the plugin adds the OctoPrint Connection switch on first start. It also adds each

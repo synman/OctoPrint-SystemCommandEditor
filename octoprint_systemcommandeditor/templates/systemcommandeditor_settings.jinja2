@@ -483,6 +483,13 @@
     <div class="modal-header">
         <a href="javascript:void(0)" class="close" data-bind="click: cancel">&times;</a>
         <h3>{{ _('Presets') }}</h3>
+        <!-- the filter sits in the header, so it stays in view while the list scrolls -->
+        <!-- ko if: !loading() && !failed() -->
+        <div class="sce-filter">
+            <label class="checkbox"><input type="checkbox" data-bind="checked: onlyAvailable"> {{ _('Only show what this system has') }}</label>
+            <span class="muted sce-hidden-count" data-bind="text: hiddenText, visible: view().hidden > 0"></span>
+        </div>
+        <!-- /ko -->
     </div>
     <div class="modal-body">
         <div data-bind="visible: loading" class="muted">
@@ -490,10 +497,6 @@
         </div>
         <div data-bind="visible: failed" class="muted">{{ _('Could not check this system.') }}</div>
         <!-- ko if: !loading() && !failed() -->
-        <div class="sce-filter">
-            <label class="checkbox"><input type="checkbox" data-bind="checked: onlyAvailable"> {{ _('Only show what this system has') }}</label>
-            <span class="muted sce-hidden-count" data-bind="text: hiddenText, visible: view().hidden > 0"></span>
-        </div>
         <div class="muted sce-empty" data-bind="visible: !view().sections.length">{{ _('No presets to show.') }}</div>
         <!-- ko foreach: view().sections -->
         <h4 class="sce-preset-heading"><span data-bind="text: title"></span> <span class="muted" data-bind="text: rows.length"></span></h4>

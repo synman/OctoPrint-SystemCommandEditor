@@ -395,13 +395,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-bottom: 8px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  margin-top: 8px;
 }
 
 #sce-presets .sce-filter label {
   margin: 0;
+}
+
+#sce-presets .sce-preset-heading:first-of-type {
+  margin-top: 0;
 }
 
 #sce-presets .sce-preset-heading {

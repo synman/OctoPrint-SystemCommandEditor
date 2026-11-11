@@ -1088,6 +1088,19 @@ def run_probe():
         check("presets modal lists three readout rows", rows.count() == 3, "rows=%d" % rows.count())
         cpu = rows.filter(has_text="CPU temperature")
         throttle = rows.filter(has_text="Throttling")
+        # a ticked preset stays listed when the filter comes back on; unticked, it leaves again
+        throttle.locator("input").check()
+        page.locator("#sce-presets .sce-filter input").check()
+        kept = rows.filter(has_text="Throttling").count()
+        # a plain click: the row leaves the list the moment it is unticked, so there is no box left to read back
+        rows.filter(has_text="Throttling").locator("input").click()
+        gone = rows.filter(has_text="Throttling").count()
+        check("a ticked preset this system lacks stays listed with the filter on, and leaves when unticked",
+              kept == 1 and gone == 0, "kept=%d gone=%d" % (kept, gone))
+        show_all_presets()
+        check("the filter sits in the popup's header, outside the scrolling list",
+              page.locator("#sce-presets .modal-header .sce-filter").count() == 1
+              and page.locator("#sce-presets .modal-body .sce-filter").count() == 0)
         disk_row = rows.filter(has_text="Disk free")
         check("an undetected readout stays pickable and shows Not detected on this system",
               throttle.locator("input").is_enabled() and not throttle.locator("input").is_checked() and
