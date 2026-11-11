@@ -1111,9 +1111,13 @@ def run_probe():
         cpu.locator("input").check()
         srows = page.locator("#sce-presets .sce-preset-row[data-group=switches]")
         check("presets modal lists the host and OctoPrint switches, unticked while absent",
-              srows.count() == 2 and srows.nth(0).filter(has_text="probe-host").count() == 1
+              srows.count() == 2 and srows.filter(has_text="probe-host").count() == 1
               and not srows.nth(0).locator("input").is_checked() and not srows.nth(1).locator("input").is_checked(),
               "rows=%d" % srows.count())
+        # each kind lists what is already added first, then by name
+        readout_names = [t.strip() for t in rows.locator(".sce-name").all_inner_texts()]
+        check("a kind lists the added preset first, then the rest by name",
+              readout_names == ["Disk free", "CPU temperature", "Throttling"], "names=%s" % readout_names)
         srows.filter(has_text="probe-host").locator("input").check()
         mrows = page.locator("#sce-presets .sce-preset-row[data-group=maintenance]")
         check("presets modal lists three maintenance rows", mrows.count() == 3, "rows=%d" % mrows.count())

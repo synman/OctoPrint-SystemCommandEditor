@@ -102,7 +102,8 @@ every control again on a timer. The interval is in seconds, at least 1, and 5 by
 **Add from presets** lists what this system and its plugins offer. Tick a row to add it.
 
 The popup groups presets by the kind of control they make: Switches, Actions, Readouts, and Commands for a preset
-that adds a command with no control. A kind with nothing to show has no heading. Each row says where it comes from: OctoPrint, this system, or
+that adds a command with no control. A kind with nothing to show has no heading. Within a kind, the presets
+already added come first, then the rest by name. Each row says where it comes from: OctoPrint, this system, or
 the plugin's name.
 
 **Only show what this system has** is on when the popup opens. It leaves out a preset this system cannot use,

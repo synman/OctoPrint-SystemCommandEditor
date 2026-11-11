@@ -808,7 +808,7 @@ $(function () {
             const only = self.onlyAvailable();
             const rows = self.allRows();
             const facts = rows.map((row) => ({
-                kind: row.kind, available: row.available, added: row.added,
+                kind: row.kind, name: row.item.name, available: row.available, added: row.added,
                 checked: only && !row.available && !row.added ? row.checked() : false, row: row
             }));
             const view = window.SceModel.presetSections(facts, only);

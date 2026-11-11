@@ -486,14 +486,21 @@
         return !!(item && item.available);
     }
 
-    // rows: [{kind, available, added, checked}] in list order. Returns {sections: [{kind, rows}], hidden}: the
-    // sections that have a row to show, in PRESET_KINDS order, and how many rows the filter left out. With
-    // onlyAvailable, a row shows when it is available, already added, or ticked, so a present control whose
-    // preset is no longer detected can still be unticked and removed.
+    // a section's order: what is already added first, then by name, ignoring case; equal names keep list order.
+    // It goes by added, not by the tick, so a row does not jump while it is being ticked.
+    function presetOrder(a, b) {
+        if (!!a.added !== !!b.added) return a.added ? -1 : 1;
+        return String(a.name || "").toLowerCase().localeCompare(String(b.name || "").toLowerCase());
+    }
+
+    // rows: [{kind, name, available, added, checked}]. Returns {sections: [{kind, rows}], hidden}: the sections
+    // that have a row to show, in PRESET_KINDS order, each sorted by presetOrder, and how many rows the filter
+    // left out. With onlyAvailable, a row shows when it is available, already added, or ticked, so a present
+    // control whose preset is no longer detected can still be unticked and removed.
     function presetSections(rows, onlyAvailable) {
         const shown = (rows || []).filter((row) => !onlyAvailable || row.available || row.added || row.checked);
         const sections = PRESET_KINDS
-            .map((kind) => ({kind: kind, rows: shown.filter((row) => row.kind === kind)}))
+            .map((kind) => ({kind: kind, rows: shown.filter((row) => row.kind === kind).sort(presetOrder)}))
             .filter((section) => section.rows.length > 0);
         return {sections: sections, hidden: (rows || []).length - shown.length};
     }

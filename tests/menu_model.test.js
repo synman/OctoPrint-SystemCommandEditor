@@ -610,13 +610,27 @@ test("presetSections groups by kind in the editor's type order and drops empty s
     assert.deepStrictEqual(M.presetSections(undefined, false), {sections: [], hidden: 0});
 });
 
+test("presetSections sorts each section: added first, then by name ignoring case, and never by the tick", () => {
+    const row = (name, extra) => Object.assign({name: name, kind: "switch", available: true, added: false, checked: false}, extra);
+    const rows = [row("zeta"), row("Beta", {added: true}), row("alpha", {checked: true}), row("Alpha 2"),
+        row("delta", {added: true}), row("camera", {kind: "readout"}), row("Bed", {kind: "readout", added: true})];
+    const view = M.presetSections(rows, false);
+    assert.deepStrictEqual(view.sections.map((s) => [s.kind, s.rows.map((r) => r.name)]),
+        [["switch", ["Beta", "delta", "alpha", "Alpha 2", "zeta"]], ["readout", ["Bed", "camera"]]]);
+    // the input list is left in its own order
+    assert.deepStrictEqual(rows.map((r) => r.name), ["zeta", "Beta", "alpha", "Alpha 2", "delta", "camera", "Bed"]);
+    // equal names keep list order
+    const twins = M.presetSections([row("Same", {id: 1}), row("same", {id: 2}), row("SAME", {id: 3})], false);
+    assert.deepStrictEqual(twins.sections[0].rows.map((r) => r.id), [1, 2, 3]);
+});
+
 test("presetSections with the filter on hides what is not available, but never a row that is added or ticked", () => {
     const row = (name, extra) => Object.assign({name: name, kind: "readout", available: false, added: false, checked: false}, extra);
     const rows = [row("has", {available: true}), row("gone"), row("gone-but-added", {added: true}),
         row("gone-but-ticked", {checked: true}), row("other", {kind: "switch"})];
     const on = M.presetSections(rows, true);
     assert.deepStrictEqual(on.sections.map((s) => [s.kind, s.rows.map((r) => r.name)]),
-        [["readout", ["has", "gone-but-added", "gone-but-ticked"]]]);
+        [["readout", ["gone-but-added", "gone-but-ticked", "has"]]]);
     assert.strictEqual(on.hidden, 2);
     const off = M.presetSections(rows, false);
     assert.deepStrictEqual(off.sections.map((s) => [s.kind, s.rows.length]), [["switch", 1], ["readout", 4]]);
