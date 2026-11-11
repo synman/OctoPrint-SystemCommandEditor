@@ -38,7 +38,8 @@ function pick(rng, list) {
 
 // ---- printerState ----
 test("printerState checks printing, paused, error, operational, in that order", () => {
-    assert.strictEqual(M.printerState({printing: true, paused: true, error: true, operational: true}), "printing");
+    assert.strictEqual(M.printerState({printing: true, paused: true, error: true, operational: true}), "paused");
+    assert.strictEqual(M.printerState({printing: true, error: true, operational: true}), "printing");
     assert.strictEqual(M.printerState({paused: true, error: true, operational: true}), "paused");
     assert.strictEqual(M.printerState({error: true, operational: true}), "error");
     assert.strictEqual(M.printerState({operational: true}), "ready");

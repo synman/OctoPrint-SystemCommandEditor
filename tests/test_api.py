@@ -507,8 +507,9 @@ def test_printer_state_names_each_state():
         assert printer_state(printer_in(state)) == state
 
 
-def test_printer_state_takes_printing_then_paused_then_error_then_ready():
-    assert printer_state(FakePrinter(printing=True, paused=True, error=True)) == "printing"
+def test_printer_state_takes_paused_then_printing_then_error_then_ready():
+    assert printer_state(FakePrinter(printing=True, paused=True, error=True)) == "paused"
+    assert printer_state(FakePrinter(printing=True, error=True)) == "printing"
     assert printer_state(FakePrinter(paused=True, error=True)) == "paused"
     assert printer_state(FakePrinter(error=True, operational=True)) == "error"
 

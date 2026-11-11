@@ -13,8 +13,9 @@
 
     function printerState(flags) {
         const f = flags || {};
-        if (f.printing) return "printing";
+        // paused is asked first: OctoPrint 2.0 flags a paused job as printing too
         if (f.paused) return "paused";
+        if (f.printing) return "printing";
         if (f.error) return "error";
         if (f.operational) return "ready";
         return "offline";

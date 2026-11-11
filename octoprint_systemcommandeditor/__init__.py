@@ -102,11 +102,12 @@ SYSTEM_GROUPS = {
 
 
 def printer_state(printer):
-    # the printer's state as the menu names it; the first of these that holds wins
-    if printer.is_printing():
-        return "printing"
+    # the printer's state as the menu names it; the first of these that holds wins. Paused is asked first:
+    # OctoPrint 2.0 reports a paused job as printing too
     if printer.is_paused():
         return "paused"
+    if printer.is_printing():
+        return "printing"
     if printer.is_error():
         return "error"
     if printer.is_operational():
