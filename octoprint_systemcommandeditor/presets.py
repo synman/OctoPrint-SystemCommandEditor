@@ -966,12 +966,15 @@ def state_list(spec, plugin_manager):
     """``{"source", "states"}`` for a control read: the printer's words, a plugin's words, or free text.
 
     A printer state read is "printer"; a plugin read is "helper" when the plugin's state_values helper answers, else
-    "catalog" when STATE_LISTS lists the plugin, else "free". Anything else, a status line included, is "free".
+    "catalog" when STATE_LISTS lists the plugin, else "free". Any other printer read (progress, temperatures) is
+    "none": it reads a number, not a state word. Anything else, a status line included, is "free".
     """
     if not isinstance(spec, dict):
         return {"source": "free", "states": []}
     if spec.get("printer") == "state":
         return {"source": "printer", "states": list(PRINTER_STATE_WORDS)}
+    if "printer" in spec:
+        return {"source": "none", "states": []}
     plugin_id = spec.get("plugin")
     if not isinstance(plugin_id, str) or not plugin_id:
         return {"source": "free", "states": []}

@@ -1159,6 +1159,11 @@ def test_state_list_for_a_printer_read_is_the_nineteen_printer_words_in_order():
     assert PRINTER_STATE_WORDS[0] == "Offline" and PRINTER_STATE_WORDS[-1] == "Error"
 
 
+def test_state_list_for_a_printer_read_of_a_number_names_no_states():
+    for kind in ("progress", "temperatures"):
+        assert state_list({"printer": kind}, Helpers()) == {"source": "none", "states": []}
+
+
 def test_state_list_takes_a_plugin_helper_list_first():
     manager = Helpers("bettergrblsupport", state_values=lambda: ["Idle", "Hold"])
     result = state_list({"plugin": "bettergrblsupport", "helper": "state", "field": "state"}, manager)

@@ -117,7 +117,8 @@ command says why in a tooltip.
   some states. The states are printing, paused, ready, offline and error.
 - **Control states**: a command in a control can be available only while the control is in some of its states.
   The editor reads the control's list of states ("Available when ... is:"). When the list is known, the states
-  are checkboxes. Otherwise you type them in. An unknown state never blocks a command. A built-in OctoPrint
+  are checkboxes. Otherwise you type them in. A control that reads a number, such as the current job's percent
+  or the temperatures, has no states and offers no limit. An unknown state never blocks a command. A built-in OctoPrint
   command is never judged by its control's state.
 
 If a limited command is run anyway, the server refuses it and gives the same reason.

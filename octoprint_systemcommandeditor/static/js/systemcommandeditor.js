@@ -266,7 +266,10 @@ $(function () {
             if (!spec) return;
             OctoPrint.simpleApiCommand("systemcommandeditor", "states", spec)
                 .done((response) => {
-                    if (seq === self._seq) self.choices((response && response.states) || []);
+                    if (seq !== self._seq) return;
+                    // a read that names no state, such as the job's percent, has nothing to limit a command to
+                    if (response && response.source === "none") self.visible(false);
+                    self.choices((response && response.states) || []);
                 })
                 .always(() => {
                     if (seq === self._seq) self.loading(false);
