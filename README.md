@@ -78,6 +78,19 @@ format syntax with `{value}`, for example `{value:.1f}%`. The Format field links
 syntax. If the pattern cannot be used, the first line is shown as it is. A selector matches the whole output
 against its choices.
 
+The printer's own reads answer bare numbers, so the Format decides how they look:
+
+- **Job progress** (`printer: progress`) is the percent done, such as `41.2`. The preset's Format is
+  `{value:.0f}%`. With no job it is blank.
+- **A temperature** (`printer: temperature` with an `item`) is one item of OctoPrint's temperatures, by its name:
+  `tool0`, `bed`, `chamber`, or any item a plugin adds. Its Format can name `{actual}` and `{target}`, for
+  example `{actual:.0f}/{target:.0f} °C`; `{value}` is the actual. An item with no target leaves a Format that
+  names `{target}` unapplied and shows the actual. With `field: actual` or `field: target` in `config.yaml` the
+  read is that one number, for `{value}`. An item the printer does not report is blank.
+
+The presets offer one temperature readout per item: the tools, bed and chamber the printer profile has, then
+every other item the printer reports at that moment.
+
 A status command that runs longer than 10 seconds is stopped, and its control shows Unknown.
 
 **Live updates** is off by default. When it is on, and the System menu is open, the menu checks the status of
@@ -201,7 +214,7 @@ Converted system commands: 4 commands, 2 duplicates removed ['restart'], 1 resto
 
 ## Upgrading to 2.1
 
-The plugin's settings have a version number, now 9. On the first start after upgrading, OctoPrint runs one step
+The plugin's settings have a version number, now 10. On the first start after upgrading, OctoPrint runs one step
 for each version the saved settings are behind. Each step changes only what its name says, and each one writes a
 line to `octoprint.log` when it changes something:
 
@@ -212,6 +225,10 @@ line to `octoprint.log` when it changes something:
 - **On and Off switch commands** that had the old default icons get the toggle icons, and then the power icon:
   green for On, red for Off.
 - **MQTT publish commands** are saved as non-retained.
+- **Job progress controls** with no Format get `{value:.0f}%`, which used to be built in.
+
+The Printer preset no longer shows a line of temperatures. A Printer control saved with that line keeps it. For
+new ones, add the temperature readouts from the presets.
 
 ## Requirements
 

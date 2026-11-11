@@ -156,3 +156,26 @@ def test_a_run_entry_without_a_device_is_not_a_placement():
 
 def test_an_entry_naming_its_readout_is_a_placement():
     assert convert_module._is_placement({"action": "disk", "name": "Disk", "device": "disk"}) is True
+
+
+progress_format = convert_module.progress_format
+
+
+def test_progress_format_gives_a_progress_control_the_percent_format_whatever_its_name():
+    devices = [{"id": "x", "type": "action", "name": "My job", "read": {"printer": "progress"}},
+               {"id": "c", "type": "switch", "read": {"printer": "state"}}]
+    fixed, changed = progress_format(devices)
+    assert changed is True
+    assert fixed[0] == {"id": "x", "type": "action", "name": "My job", "read": {"printer": "progress"},
+                        "format": "{value:.0f}%"}
+    assert fixed[1] is devices[1]
+    assert "format" not in devices[0]
+
+
+def test_progress_format_keeps_a_format_already_set_and_leaves_other_configs_untouched():
+    kept = [{"id": "x", "type": "readout", "read": {"printer": "progress"}, "format": "{value:.1f} pct"}]
+    assert progress_format(kept) == (kept, False)
+    other = [{"id": "s", "type": "readout", "status": "echo hi"}, {"id": "m", "read": {"mqtt": "a/b"}}]
+    fixed, changed = progress_format(other)
+    assert changed is False and fixed is other
+    assert progress_format(None) == (None, False)

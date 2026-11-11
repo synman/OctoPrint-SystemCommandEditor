@@ -871,7 +871,10 @@ $(function () {
                 if (control.status) device.status = control.status;
                 if (control.on_pattern) device.on_pattern = control.on_pattern;
                 if (control.off_pattern) device.off_pattern = control.off_pattern;
+                if (control.format) device.format = control.format;
                 owner.devices.push(device);
+                // a readout is drawn only where its placement is
+                if (control.type === "readout") owner.placeReadout(device, PLUGIN_DIVIDER);
             }
             const commands = preset.commands || [];
             if (!commands.length) return;

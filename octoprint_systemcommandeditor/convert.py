@@ -212,6 +212,28 @@ def retained_publish(actions):
     return (fixed, True) if changed else (actions, False)
 
 
+PROGRESS_FORMAT = "{value:.0f}%"
+
+
+def progress_format(devices):
+    """Settings v10: a control that reads the job's progress gets the percent format it used to have built in.
+
+    The progress read now answers a bare number, so a control saved without a format would show it unrounded and
+    with no sign. Every control whose read is ``{"printer": "progress"}`` and that has no format gets
+    ``{value:.0f}%``. Returns ``(devices, changed)``. The inputs are not modified, and a config with no such control
+    is returned untouched.
+    """
+    fixed = []
+    changed = False
+    for device in devices or []:
+        read = device.get("read") if isinstance(device, dict) else None
+        if isinstance(read, dict) and read.get("printer") == "progress" and not device.get("format"):
+            device = dict(device, format=PROGRESS_FORMAT)
+            changed = True
+        fixed.append(device)
+    return (fixed, True) if changed else (devices, False)
+
+
 def _is_plug_read(device):
     if not isinstance(device, dict):
         return False

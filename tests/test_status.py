@@ -270,3 +270,56 @@ def test_switch_ignores_format():
 def test_selector_ignores_format():
     device = {"id": "dev", "type": "selector", "status": "x", "format": "[{value}]"}
     assert evaluate(device, ["a"], 0, "a", None) == "a"
+
+
+def temperature(fmt=None, field=None, kind="readout"):
+    read = {"printer": "temperature", "item": "bed"}
+    if field:
+        read["field"] = field
+    device = {"id": "dev", "type": kind, "read": read}
+    if fmt:
+        device["format"] = fmt
+    return device
+
+
+PAIR = '{"actual": 59.6, "target": 60.0}'
+NO_TARGET = '{"actual": 41.5, "target": null}'
+
+
+def test_temperature_pair_formats_actual_and_target_by_name():
+    assert evaluate(temperature("{actual:.0f}/{target:.0f} °C"), [], 0, PAIR, None) == "60/60 °C"
+    assert evaluate(temperature("{actual:.1f} of {target:d}", kind="action"), [], 0, PAIR, None) == "59.6 of 60"
+
+
+def test_temperature_pair_value_is_the_actual():
+    assert evaluate(temperature("{value:.0f} °C"), [], 0, PAIR, None) == "60 °C"
+
+
+def test_temperature_pair_without_a_format_shows_the_actual_not_json():
+    assert evaluate(temperature(), [], 0, PAIR, None) == "59.6"
+
+
+def test_temperature_pair_with_no_target_leaves_a_target_format_unapplied():
+    assert evaluate(temperature("{actual:.0f}/{target:.0f} °C"), [], 0, NO_TARGET, None) == "41.5"
+    assert evaluate(temperature("{actual:.0f} °C"), [], 0, NO_TARGET, None) == "42 °C"
+
+
+def test_temperature_blank_stays_blank_under_a_format():
+    assert evaluate(temperature("{actual:.0f}/{target:.0f} °C"), [], 0, "", None) == ""
+
+
+def test_temperature_field_read_is_plain_text_so_named_fields_do_not_apply():
+    assert evaluate(temperature("{value:.0f} °C", field="target"), [], 0, "60.0", None) == "60 °C"
+    assert evaluate(temperature("{target:.0f} °C", field="target"), [], 0, "60.0", None) == "60.0"
+
+
+def test_actual_and_target_are_not_fields_for_any_other_read():
+    device = {"id": "dev", "type": "readout", "status": "x", "format": "{actual:.0f}"}
+    assert evaluate(device, [], 0, PAIR, None) == PAIR
+    assert format_value("{actual:.0f}", "5") == "5"
+
+
+def test_progress_format_rounds_the_bare_number_and_leaves_no_job_blank():
+    device = {"id": "dev", "type": "action", "read": {"printer": "progress"}, "format": "{value:.0f}%"}
+    assert evaluate(device, [], 0, "41.208095452919125", None) == "41%"
+    assert evaluate(device, [], 0, "", None) == ""

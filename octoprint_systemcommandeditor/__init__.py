@@ -42,6 +42,7 @@ from .convert import (
     live_plug_reads,
     place_readouts,
     power_icons,
+    progress_format,
     retained_publish,
     role_icons,
 )
@@ -53,6 +54,7 @@ from .presets import (
     detect_maintenance,
     first_start_presets,
     harvest,
+    heater_items,
     key_for,
     mark_presets,
     maintenance_actions,
@@ -149,7 +151,7 @@ class SystemCommandEditorPlugin(
         }
 
     def get_settings_version(self):
-        return 9
+        return 10
 
     def get_api_commands(self):
         return {"status": ["ids"], "presets": [], "run": ["action"], "states": []}
@@ -169,7 +171,7 @@ class SystemCommandEditorPlugin(
                 presets=detect(),
                 maintenance=detect_maintenance(self._maintenance_env()),
                 switches=system_switches(socket.gethostname()),
-                plugins=self._plugin_presets() + [webcam_presets(), octoprint_presets(self._snapshot_url())],
+                plugins=self._plugin_presets() + [webcam_presets(), octoprint_presets(self._snapshot_url(), self._heaters())],
             )
 
     def _status(self, ids, live):
@@ -252,6 +254,16 @@ class SystemCommandEditorPlugin(
             self._plugin_manager,
             lambda plugin, key: self._settings.global_get(["plugins", plugin, key]),
         )
+
+    def _heaters(self):
+        # what the temperature graph draws for the current profile, then anything else the printer reports now
+        try:
+            profile = self._printer_profile_manager.get_current_or_default()
+            temperatures = self._printer.get_current_temperatures()
+        except Exception:
+            self._logger.exception("Could not list the temperature items")
+            return []
+        return heater_items(profile, temperatures)
 
     def _snapshot_url(self):
         # the classic webcam plugin's snapshot first, then OctoPrint's own webcam setting; None when neither is set
@@ -412,6 +424,16 @@ class SystemCommandEditorPlugin(
             self._power_icons()
         if current is None or current < 9:
             self._retained_publish()
+        if current is None or current < 10:
+            self._progress_format()
+
+    def _progress_format(self):
+        devices = copy.deepcopy(self._settings.get(["devices"]) or [])
+        new_devices, changed = progress_format(devices)
+        if not changed:
+            return
+        self._settings.set(["devices"], new_devices)
+        self._logger.info("Gave the job progress controls the percent format")
 
     def _role_icons(self):
         actions = copy.deepcopy(self._settings.global_get(["system", "actions"]) or [])

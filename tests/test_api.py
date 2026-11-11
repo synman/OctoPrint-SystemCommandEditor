@@ -486,8 +486,8 @@ def test_first_start_marks_readout_placement_with_its_readout(monkeypatch):
     assert [d for d in config["devices"] if d["id"] == "disk"][0]["preset"] == "disk"
 
 
-def test_settings_version_is_9():
-    assert SystemCommandEditorPlugin().get_settings_version() == 9
+def test_settings_version_is_10():
+    assert SystemCommandEditorPlugin().get_settings_version() == 10
 
 
 def printer_in(state):
@@ -781,13 +781,26 @@ def test_status_reads_temperatures_and_progress(monkeypatch):
 
     devices = [
         {"id": "t", "type": "readout", "read": {"printer": "temperatures"}},
-        {"id": "p", "type": "readout", "read": {"printer": "progress"}},
+        {"id": "p", "type": "readout", "read": {"printer": "progress"}, "format": "{value:.0f}%"},
+        {"id": "raw", "type": "readout", "read": {"printer": "progress"}},
+        {"id": "pair", "type": "readout", "read": {"printer": "temperature", "item": "tool0"},
+         "format": "{actual:.0f}/{target:.0f} °C"},
+        {"id": "bed", "type": "readout", "read": {"printer": "temperature", "item": "bed", "field": "target"},
+         "format": "{value:.0f} °C"},
+        {"id": "gone", "type": "readout", "read": {"printer": "temperature", "item": "chamber"},
+         "format": "{actual:.0f}/{target:.0f} °C"},
     ]
     plugin = make_plugin(devices=devices, printer=Hot())
     with request_context():
-        results = plugin.on_api_command("status", {"ids": ["t", "p"]}).get_json()["results"]
+        ids = [device["id"] for device in devices]
+        results = plugin.on_api_command("status", {"ids": ids}).get_json()["results"]
+    # the joined line of 2.1 still answers for a control saved with it
     assert results["t"]["state"] == "T0 210/215 · Bed 60/60"
     assert results["p"]["state"] == "42%"
+    assert results["raw"]["state"] == "42.3"
+    assert results["pair"]["state"] == "210/215 °C"
+    assert results["bed"]["state"] == "60 °C"
+    assert results["gone"]["state"] == "" and results["gone"]["error"] is None
 
 
 def test_presets_api_lists_the_octoprint_group_with_its_five_presets(monkeypatch):
@@ -1148,3 +1161,57 @@ def test_status_runs_several_plugin_reads_at_once_inside_one_request(monkeypatch
         body = plugin.on_api_command("status", {"ids": ["p0", "p1", "p2", "p3"], "live": True}).get_json()
     assert {key: (value["state"], value["error"]) for key, value in body["results"].items()} == {
         "p%d" % n: ("on", None) for n in range(4)}
+
+
+def test_presets_api_offers_a_temperature_readout_per_profile_heater_and_reported_item(monkeypatch):
+    allow(monkeypatch)
+    monkeypatch.setattr(plugin_module, "detect", lambda: [])
+    monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: [])
+
+    class Reporting(FakePrinter):
+        def get_current_temperatures(self):
+            return {"tool0": {"actual": 21, "target": 0}, "humidity": {"actual": 38.0, "target": None}}
+
+    plugin = make_plugin(printer=Reporting())
+    plugin._maintenance_env = lambda: {}
+    profile = {"extruder": {"count": 1, "sharedNozzle": False}, "heatedBed": True, "heatedChamber": False}
+    plugin._printer_profile_manager = types.SimpleNamespace(get_current_or_default=lambda: profile)
+    with request_context():
+        body = plugin.on_api_command("presets", {}).get_json()
+    group = next(g for g in body["plugins"] if g["plugin"] == "octoprint")
+    keys = [preset["preset"] for preset in group["presets"] if preset["preset"].startswith("octoprint:temperature:")]
+    assert keys == ["octoprint:temperature:tool0", "octoprint:temperature:bed", "octoprint:temperature:humidity"]
+
+
+def test_presets_api_offers_no_temperature_readout_when_the_profile_cannot_be_read(monkeypatch):
+    allow(monkeypatch)
+    monkeypatch.setattr(plugin_module, "detect", lambda: [])
+    monkeypatch.setattr(plugin_module, "detect_maintenance", lambda env: [])
+    plugin = make_plugin()
+    plugin._maintenance_env = lambda: {}
+
+    def broken():
+        raise RuntimeError("no profile")
+
+    plugin._printer_profile_manager = types.SimpleNamespace(get_current_or_default=broken)
+    with request_context():
+        body = plugin.on_api_command("presets", {}).get_json()
+    group = next(g for g in body["plugins"] if g["plugin"] == "octoprint")
+    assert not [p for p in group["presets"] if p["preset"].startswith("octoprint:temperature:")]
+
+
+def test_migrating_from_v9_gives_a_renamed_progress_control_its_percent_format():
+    devices = [{"id": "job", "type": "action", "name": "Renamed by hand", "read": {"printer": "progress"}},
+               {"id": "kept", "type": "readout", "read": {"printer": "progress"}, "format": "{value:.2f}"}]
+    plugin = make_plugin(devices=devices)
+    plugin.on_settings_migrate(10, 9)
+    saved = plugin._settings.get(["devices"])
+    assert saved[0]["format"] == "{value:.0f}%" and saved[0]["name"] == "Renamed by hand"
+    assert saved[1]["format"] == "{value:.2f}"
+
+
+def test_migrating_from_v9_writes_nothing_when_no_control_reads_progress():
+    plugin = make_plugin(devices=[{"id": "s", "type": "readout", "status": "echo hi"}])
+    plugin.on_settings_migrate(10, 9)
+    assert not [call for call in plugin._settings.calls if call[0] in ("set", "global_set")]
+

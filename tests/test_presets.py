@@ -20,6 +20,7 @@ from octoprint_systemcommandeditor.presets import (  # noqa: E402
     device_of,
     entry_of,
     harvest,
+    heater_items,
     maintenance,
     maintenance_actions,
     mark_presets,
@@ -664,7 +665,7 @@ def test_octoprint_connection_is_a_state_switch_with_connect_and_disconnect():
 def test_octoprint_job_reads_progress_and_runs_pause_resume_and_a_confirmed_cancel():
     preset = octoprint_by_id()["octoprint:job"]
     assert preset["control"] == {"type": "action", "name": "Current job", "icon": "fa-solid fa-hourglass-half",
-                                 "read": {"printer": "progress"}}
+                                 "read": {"printer": "progress"}, "format": "{value:.0f}%"}
     assert preset["commands"] == [
         {"name": "Pause", "run": {"printer": "pause"}, "role": "run", "icon": "fa-solid fa-pause",
          "when": {"mode": "only", "states": ["printing"], "effect": "disable"}},
@@ -676,9 +677,9 @@ def test_octoprint_job_reads_progress_and_runs_pause_resume_and_a_confirmed_canc
     ]
 
 
-def test_octoprint_printer_reads_temperatures_and_confirms_only_the_emergency_stop():
+def test_octoprint_printer_has_no_read_and_confirms_only_the_emergency_stop():
     preset = octoprint_by_id()["octoprint:printer"]
-    assert preset["control"]["read"] == {"printer": "temperatures"}
+    assert "read" not in preset["control"]
     assert [command["name"] for command in preset["commands"]] == ["Home", "Cool down", "Emergency stop"]
     assert preset["commands"][2] == {
         "name": "Emergency stop", "run": {"printer": "emergency_stop"}, "role": "run", "icon": "fa-solid fa-hand",
@@ -1160,7 +1161,7 @@ def test_state_list_for_a_printer_read_is_the_nineteen_printer_words_in_order():
 
 
 def test_state_list_for_a_printer_read_of_a_number_names_no_states():
-    for kind in ("progress", "temperatures"):
+    for kind in ("progress", "temperatures", "temperature"):
         assert state_list({"printer": kind}, Helpers()) == {"source": "none", "states": []}
 
 
@@ -1194,3 +1195,65 @@ def test_state_list_is_free_for_an_unknown_plugin_mqtt_and_a_status_line():
 def test_state_list_catalog_lists_only_bettergrbl():
     assert set(STATE_LISTS) == {"bettergrblsupport"}
     assert STATE_LISTS["bettergrblsupport"] == GRBL_CATALOG
+
+
+PROFILE = {"extruder": {"count": 2, "sharedNozzle": False}, "heatedBed": True, "heatedChamber": True}
+
+
+def test_heater_items_lists_what_the_profile_draws_then_every_other_reported_item():
+    reported = {"tool0": {"actual": 20, "target": 0}, "humidity": {"actual": 38, "target": None},
+                "ambient": {"actual": 21, "target": 0}}
+    assert heater_items(PROFILE, reported) == [
+        ("tool0", True), ("tool1", True), ("bed", True), ("chamber", True), ("ambient", True), ("humidity", False)]
+
+
+def test_heater_items_follows_a_shared_nozzle_and_unheated_bed_and_chamber():
+    profile = {"extruder": {"count": 3, "sharedNozzle": True}, "heatedBed": False, "heatedChamber": False}
+    assert heater_items(profile, {}) == [("tool0", True)]
+    assert heater_items(profile, {"bed": {"actual": 22, "target": None}}) == [("tool0", True), ("bed", False)]
+
+
+def test_heater_items_survives_a_missing_profile_and_report():
+    assert heater_items(None, None) == []
+    assert heater_items({"extruder": None}, {"chamber": {"actual": 30, "target": 45}}) == [("chamber", True)]
+
+
+def test_octoprint_presets_offer_one_temperature_readout_per_item_after_the_printer_control():
+    group = octoprint_presets(heaters=[("tool0", True), ("bed", True), ("humidity", False)])
+    keys = [preset["preset"] for preset in group["presets"]]
+    at = keys.index("octoprint:printer")
+    assert keys[at + 1:at + 4] == [
+        "octoprint:temperature:tool0", "octoprint:temperature:bed", "octoprint:temperature:humidity"]
+    by_id = {preset["preset"]: preset for preset in group["presets"]}
+    assert by_id["octoprint:temperature:bed"] == {
+        "preset": "octoprint:temperature:bed", "name": "Bed", "commands": [],
+        "control": {"type": "readout", "name": "Bed", "icon": "fa-solid fa-temperature-half",
+                    "read": {"printer": "temperature", "item": "bed"}, "format": "{actual:.0f}/{target:.0f} °C"}}
+    assert by_id["octoprint:temperature:tool0"]["name"] == "Tool 0"
+    humidity = by_id["octoprint:temperature:humidity"]["control"]
+    assert humidity["name"] == "Humidity" and humidity["format"] == "{value:.1f}"
+
+
+def test_octoprint_presets_without_heaters_offer_no_temperature_readout():
+    assert not [p for p in octoprint_presets()["presets"] if p["preset"].startswith("octoprint:temperature:")]
+
+
+def test_add_plugin_preset_copies_the_controls_format():
+    devices, _actions = add_plugin_preset(octoprint_by_id()["octoprint:job"], [], [])
+    assert devices[-1]["format"] == "{value:.0f}%"
+    group = octoprint_presets(heaters=[("bed", True)])
+    bed = next(p for p in group["presets"] if p["preset"] == "octoprint:temperature:bed")
+    devices, actions = add_plugin_preset(bed, [], [])
+    assert devices[-1]["format"] == "{actual:.0f}/{target:.0f} °C" and devices[-1]["read"]["item"] == "bed"
+
+
+def test_add_plugin_preset_places_a_readout_in_the_plugin_section():
+    group = octoprint_presets(heaters=[("bed", True)])
+    bed = next(p for p in group["presets"] if p["preset"] == "octoprint:temperature:bed")
+    devices, actions = add_plugin_preset(bed, [], [{"action": "bed", "name": "Taken", "command": "true"}])
+    device_id = devices[-1]["id"]
+    assert actions[-2:] == [
+        {"action": "divider", "name": "Plugin devices"},
+        {"action": actions[-1]["action"], "name": "Bed", "device": device_id, "preset": "octoprint:temperature:bed"}]
+    assert actions[-1]["action"] not in ("bed",) and len({entry["action"] for entry in actions}) == 3
+

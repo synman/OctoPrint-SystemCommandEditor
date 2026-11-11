@@ -1,6 +1,8 @@
 import time
 
 import flask
+import json
+
 import pytest
 
 from octoprint_systemcommandeditor.adapters import (
@@ -487,9 +489,9 @@ def test_read_temperatures_without_a_bed_lists_only_the_tools():
     assert read_builtin({"printer": "temperatures"}, Printer(temperatures=temperatures)) == ("T0 200/200", None)
 
 
-def test_read_progress_is_the_completion_rounded_as_a_percentage():
+def test_read_progress_is_the_bare_completion_for_the_format_to_shape():
     printer = Printer(data={"progress": {"completion": 42.3}})
-    assert read_builtin({"printer": "progress"}, printer) == ("42%", None)
+    assert read_builtin({"printer": "progress"}, printer) == ("42.3", None)
 
 
 def test_read_progress_is_empty_when_there_is_no_job():
@@ -576,3 +578,37 @@ def test_state_word_is_none_for_none_empty_or_blank():
     assert state_word("") is None
     assert state_word("  ") is None
     assert state_word(":5") is None
+
+
+HEATERS = {"tool0": {"actual": 210.2, "target": 215.0}, "bed": {"actual": 60, "target": 60},
+           "chamber": {"actual": 41.5, "target": None}, "humidity": {"actual": 38.0, "target": None}}
+
+
+def test_read_temperature_with_a_field_is_that_bare_number_for_any_item():
+    printer = Printer(temperatures=HEATERS)
+    assert read_builtin({"printer": "temperature", "item": "tool0", "field": "actual"}, printer) == ("210.2", None)
+    assert read_builtin({"printer": "temperature", "item": "tool0", "field": "target"}, printer) == ("215.0", None)
+    assert read_builtin({"printer": "temperature", "item": "humidity", "field": "actual"}, printer) == ("38.0", None)
+
+
+def test_read_temperature_without_a_field_is_the_pair_as_json():
+    printer = Printer(temperatures=HEATERS)
+    text, error = read_builtin({"printer": "temperature", "item": "tool0"}, printer)
+    assert error is None and json.loads(text) == {"actual": 210.2, "target": 215.0}
+    text, error = read_builtin({"printer": "temperature", "item": "chamber"}, printer)
+    assert error is None and json.loads(text) == {"actual": 41.5, "target": None}
+
+
+def test_read_temperature_is_blank_for_a_missing_item_a_missing_number_or_no_report():
+    printer = Printer(temperatures=dict(HEATERS, cold={"actual": None, "target": 50}))
+    assert read_builtin({"printer": "temperature", "item": "nozzle9"}, printer) == ("", None)
+    assert read_builtin({"printer": "temperature", "item": "chamber", "field": "target"}, printer) == ("", None)
+    assert read_builtin({"printer": "temperature", "item": "cold"}, printer) == ("", None)
+    assert read_builtin({"printer": "temperature", "item": "bed"}, Printer(temperatures={})) == ("", None)
+    assert read_builtin({"printer": "temperature"}, printer) == ("", None)
+
+
+def test_read_temperature_refuses_an_unknown_field():
+    printer = Printer(temperatures=HEATERS)
+    assert read_builtin({"printer": "temperature", "item": "bed", "field": "offset"}, printer) == (
+        "", "Unknown temperature field offset")

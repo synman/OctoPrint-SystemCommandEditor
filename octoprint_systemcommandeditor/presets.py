@@ -6,7 +6,7 @@ import sys
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 
-from .convert import free_key
+from .convert import PROGRESS_FORMAT, free_key
 from .status import check_devices, run_status
 
 CATALOG = [
@@ -624,10 +624,56 @@ def harvest(plugin_manager, get_setting):
     return groups
 
 
-def octoprint_presets(snapshot_url=None):
+TEMPERATURE_NAMES = {"bed": "Bed", "chamber": "Chamber"}
+
+
+def heater_items(profile, temperatures):
+    """The temperature items to offer a readout for, as ``[(item, has_target)]``.
+
+    First what the printer profile says the temperature graph draws: one tool per extruder (one for a shared
+    nozzle), the bed and the chamber when heated. Then every other item OctoPrint currently reports, in name order,
+    such as a value a plugin adds; one of those has a target only when its report carries one.
+    """
+    profile = profile if isinstance(profile, dict) else {}
+    extruder = profile.get("extruder") if isinstance(profile.get("extruder"), dict) else {}
+    count = extruder.get("count") if isinstance(extruder.get("count"), int) else 0
+    if extruder.get("sharedNozzle"):
+        count = min(count, 1)
+    items = [("tool{}".format(index), True) for index in range(count)]
+    if profile.get("heatedBed"):
+        items.append(("bed", True))
+    if profile.get("heatedChamber"):
+        items.append(("chamber", True))
+    listed = {item for item, _target in items}
+    temperatures = temperatures if isinstance(temperatures, dict) else {}
+    for item in sorted(key for key in temperatures if isinstance(key, str) and key not in listed):
+        reading = temperatures[item]
+        items.append((item, isinstance(reading, dict) and reading.get("target") is not None))
+    return items
+
+
+def _temperature_name(item):
+    if item in TEMPERATURE_NAMES:
+        return TEMPERATURE_NAMES[item]
+    if item.startswith("tool") and item[4:].isdigit():
+        return "Tool {}".format(item[4:])
+    return item[:1].upper() + item[1:]
+
+
+def temperature_preset(item, has_target):
+    """A readout of one temperature item. With a target it shows actual/target; without, the bare value."""
+    name = _temperature_name(item)
+    control = {"type": "readout", "name": name, "icon": "fa-solid fa-temperature-half",
+               "read": {"printer": "temperature", "item": item},
+               "format": "{actual:.0f}/{target:.0f} °C" if has_target else "{value:.1f}"}
+    return {"preset": "octoprint:temperature:{}".format(item), "name": name, "control": control, "commands": []}
+
+
+def octoprint_presets(snapshot_url=None, heaters=None):
     """OctoPrint's own printer actions and readouts, as one group in the shape ``harvest`` returns. Always present.
 
-    With a non-empty ``snapshot_url`` the group also offers a webcam snapshot link, last."""
+    ``heaters`` is ``heater_items``' list: each item gets a temperature readout, after the Printer control. With a
+    non-empty ``snapshot_url`` the group also offers a webcam snapshot link, last."""
     connection = {
         "type": "switch", "name": "Connection", "icon": "fa-solid fa-link", "read": {"printer": "state"},
         "on_pattern": "^(Operational|Printing|Paused|Pausing|Resuming|Cancelling|Finishing)",
@@ -638,10 +684,12 @@ def octoprint_presets(snapshot_url=None):
         {"name": "Disconnect", "run": {"printer": "disconnect"}, "role": "off", "icon": OFF_ICON, "icon_color": OFF_COLOR},
     ]
 
-    def action(name, icon, commands, read=None):
+    def action(name, icon, commands, read=None, fmt=None):
         control = {"type": "action", "name": name, "icon": icon}
         if read is not None:
             control["read"] = read
+        if fmt is not None:
+            control["format"] = fmt
         return control, commands
 
     job = action(
@@ -657,6 +705,7 @@ def octoprint_presets(snapshot_url=None):
                                                       "effect": "disable"}},
         ],
         read={"printer": "progress"},
+        fmt=PROGRESS_FORMAT,
     )
     printer = action(
         "Printer",
@@ -673,7 +722,6 @@ def octoprint_presets(snapshot_url=None):
                 "confirm": "This sends M112, which halts the printer at once.",
             },
         ],
-        read={"printer": "temperatures"},
     )
     gcode = action(
         "G-code macros",
@@ -702,6 +750,8 @@ def octoprint_presets(snapshot_url=None):
     # stored position instead of homing, M112 is refused, and there are no heaters to cool
     next(p for p in presets if p["preset"] == "octoprint:printer")["note"] = (
         "Not for Grbl machines: use the Grbl control's Home and Reset")
+    at = next(index for index, p in enumerate(presets) if p["preset"] == "octoprint:printer") + 1
+    presets[at:at] = [temperature_preset(item, has_target) for item, has_target in heaters or []]
     if isinstance(snapshot_url, str) and snapshot_url:
         presets.append({
             "preset": "octoprint:snapshot", "name": "Webcam snapshot", "control": None,
@@ -891,7 +941,7 @@ def add_plugin_preset(preset, devices, actions):
     """Return ``(devices, actions)`` with one plugin preset added, as the picker's addPlugin adds it.
 
     A preset with a control adds the control at the end of ``devices``, and its commands at the end of ``actions``
-    under one Plugin devices divider made when missing. A command-only preset (``control`` None) adds no device;
+    under one Plugin devices divider made when missing. A readout control also gets its placement there. A command-only preset (``control`` None) adds no device;
     each command is standalone and goes at the end of the Plugin devices section, the divider made when missing.
     The inputs are not modified.
     """
@@ -921,7 +971,14 @@ def add_plugin_preset(preset, devices, actions):
         device["on_pattern"] = control["on_pattern"]
     if control.get("off_pattern"):
         device["off_pattern"] = control["off_pattern"]
+    if control.get("format"):
+        device["format"] = control["format"]
     devices.append(device)
+    if control["type"] == "readout":
+        # a readout is drawn only where its placement is
+        _place_in_plugin_section(actions, [{"action": free_key(device_id, _entry_keys(actions)),
+                                            "name": control["name"], "device": device_id,
+                                            "preset": preset["preset"]}])
 
     if not commands:
         return devices, actions

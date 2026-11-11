@@ -337,10 +337,34 @@ def _temperatures_text(temperatures):
     return " · ".join(parts)
 
 
+def _number_text(value):
+    # a bare number as text, for the control's format to shape; None is blank
+    return "" if value is None else str(value)
+
+
 def _progress_text(data):
-    # no job means no completion to show
-    completion = ((data or {}).get("progress") or {}).get("completion")
-    return "" if completion is None else "{}%".format(round(completion))
+    # the job's completion as a bare number of percent; no job means no completion to show
+    return _number_text(((data or {}).get("progress") or {}).get("completion"))
+
+
+TEMPERATURE_FIELDS = ("actual", "target")
+
+
+def _temperature_text(temperatures, item, field):
+    """One item of OctoPrint's current temperatures, by the name OctoPrint holds it under.
+
+    With ``field`` "actual" or "target" the text is that bare number. With no field it is the pair as one JSON
+    object, ``{"actual": n, "target": n or null}``, which the control's format reads as {actual} and {target}
+    (see status.evaluate). An item the printer does not report, or one with no actual, is blank.
+    """
+    reading = temperatures.get(item) if isinstance(temperatures, dict) else None
+    if not isinstance(reading, dict):
+        return ""
+    if field is not None:
+        return _number_text(reading.get(field))
+    if reading.get("actual") is None:
+        return ""
+    return json.dumps({"actual": reading["actual"], "target": reading.get("target")})
 
 
 def read_builtin(spec, printer):
@@ -349,7 +373,13 @@ def read_builtin(spec, printer):
     try:
         if kind == "state":
             return printer.get_state_string(), None
+        if kind == "temperature":
+            field = spec.get("field")
+            if field is not None and field not in TEMPERATURE_FIELDS:
+                return "", "Unknown temperature field {}".format(field)
+            return _temperature_text(printer.get_current_temperatures(), spec.get("item"), field), None
         if kind == "temperatures":
+            # the joined line of 2.1's Printer preset, kept for controls saved with it
             return _temperatures_text(printer.get_current_temperatures()), None
         if kind == "progress":
             return _progress_text(printer.get_current_data()), None
