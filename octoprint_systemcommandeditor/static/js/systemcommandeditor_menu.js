@@ -1181,6 +1181,26 @@ $(function () {
             window.addEventListener("blur", (event) => {
                 if (event.target === window) endPress();
             }, true);
+            // Bootstrap closes every dropdown on any click on the page. A click in a confirmation dialog or on a
+            // toast belongs to the command just run, so the menu is opened again within the same click.
+            const nav = $("#navbar_systemmenu");
+            let keep = false;
+            document.addEventListener("click", (event) => {
+                keep = nav.hasClass("open") && $(event.target).closest(".modal, .modal-backdrop, .ui-pnotify").length > 0;
+            }, true);
+            document.addEventListener("click", () => {
+                if (!keep) return;
+                keep = false;
+                if (nav.hasClass("open")) return;
+                nav.addClass("open");
+                // on touch screens Bootstrap's backdrop is what closes the menu on an outside tap; it went with the menu
+                if ("ontouchstart" in document.documentElement) {
+                    $('<div class="dropdown-backdrop"/>').insertAfter(nav.children("a").first()).on("click", function () {
+                        $(this).remove();
+                        nav.removeClass("open");
+                    });
+                }
+            });
             // capture phase: runs before core's own handler on standalone items, so only this path runs them
             menu[0].addEventListener("click", (event) => {
                 const target = $(event.target);

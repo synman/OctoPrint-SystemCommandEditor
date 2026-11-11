@@ -526,6 +526,11 @@ def run_probe():
         check("consent dialog body contains the command inside pre", pre == "async-cmd", "pre=%r" % pre)
         confirmed = page.evaluate(CLICK_DIALOG, False)
         check("consent dialog confirm button found", confirmed is not None, "clicked=%r" % confirmed)
+        # E2. a click in the consent dialog leaves the menu open; a click elsewhere still closes it
+        check("the menu stays open after the consent dialog's button is clicked", page.evaluate(MENU_OPEN))
+        page.evaluate("() => document.body.click()")
+        check("a click elsewhere on the page still closes the menu", not page.evaluate(MENU_OPEN))
+        open_menu()
         spin_samples = []
         for _ in range(4):
             pump(120)
@@ -875,6 +880,16 @@ def run_probe():
         pump(int((SYNC_DELAY + 1.0) * 1000))
         toasts = page.evaluate(SUCCESS_TOASTS)
         check("with the option on, a finished sync run shows the success toast", toasts == 1, "toasts=%s" % toasts)
+        # O2. a click on that toast leaves the menu open
+        open_menu()
+        toast_clicked = page.evaluate("""() => {
+            const note = [...document.querySelectorAll('.ui-pnotify')].find(n => /executed successfully/.test(n.innerText));
+            if (!note) return false;
+            note.click();
+            return true;
+        }""")
+        check("the menu stays open after a click on a toast", toast_clicked and page.evaluate(MENU_OPEN),
+              "clicked=%s" % toast_clicked)
 
         # Q. with live updates on, an open menu re-checks every interval, and a closed one stops
         options["live_updates"] = True
